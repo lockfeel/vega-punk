@@ -1,113 +1,241 @@
 ---
 name: vega-punk
-description: "Use when starting any conversation - determines if brainstorming is needed or direct answer suffices. For creative/implementation tasks: explores intent, requirements, design, selects relevant skills, then transitions to planning. For simple queries: answers directly."
+description: "Central nervous system for AI sessions. Routes requests, designs solutions, analyzes dependencies, selects skills, and hands off to planning. Use at session start for any task beyond simple Q&A."
 ---
 
-# Vega-Punk: Session Entry & Design
+# Vega-Punk: Session State Machine
 
-## Step 0 — Route the Request
+**Purpose:** Ensure every creative/implementation task follows a disciplined design flow before execution. Analyzes causal dependencies so the execution plan can maximize parallelism.
 
-**On every new conversation, decide immediately:**
+**State file:** `.vega-punk-state.json` in the current working directory.
+**Spec directory:** `vega-punk/specs/` in the current working directory.
 
-| If the user says... | Then... |
-|---------------------|---------|
-| "What does X do?" / "Explain this error" / "Fix this typo" / "How do I...?" | **Answer directly. Done.** |
-| "Build X" / "Add X" / "Refactor X" / "Design X" / Any create/modify/extend request | **Continue to Step 1** |
+**Recovery:** On session start, read `.vega-punk-state.json`. If valid JSON and `state` is not "DONE", print "Resuming vega-punk from [STATE]: [task]" and resume from that state. If file is missing or corrupted, restart from ROUTE.
 
-<HARD-GATE>
-If this is a creative/implementation task: Do NOT write code, scaffold projects, or invoke implementation skills until the user has approved your design.
-</HARD-GATE>
+**Reset:** If user says "start over" / "new task" / "forget previous", delete `.vega-punk-state.json` and restart from ROUTE.
 
----
+**State JSON format:** Every state write includes these base fields:
+```json
+{"state": "<STATE_NAME>", "task": "<user request>", "...state-specific fields..."}
+```
 
-## Step 1 — Explore Context
+**Git:** Add `.vega-punk-state.json` and `vega-punk/` to `.gitignore` if not already present.
 
-Check the current project state: files, docs, recent commits.
+**Progress reporting:** At each state transition, announce:
+> "Entering [STATE]... (Step X of Y: [remaining steps])"
 
-**If the request is too large** (multiple independent subsystems), flag it immediately. Help the user decompose into sub-projects. Each sub-project gets its own spec → plan → implementation cycle.
+Use this progress table for estimates:
 
----
+| State | Estimated | Remaining after |
+|-------|-----------|-----------------|
+| ROUTE | 1 min | 5-6 states |
+| SCAN | 2 min | 5 states |
+| CLARIFY | 3-5 min (depends on questions) | 4 states |
+| DESIGN | 5 min | 3 states |
+| DEPENDENCIES | 3 min | 2 states |
+| SPEC | 5 min | 1 state |
+| HANDOFF | 1 min | 0 |
 
-## Step 2 — Offer Visual Companion (Conditional)
-
-**Only if upcoming questions will involve visual content** (mockups, layouts, diagrams), offer this as its own message:
-
-> "Some of what we're working on might be easier to explain if I can show it to you in a web browser. I can put together mockups, diagrams, comparisons, and other visuals as we go. This feature is still new and can be token-intensive. Want to try it? (Requires opening a local URL)"
-
-**Wait for response.** If they decline, proceed to Step 3. If they accept, **first read `skills/vega-punk/visual-companion.md`**, then follow it.
-
----
-
-## Step 3 — Ask Clarifying Questions
-
-- One question at a time. Prefer multiple choice.
-- Focus on: purpose, constraints, success criteria.
-- Do not combine questions with other content.
+If user asks "where are we?" or "how much left?", print the current state and remaining steps.
 
 ---
 
-## Step 4 — Propose Approaches
+## State Machine
 
-- Propose 2-3 approaches with trade-offs.
-- Lead with your recommended option and explain why.
+```
+ROUTE → SCAN → CLARIFY → DESIGN → DEPENDENCIES → SPEC → HANDOFF → DONE
+  ↓
+CONDENSED → HANDOFF
+```
 
----
-
-## Step 5 — Present Design
-
-- Scale each section to complexity: a few sentences if straightforward, up to 200-300 words if nuanced.
-- Ask after each section whether it looks right so far.
-- Cover: architecture, components, data flow, error handling, testing.
-- **Design rule:** Break the system into smaller units that each have one clear purpose. Can someone understand a unit without reading its internals? Can you change internals without breaking consumers? If not, the boundaries need work.
+**Valid transitions only.** Never skip states. Never go backwards except CONDENSED → SCAN (user rejects condensed, wants full flow).
 
 ---
 
-## Step 6 — Select Skills
+## ROUTE
 
-Identify which skills to use during implementation. Announce them: "I'll use [skill names] during implementation."
+**Trigger:** New user message. No state file, or state is "DONE".
 
-**Skill priority:**
-1. Process skills first (debugging, testing) — determine HOW to approach
-2. Implementation skills second (frontend-design, mcp-builder) — guide execution
+**Announce:** "Entering ROUTE... (Step 1 of 7)"
 
-**The 1% rule:** If there's even a 1% chance a skill applies, invoke it.
+**Action:**
+1. Classify:
+   - **Informational** → Answer. Set state: DONE. Stop.
+   - **Creative/Implementation** → Set state: SCAN. Proceed.
+   - **Ambiguous** → Ask one question to classify.
+2. **If user says "just write code" / "skip design":** Set state: CONDENSED.
 
-**Skill types:**
-- **Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
-- **Flexible** (patterns): Adapt principles to context. The skill itself tells you which.
-
-**Instruction priority:** User's explicit instructions > Skills > Default system prompt.
-
----
-
-## Step 7 — Write Design Doc
-
-Save to `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`. Commit to git.
+**State write:**
+```json
+{"state": "SCAN", "task": "<user request>"}
+```
 
 ---
 
-## Step 8 — Spec Self-Review
+## SCAN
 
-Look at the spec with fresh eyes. Fix any issues inline:
+**Trigger:** State is SCAN.
 
-1. **Placeholder scan:** Any "TBD", "TODO", incomplete sections? Fix them.
-2. **Internal consistency:** Do any sections contradict each other? Fix them.
-3. **Scope check:** Focused enough for a single plan, or needs decomposition?
-4. **Ambiguity check:** Could any requirement be interpreted two different ways? Pick one and make it explicit.
+**Announce:** "Entering SCAN... (Step 2 of 7)"
+
+**Action:**
+1. Check project context: files, docs, recent commits.
+2. Check scope: If request spans multiple independent subsystems, decompose.
+3. Select skills: For each installed skill whose description mentions the task domain, mark it as relevant. Invoke it.
+
+**State write:**
+```json
+{"state": "CLARIFY", "task": "...", "context": "<summary>", "selected_skills": ["skill1", ...], "scope": "<single|decomposed>"}
+```
 
 ---
 
-## Step 9 — User Review Gate
+## CLARIFY
 
-> "Spec written and committed to `<path>`. Please review it and let me know if you want to make any changes before we start writing out the implementation plan."
+**Trigger:** State is CLARIFY.
 
-**Wait for response.** If changes requested, make them and re-run Step 8. Only proceed once the user approves.
+**Announce:** "Entering CLARIFY... (Step 3 of 7)"
+
+**Action:**
+1. Ask clarifying questions one at a time.
+2. Prefer multiple choice. Focus on: purpose, constraints, success criteria.
+3. If user says "you decide", document assumption and proceed.
+
+**State write:**
+```json
+{"state": "DESIGN", "task": "...", "requirements": {"purpose": "...", "constraints": "...", "success": "..."}}
+```
 
 ---
 
-## Step 10 — Transition to Implementation
+## DESIGN
 
-**Invoke the planning-with-json skill.** Do NOT invoke any other implementation skill. planning-with-json is the only next step.
+**Trigger:** State is DESIGN.
+
+**Announce:** "Entering DESIGN... (Step 4 of 7). Let's brainstorm the best approach together."
+
+**Phase 1 — Brainstorm (Collaborative):**
+1. Present 2-3 approaches with trade-offs. Frame them as options to explore together, not decisions to approve.
+2. For each approach, show: what it does well, what it costs, what risks it carries.
+3. Lead with your recommendation but explain why — and why the others might also be valid.
+4. **Ask the user:** "Which direction feels right? Or would you like to combine elements from different approaches?"
+
+**Phase 2 — Converge (Co-create):**
+1. Based on user feedback, refine the chosen approach.
+2. If the user wants to combine approaches, show how that would look.
+3. If the user has their own idea, integrate it and show the merged design.
+4. This is a dialogue, not a presentation. Iterate until the design feels right to both of you.
+
+**Phase 3 — Present (Formalize):**
+1. Present the finalized design covering: architecture, components, data flow, error handling, testing.
+2. **Design rule:** Each unit has one clear purpose. Can you understand it without reading internals? Can you change internals without breaking consumers? If not, boundaries need work.
+3. Get explicit user approval.
+
+**If user rejects:** Go back to Phase 1. Stay in DESIGN.
+
+**State write:**
+```json
+{"state": "DEPENDENCIES", "task": "...", "design": {"approach": "...", "architecture": "...", "components": [...]}}
+```
+
+---
+
+## DEPENDENCIES
+
+**Trigger:** State is DEPENDENCIES.
+
+**Announce:** "Entering DEPENDENCIES... (Step 5 of 7)"
+
+**Purpose:** Analyze causal relationships. Output is INPUT for planning-with-json — NOT a plan.
+
+**Action:**
+1. List all components from the approved design.
+2. For each pair, determine:
+
+   | Relationship | Meaning |
+   |--------------|---------|
+   | **A → B (serial)** | B cannot start until A is complete |
+   | **A ∥ B (parallel)** | A and B independent, can run simultaneously |
+   | **A ↔ B (bidirectional)** | Design smell — merge or add abstraction |
+
+3. Identify critical path (longest serial chain).
+4. Identify parallel groups.
+
+**Rules:**
+- Schema → API → Frontend = serial
+- Independent UI components = parallel
+- Shared types first (serial), then implementations (parallel)
+
+**State write:**
+```json
+{"state": "SPEC", "task": "...", "dependencies": {"components": [...], "serial": [{"from": "A", "to": "B"}], "parallel": [["A", "B"]], "critical_path": [...]}}
+```
+
+---
+
+## SPEC
+
+**Trigger:** State is SPEC.
+
+**Announce:** "Entering SPEC... (Step 6 of 7)"
+
+**Action:**
+1. Write spec to `vega-punk/specs/YYYY-MM-DD-<topic>-design.md`. Create directory if not exists.
+   - Required sections: Goal, Architecture, Components, Interfaces, Data Flow, Error Handling, Testing Plan, Dependency Graph.
+2. Self-review:
+   - Placeholders → Fill or remove
+   - Contradictions → Resolve
+   - Scope creep → Trim or decompose
+   - Ambiguity → Pick one interpretation
+   - Dependency check: Are serial dependencies justified?
+3. Ask user: "Spec written to `<path>`. Please review before we create the implementation plan."
+4. Wait for approval. If changes → Fix → Re-run self-review.
+
+**State write:**
+```json
+{"state": "HANDOFF", "task": "...", "spec_path": "vega-punk/specs/YYYY-MM-DD-<topic>-design.md"}
+```
+
+---
+
+## CONDENSED
+
+**Trigger:** State is CONDENSED.
+
+**Announce:** "Entering CONDENSED mode... (Step 2 of 3)"
+
+**Action:**
+1. Write a 3-sentence spec: What, Why, How.
+2. Ask: "I'll implement [X] using [Y]. Proceed?"
+3. If approved → Set state: HANDOFF.
+4. If rejected → Set state: SCAN. User wants the full flow from the beginning.
+
+**State write:**
+```json
+{"state": "HANDOFF", "task": "...", "mode": "condensed", "spec": "<3-sentence summary>"}
+```
+
+---
+
+## HANDOFF
+
+**Trigger:** State is HANDOFF.
+
+**Announce:** "Entering HANDOFF... (Step 7 of 7). Design complete, transitioning to planning."
+
+**Action:**
+1. Invoke planning-with-json skill.
+2. **Data passing:** The `.vega-punk-state.json` file IS the data transfer mechanism. planning-with-json will:
+   - Read `.vega-punk-state.json` from the current working directory
+   - Extract `dependencies` (if present) to structure phases
+   - Extract `selected_skills` to know available skills
+   - Extract `spec_path` to read the full design document
+3. Do NOT invoke any other implementation skill.
+
+**State write:**
+```json
+{"state": "DONE", "task": "...", "handoff_to": "planning-with-json"}
+```
 
 ---
 
@@ -115,18 +243,17 @@ Look at the spec with fresh eyes. Fix any issues inline:
 
 | If you think... | The reality is... |
 |-----------------|-------------------|
-| "This is too simple to need a design" | Simple projects are where unexamined assumptions cause the most wasted work |
-| "I'll just do this one thing first" | Check the flow BEFORE doing anything |
-| "I need more context first" | Skill check comes BEFORE clarifying questions |
-| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first |
+| "This is too simple to need a design" | Use CONDENSED mode, don't skip entirely |
+| "I'll just do this one thing first" | Check the state machine BEFORE doing anything |
+| "Let me explore the codebase first" | SCAN state handles context. Check first |
 | "This doesn't need a formal skill" | If a skill exists, use it |
-| "The skill is overkill" | Simple things become complex. Use it |
+| "The skill is overkill" | Simple things become complex. Use CONDENSED, not nothing |
+| "Dependencies are obvious" | Write them down. "Obvious" dependencies cause merge conflicts |
 
 ## Key Principles
 
-- **One question at a time** — Don't overwhelm
-- **Multiple choice preferred** — Easier to answer
-- **YAGNI ruthlessly** — Remove unrequested features
-- **Explore alternatives** — Always propose 2-3 approaches
-- **Incremental validation** — Present design, get approval before moving on
-- **Working in existing codebases** — Follow existing patterns. Don't propose unrelated refactoring.
+- **One state at a time** — Never skip states. Use CONDENSED for speed.
+- **Dependencies drive execution** — Serial blocks, parallel unblocks.
+- **One question at a time** — Don't overwhelm.
+- **YAGNI ruthlessly** — Remove unrequested features.
+- **Working in existing codebases** — Follow existing patterns. No unrelated refactoring.
