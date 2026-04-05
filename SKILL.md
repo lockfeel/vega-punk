@@ -9,6 +9,8 @@ metadata:
 
 **Purpose:** Ensure every creative/implementation task follows a disciplined design flow before execution. Analyzes causal dependencies so the execution plan can maximize parallelism.
 
+**Boundary:** vega-punk owns design and routing. After HANDOFF, planning-with-json takes over — it generates the plan, presents it to the user, and manages execution. vega-punk does not participate in execution.
+
 **State file:** `.vega-punk-state.json` in the working directory.
 **Spec directory:** `vega-punk/specs/` in the working directory.
 
@@ -347,28 +349,32 @@ CONDENSED → HANDOFF
    - Extract `selected_skills` to know available skills
    - Extract `spec_path` (or `spec` if condensed) to read the design document
 3. **HANDOFF is the ONLY exit.** Do NOT invoke frontend-design, mcp-builder, or any implementation skill directly. planning-with-json is the next and only step.
-4. **After planning:** When planning-with-json creates the roadmap.json, present it to the user. Ask:
-   > "Plan ready. How would you like to proceed?"
-   
-   **User choices:**
-   - **"Execute" / "Run it" / "Go"** → Invoke `executing-plans` skill (sequential execution)
-   - **"Parallel" / "Subagents" / "Dispatch"** → Invoke `subagent-driven-development` skill (parallel execution)
-   - **"Review the plan"** → Wait for user feedback, then iterate
-   - **"Modify"** → Go back to DESIGN
+4. Set state: DONE. vega-punk's responsibility ends here.
+
+**What happens next (managed by planning-with-json, not vega-punk):**
+- planning-with-json generates roadmap.json from the spec
+- planning-with-json presents the plan to the user and offers execution choices
+- planning-with-json invokes executing-plans or subagent-driven-development based on user choice
+- Execution-stage skills (test-driven-development, systematic-debugging, verification-before-completion, requesting-code-review) are triggered during the execution phase, managed by planning-with-json and its sub-skills
+
+**State write:**
+```json
+{"state": "DONE", "task": "...", "handoff_to": "planning-with-json"}
+```
 
 ---
 
 ## Skill Invocation Chain
 
-The complete workflow and when each skill triggers:
+The complete workflow showing where vega-punk's responsibility ends and downstream skills take over:
 
 ```
 ┌─ ROUTE ──┐
-│  1% Rule │ ──► systematic-debugging (if bug-related keywords detected)
+│  1% Rule │ ──► systematic-debugging (if bug keywords detected)
 └────┬─────┘
      ▼
 ┌─ SCAN ──┐
-│ Skills   │ ──► (skills that match the task domain)
+│ Skills   │ ──► (skills matching task domain)
 └────┬─────┘
      ▼
 ┌─ CLARIFY ──┐
@@ -387,30 +393,21 @@ The complete workflow and when each skill triggers:
 │ Write spec  │ ──► (design document)
 └──────┬──────┘
        ▼
-┌─ HANDOFF ────────────────┐
-│ planning-with-json       │ ──► REQUIRED (hardcoded)
-└────────────┬──────────────┘
-            ▼
-    ┌───────┴───────┐
-    │ User chooses: │
-    ├───────────────┤
-    │ "Execute" →  │ ──► executing-plans (sequential)
-    │ "Parallel" → │ ──► subagent-driven-development
-    │ "Modify" →   │ ──► Go back to DESIGN
-    └───────┬───────┘
-            ▼
-   ┌────────┴────────┐
-   │ During execution │ ──► test-driven-development (for each task)
-   │                  │ ──► systematic-debugging (on bug/error)
-   └────────┬────────┘
-            ▼
-   ┌─────────────────┐
-   │ Task completed  │ ──► verification-before-completion
-   └────────┬────────┘
-            ▼
-   ┌─────────────────┐
-   │ Before merge    │ ──► requesting-code-review
-   └─────────────────┘
+┌─ HANDOFF ────────────────────────┐
+│ planning-with-json (ONLY exit)   │ ──► vega-punk DONE
+└──────────────────────────────────┘
+         ▼
+    [planning-with-json takes over]
+    - generates roadmap.json
+    - presents plan to user
+    - offers execution choices
+    - invokes executing-plans or subagent-driven-development
+         ▼
+    [execution phase — downstream skills]
+    - test-driven-development (per task)
+    - systematic-debugging (on error)
+    - verification-before-completion (per task)
+    - requesting-code-review (before merge)
 ```
 
 ## Skill Trigger Rules
@@ -418,27 +415,24 @@ The complete workflow and when each skill triggers:
 | Skill | When to Invoke | Trigger |
 |-------|----------------|---------|
 | **systematic-debugging** | ROUTE: if user message contains bug-related keywords | `bug`, `fix`, `error`, `not working`, `crash`, `failed` |
-| **planning-with-json** | HANDOFF: always | Hardcoded - the ONLY exit from vega-punk |
-| **executing-plans** | User says "execute", "run", "go", "start" after seeing plan | Direct user request |
-| **subagent-driven-development** | User says "parallel", "subagents", "dispatch", "concurrent" | Direct user request |
-| **test-driven-development** | During plan execution, before writing any code | Auto-invoked by planning-with-json workflow |
-| **verification-before-completion** | Before claiming "done", "complete", "finished" | Before any task completion |
-| **requesting-code-review** | Before merge, after all tasks pass | Before `finishing-a-development-branch` |
+| **planning-with-json** | HANDOFF: always | Hardcoded — the ONLY exit from vega-punk |
+
+Skills triggered during execution (managed by planning-with-json, not vega-punk):
+
+| Skill | When | Managed By |
+|-------|------|------------|
+| executing-plans | User chooses inline execution | planning-with-json |
+| subagent-driven-development | User chooses parallel execution | planning-with-json |
+| test-driven-development | Per task, before writing code | executing-plans / subagent-driven-development |
+| verification-before-completion | Before claiming task done | executing-plans / subagent-driven-development |
+| requesting-code-review | Before merge | finishing-a-development-branch |
+| systematic-debugging | On error during execution | executing-plans / subagent-driven-development |
 
 ## Key Invocation Points
 
 1. **ROUTE** — Check for bug keywords → trigger systematic-debugging if detected
 2. **HANDOFF** — Always invoke planning-with-json (hardcoded)
-3. **After plan shown** — Ask user to choose execution method → invoke executing-plans OR subagent-driven-development
-4. **During execution** — Each task should use test-driven-development
-5. **On error** — Auto-trigger systematic-debugging
-6. **Before claiming done** — Auto-trigger verification-before-completion
-7. **Before merge** — Auto-trigger requesting-code-review
-
-**State write:**
-```json
-{"state": "DONE", "task": "...", "handoff_to": "planning-with-json"}
-```
+3. **DONE** — vega-punk's responsibility ends. planning-with-json manages all subsequent stages.
 
 ---
 
@@ -462,15 +456,18 @@ The complete workflow and when each skill triggers:
 
 ## External Skills Dependency
 
-vega-punk invokes these skills. Ensure they are installed:
+vega-punk directly invokes:
 
 - **planning-with-json** — required (called from HANDOFF)
-- **executing-plans** — called when user chooses to execute plan
-- **subagent-driven-development** — called when user chooses parallel execution
-- **systematic-debugging** — auto-triggers on bugs
-- **test-driven-development** — auto-triggers on feature/bugfix
-- **verification-before-completion** — auto-triggers before claiming done
-- **requesting-code-review** — auto-triggers before merge|
+
+Skills triggered during execution (managed by planning-with-json):
+
+- **executing-plans** — inline execution
+- **subagent-driven-development** — parallel execution
+- **systematic-debugging** — on bugs
+- **test-driven-development** — per task
+- **verification-before-completion** — before claiming done
+- **requesting-code-review** — before merge
 
 ## Key Principles
 
@@ -479,3 +476,4 @@ vega-punk invokes these skills. Ensure they are installed:
 - **One question at a time** — Don't overwhelm.
 - **YAGNI ruthlessly** — Remove unrequested features.
 - **Working in existing codebases** — Follow existing patterns. Targeted improvements only. No unrelated refactoring.
+- **Clear boundaries** — vega-punk stops at HANDOFF. planning-with-json manages everything after.
