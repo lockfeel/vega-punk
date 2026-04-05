@@ -65,9 +65,9 @@ CONDENSED mode: 2 steps (3-sentence spec → approval).
 
 These are rules. Do not treat them as suggestions.
 
-### 1. HARD-GATE: No Design, No Code
+### 1. HARD-GATE: No Design, No Execute
 
-Do NOT write any code, scaffold any project, invoke any implementation skill, or take any implementation action until the design has been presented and the user has approved it. This applies to EVERY project regardless of perceived simplicity. A todo list, a single-function utility, a config change — all of them. The design can be short (a few sentences for truly simple projects via CONDENSED mode), but you MUST present it and get approval.
+Do NOT execute anything — write code, scaffold projects, generate documents, create designs, produce content, modify configurations, invoke any implementation skill, or take any implementation action — until the design has been presented and the user has approved it. This applies to EVERY task regardless of perceived simplicity. A todo list, a single-function utility, a config change, a document, a presentation, a data analysis — all of them. The design can be short (a few sentences for truly simple projects via CONDENSED mode), but you MUST present it and get approval.
 
 ### 2. The 1% Rule: When in Doubt, Invoke
 
