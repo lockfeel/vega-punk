@@ -127,25 +127,6 @@ The skill itself tells you which. Read the current version — skills evolve.
 - Identify the real problem, not just the stated request
 - Map constraints before proposing solutions
 
-### Visual Companion — Browser vs Terminal
-
-Decide per-question, not per-session. The test: **would the user understand this better by seeing it than reading it?**
-
-- **Use the browser** for visual content: mockups, wireframes, layouts, architecture diagrams, side-by-side visual comparisons, spatial relationships.
-- **Use the terminal** for text content: requirements questions, conceptual choices, tradeoff lists, scope decisions, clarifying questions.
-
-A question *about* a UI topic is not automatically a visual question. "What kind of wizard do you want?" is conceptual — terminal. "Which of these wizard layouts feels right?" is visual — browser.
-
-When offering the companion, make it its own message — do not combine with clarifying questions or any other content. Wait for the user's response before continuing.
-
-**Starting a session:** Find the vega-punk skill directory (search `~/.agents/skills/vega-punk/` or the directory containing this SKILL.md) and run `scripts/start-server.sh --project-dir <project-root>`. Save `screen_dir` and `state_dir` from the response. Tell user to open the URL.
-
-**The loop:** Write HTML content fragments to `screen_dir` → tell user what to expect → end your turn → on next turn, read `$STATE_DIR/events` for browser interactions → merge with terminal text → iterate or advance.
-
-**When returning to terminal:** Write `waiting.html` to `screen_dir` to clear stale content from the browser.
-
-Full guide: [visual-companion.md](visual-companion.md)
-
 ### Ask, Don't Assume
 
 - Ambiguous requirements → ask ONE clarifying question
@@ -244,7 +225,7 @@ These are the only state reversals permitted. All other transitions are forward-
 **Action:**
 1. **Check scope BEFORE asking questions.** If the request describes multiple independent subsystems (e.g., "build a platform with chat, file storage, billing, and analytics"), tell the user immediately that the project should be split. Don't spend time refining details of a project that needs to be decomposed first. Help the user identify independent pieces, how they relate, and what order to build them. Then proceed with the first sub-project.
 2. Check project context: files, docs, recent commits.
-3. **Skill Routing:** Read `scan_depth` from the state file. If it is 3 or greater, skip skill routing and proceed to step 4. Otherwise, read [references/skill-routing.md](references/skill-routing.md). Match task against the routing table. Select ALL relevant skills and note execution order. Process skills first (brainstorming, debugging), implementation skills second.
+3. **Skill Routing:** Read `scan_depth` from the state file. If it is 3 or greater, skip skill routing and proceed to step 4. Otherwise, try to read [references/skill-routing.md](references/skill-routing.md). If the file doesn't exist, skip skill routing and proceed to step 4. If it exists, match task against the routing table. Select ALL relevant skills and note execution order. Process skills first (brainstorming, debugging), implementation skills second.
 4. **Skill invocation purpose:** Invoking a skill loads its guidance into context — it tells you HOW to proceed. You do NOT execute the skill's implementation steps here. You use the skill's workflow to inform the CLARIFY → DESIGN → SPEC flow.
 
 **State write:** Read the current JSON, change `state` to "CLARIFY", add `context`, `selected_skills`, `scope`. Increment `scan_depth` (or set to 1 if not present). Keep all existing fields.
@@ -464,10 +445,11 @@ These are the only state reversals permitted. All other transitions are forward-
 **Announce:** "Entering CONDENSED mode..."
 
 **Action:**
-1. Write a 3-sentence spec: What, Why, How.
-2. Ask: "I'll implement [X] using [Y]. Proceed?"
-3. If approved → Set state: HANDOFF.
-4. If rejected → Set state: SCAN. User wants the full flow from the beginning.
+1. Write a minimal spec: What, Why, How (3 sentences max).
+2. Define at least one key interface or entry point: input → output, or function signature, or API shape. This gives the planning layer something concrete to structure phases around.
+3. Ask: "I'll implement [X] using [Y]. Proceed?"
+4. If approved → Set state: HANDOFF.
+5. If rejected → Set state: SCAN. User wants the full flow from the beginning.
 
 **State write:** Read the current JSON, change `state` to "HANDOFF", add `mode`, `spec`. Keep all existing fields.
 ```json
@@ -508,89 +490,11 @@ These are the only state reversals permitted. All other transitions are forward-
 
 ---
 
-## Execution Phase: Verification Reference
+## Execution Phase: Verification Contract
 
 > **Ownership:** This phase is managed by **planning-with-json** during execution, using the **verification-before-completion** skill. vega-punk does NOT participate in execution or verification.
 >
-> This section defines the verification standards that downstream execution must meet. It exists here as a contract so the full design + verification context is available in `.vega-punk-state.json` for downstream skills to read.
-
-### Verification Flow
-
-```markdown
-1. Collect Evidence
-   - Run verification commands (test/build/lint)
-   - Capture screenshots or log output
-   - Check exit codes and failure counts
-
-2. Evidence Assessment
-   - Sufficient evidence + passing → PASS
-   - Sufficient evidence + failing → FAIL
-   - Insufficient evidence → collect more
-
-3. Outcome
-   PASS → Mark task complete
-   FAIL → Return to fix → retry (max 3 attempts)
-```
-
-### Evidence Requirements by Task Type
-
-| Task Type | Required Evidence |
-|-----------|-------------------|
-| **Code Implementation** | Passing test output + lint clean + build success |
-| **Bug Fix** | Original bug reproduction → fix → bug eliminated |
-| **UI Implementation** | Screenshot comparison / browser snapshot |
-| **API Development** | API test pass + correct responses |
-| **Documentation** | Document accessible + content complete |
-
-### Prohibited Behaviors
-
-| ❌ Prohibited | ✅ Correct |
-|---------------|------------|
-| "Should work" | Run the command, check the output |
-| "Looks right" | Verify the output, confirm the result |
-| "Last run's test" | Re-run this time |
-| "Agent says it passed" | Independently verify VCS diff |
-| "Almost done" | Show concrete evidence |
-
-### Retry Mechanism
-
-- Maximum 3 retries
-- Each retry must include new evidence
-- Still failing after 3 attempts → escalate to manual handling
-
-### Verification State Record (managed by verification-before-completion)
-
-```json
-{
-  "verification": {
-    "attempts": 1,
-    "max_attempts": 3,
-    "evidence": {
-      "test_output": "...",
-      "screenshot": "path/to/screenshot.png",
-      "logs": "path/to/logs"
-    },
-    "result": "PASS|FAIL",
-    "feedback": "specific failure reason"
-  }
-}
-```
-
-### Pass/Fail Criteria
-
-**PASS conditions:**
-- ✅ All tests passing
-- ✅ Lint clean
-- ✅ Build succeeded
-- ✅ Meets spec requirements
-- ✅ Clear evidence supports the claim
-
-**FAIL conditions:**
-- ❌ Test failures
-- ❌ Lint errors
-- ❌ Build failure
-- ❌ Does not meet spec
-- ❌ Insufficient evidence
+> The requirement is simple: every task type must have concrete, observable evidence before claiming done. What that evidence looks like, how to collect it, and how to retry — all defined by `verification-before-completion`. vega-punk only specifies **what success looks like** in the spec; the execution layer decides **how to prove it**.
 
 ---
 
