@@ -49,12 +49,14 @@ If user asks "where are we?" or "how much left?", print current state and remain
 
 | State | Est. | Remaining |
 |-------|------|-----------|
-| ROUTE | 1 min | 5-6 states |
-| SCAN | 2 min | 5 states |
-| CLARIFY | 3-5 min | 4 states |
-| DESIGN | 5 min | 3 states |
-| DEPENDENCIES | 3 min | 2 states |
-| SPEC | 5 min | 1 state |
+| ROUTE | 1 min | 8 states |
+| SCAN | 2 min | 7 states |
+| CLARIFY | 3-5 min | 6 states |
+| DESIGN | 5 min | 5 states |
+| DESIGN_QA | 5 min | 4 states |
+| DEPENDENCIES | 3 min | 3 states |
+| SPEC | 5 min | 2 states |
+| SPEC_QA | 5 min | 1 state |
 | HANDOFF | 1 min | 0 |
 
 CONDENSED mode: 2 steps (3-sentence spec → approval).
@@ -170,7 +172,7 @@ If the user sends a message unrelated to the current state's purpose:
 ## State Machine
 
 ```
-ROUTE → SCAN → CLARIFY → DESIGN → DEPENDENCIES → SPEC → HANDOFF → DONE
+ROUTE → SCAN → CLARIFY → DESIGN → DESIGN_QA → DEPENDENCIES → SPEC → SPEC_QA → HANDOFF → DONE
   ↓
 CONDENSED → HANDOFF
 ```
@@ -271,7 +273,47 @@ CONDENSED → HANDOFF
 
 **State write:** Read the current JSON, change `state` to "DEPENDENCIES", add `design`. Keep all existing fields.
 ```json
-{"state": "DEPENDENCIES", "task": "...", "context": "...", "selected_skills": [...], "scope": "...", "requirements": {...}, "design": {"approach": "...", "architecture": "...", "components": [...]}}
+{"state": "DEPENDENCIES", "task": "...", "context": "...", "selected_skills": [...], "scope": "...", "requirements": {...}, "design": {...}, "qa": {"design_retries": 0, "design_feedback": ""}}
+```
+
+---
+
+## DESIGN_QA
+
+**Trigger:** State is DESIGN_QA.
+
+**Announce:** "Entering DESIGN_QA... 等待专家评审 + 用户二次评审"
+
+**Action:**
+1. **第一层：专家评审**
+   - 邀请技术专家/代码审查者评审设计方案
+   - 收集专家反馈：架构合理性、技术选型、风险点
+   
+2. **第二层：用户二次评审**
+   - 将专家评审意见连同设计方案一起提交给你
+   - 你进行最终审核并给出 PASS/FAIL
+
+3. **QA 判定流程**
+
+```markdown
+专家评审 → 收集反馈 → 用户二次评审 → 判定
+                                          ↓
+                          ┌───────────────┴───────────────┐
+                          ↓                               ↓
+                       PASS                            FAIL
+                          ↓                               ↓
+                 进入 DEPENDENCIES         返回 DESIGN (修复后重试)
+                                                       ↓
+                                              重试次数 +1
+```
+
+**重试机制：**
+- 最多 3 次重试（修复后重新提交评审）
+- 超过 3 次 → 升级人工处理
+
+**State write:** Read the current JSON, change `state` to "DEPENDENCIES" (PASS) or "DESIGN" (FAIL), update `qa` fields.
+```json
+{"state": "DEPENDENCIES", "task": "...", "...": "...", "qa": {"design_retries": 1, "design_feedback": "专家意见...", "design_status": "PASS|FAIL"}}
 ```
 
 ---
@@ -330,12 +372,50 @@ CONDENSED → HANDOFF
 4. Ask user: "Spec written to `<path>`. Review the spec. If it looks good, I'll hand off to planning."
 5. Wait for approval. If changes → Fix → Re-run self-review.
 
-**State write:** Read the current JSON, change `state` to "HANDOFF", add `spec_path`. Keep all existing fields.
+**State write:** Read the current JSON, change `state` to "SPEC_QA", add `spec_path`, add `qa` field. Keep all existing fields.
 ```json
-{"state": "HANDOFF", "task": "...", "...previous fields...": "...", "spec_path": "vega-punk/specs/YYYY-MM-DD-<topic>-design.md"}
+{"state": "SPEC_QA", "task": "...", "...": "...", "spec_path": "vega-punk/specs/YYYY-MM-DD-<topic>-design.md", "qa": {"spec_retries": 0, "spec_feedback": ""}}
 ```
 
-**If user changes direction:** If it's a spec-level change (add/remove feature), fix the spec and re-run self-review. If it's a fundamental direction change, go back to DESIGN. Announce "Adjusting design..."
+---
+
+## SPEC_QA
+
+**Trigger:** State is SPEC_QA.
+
+**Announce:** "Entering SPEC_QA... 等待专家评审 + 用户二次评审"
+
+**Action:**
+1. **第一层：专家评审**
+   - 邀请技术专家评审规格文档
+   - 检查：完整性、一致性、可实现性、测试覆盖
+   - 收集专家反馈
+
+2. **第二层：用户二次评审**
+   - 将专家评审意见连同规格文档一起提交给你
+   - 你进行最终审核并给出 PASS/FAIL
+
+3. **QA 判定流程**
+
+```markdown
+专家评审 → 收集反馈 → 用户二次评审 → 判定
+                                          ↓
+                          ┌───────────────┴───────────────┐
+                          ↓                               ↓
+                       PASS                            FAIL
+                          ↓                               ↓
+                       HANDOFF              返回 SPEC (修复后重试)
+                                              重试次数 +1
+```
+
+**重试机制：**
+- 最多 3 次重试
+- 超过 3 次 → 升级人工处理
+
+**State write:**
+```json
+{"state": "HANDOFF", "task": "...", "...": "...", "qa": {"spec_retries": 1, "spec_feedback": "专家意见...", "spec_status": "PASS|FAIL"}}
+```
 
 ---
 
@@ -380,7 +460,95 @@ CONDENSED → HANDOFF
 - planning-with-json reads the spec and generates roadmap.json
 - planning-with-json presents the plan to the user and offers execution choices
 - planning-with-json invokes executing-plans or subagent-driven-development based on user choice
-- Execution-stage skills are triggered during the execution phase
+- **Execution-stage skills are triggered during the execution phase**
+- **执行完成后：自动调用 verification-before-completion skill 进行最终验证**
+
+---
+
+## VERIFY 阶段（强化证据驱动）
+
+**触发条件：** 执行阶段完成，准备标记任务为 DONE 之前
+
+**核心原则：证据优先，代码次之**
+
+### 验证流程
+
+```markdown
+1. 收集证据
+   - 运行验证命令（测试/构建/lint）
+   - 截图或日志记录输出
+   - 检查退出码和失败数
+
+2. 证据判定
+   - 证据充分 + 通过 → PASS
+   - 证据充分 + 失败 → FAIL
+   - 证据不足 → 补充证据
+
+3. 判定结果
+   PASS → 状态更新为 DONE，任务完成
+   FAIL → 返回修复 → 重试 (最多 3 次)
+```
+
+### 证据类型要求
+
+| 任务类型 | 必要证据 |
+|----------|----------|
+| **代码实现** | 测试通过输出 + lint 通过 + 构建成功 |
+| **Bug修复** | 原始Bug复现 → 修复 → Bug消失 |
+| **UI实现** | 截图对比 / 浏览器快照 |
+| **API开发** | API测试通过 + 响应正确 |
+| **文档撰写** | 文档可访问 + 内容完整 |
+
+### 禁止行为
+
+| ❌ 禁止 | ✅ 正确 |
+|---------|---------|
+| "应该能跑" | 运行命令，看输出 |
+| "看起来对" | 验证输出，确认结果 |
+| "上次的测试" | 本次重新运行 |
+| "Agent 说成功" | 独立验证 VCS diff |
+| "差不多完成" | 出示具体证据 |
+
+### 重试机制
+
+- 最多 3 次重试
+- 每次重试必须带新证据
+- 3 次后仍失败 → 升级人工处理
+
+### 状态记录
+
+```json
+{
+  "state": "VERIFY",
+  "verification": {
+    "attempts": 1,
+    "max_attempts": 3,
+    "evidence": {
+      "test_output": "...",
+      "screenshot": "path/to/screenshot.png",
+      "logs": "path/to/logs"
+    },
+    "result": "PASS|FAIL",
+    "feedback": "具体失败原因"
+  }
+}
+```
+
+### 判定标准
+
+**PASS 条件：**
+- ✅ 所有测试通过
+- ✅ lint 检查通过
+- ✅ 构建成功
+- ✅ 符合规格要求
+- ✅ 有明确证据支持
+
+**FAIL 条件：**
+- ❌ 测试有失败
+- ❌ lint 有错误
+- ❌ 构建失败
+- ❌ 不符合规格
+- ❌ 证据不足
 
 **State write:** Read the current JSON, change `state` to "DONE", add `handoff_to`. Keep all existing fields — the full context remains available for downstream skills.
 ```json
