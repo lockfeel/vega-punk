@@ -23,9 +23,11 @@ For **OpenClaw**, the working directory is your current project. For **Claude Co
 2. If the file exists and `state` is not "DONE", **do NOT start from ROUTE**. Execute the current state's actions directly.
 3. If the file is missing or `state` is "DONE", start from ROUTE.
 
+**Special: REVIEW state.** If state is "REVIEW" and `execution_result` exists, enter REVIEW immediately. If `execution_result` is missing (execution hasn't completed yet), wait for user input — do not restart ROUTE.
+
 **Recovery:** If the session_start_hook outputs "Resuming from [STATE]...", read `.vega-punk-state.json`, find the state value, and execute the actions for that state. Do NOT re-announce the resume message — the hook already did. Do NOT go back to ROUTE. Continue from where you left off.
 
-**Reset:** User says "start over" / "new task" / "forget previous" → delete `.vega-punk-state.json` → restart ROUTE.
+**Reset:** User says "start over" / "new task" / "forget previous" → apply Post-Completion Cleanup → restart ROUTE.
 
 - When this happens, tell the user: "[vega-punk] Starting fresh. What shall we build?"
 
@@ -47,7 +49,12 @@ After CLARIFY:
 
 After HANDOFF:
 ```json
-{"state": "DONE", "task": "build todo app", "context": "...", "selected_skills": [...], "scope": "single", "requirements": {...}, "design": {...}, "dependencies": {...}, "spec_path": "...", "handoff_to": "planning-with-json"}
+{"state": "REVIEW", "task": "build todo app", "context": "...", "selected_skills": [...], "scope": "single", "requirements": {...}, "design": {...}, "dependencies": {...}, "spec_path": "...", "handoff_to": "planning-with-json"}
+```
+
+After REVIEW (execution callback):
+```json
+{"state": "DONE", "task": "build todo app", "...previous fields...": "...", "execution_result": {"status": "success", "summary": "...", "artifacts": [...], "verification": "passed"}}
 ```
 
 The final file contains the complete design context for downstream skills to read.
@@ -61,17 +68,18 @@ If user asks "where are we?" or "how much left?", print current state and remain
 
 | State | Est. | Remaining |
 |-------|------|-----------|
-| ROUTE | 1 min | 8 states |
-| SCAN | 2 min | 7 states |
-| CLARIFY | 3-5 min | 6 states |
-| DESIGN | 5 min | 5 states |
-| DESIGN_QA | 2-3 min | 4 states |
-| DEPENDENCIES | 3 min | 3 states |
-| SPEC | 5 min | 2 states |
-| SPEC_QA | 2-3 min | 1 state |
-| HANDOFF | 1 min | 0 |
+| ROUTE | 1 min | 9 states |
+| SCAN | 2 min | 8 states |
+| CLARIFY | 3-5 min | 7 states |
+| DESIGN | 5 min | 6 states |
+| DESIGN_QA | 2-3 min | 5 states |
+| DEPENDENCIES | 3 min | 4 states |
+| SPEC | 5 min | 3 states |
+| SPEC_QA | 2-3 min | 2 states |
+| HANDOFF | 1 min | 1 state |
+| REVIEW | 1 min | 0 |
 
-CONDENSED mode: 2 steps (3-sentence spec → approval).
+CONDENSED mode: 3 steps (3-sentence spec → approval → review).
 
 ---
 
@@ -153,6 +161,13 @@ The skill itself tells you which. Read the current version — skills evolve.
 - Build before saying "it works"
 - Evidence before assertions, always
 
+### Output Is Production
+
+- Every deliverable — spec, design doc, diagram, config, code, presentation, image — must be aesthetically crafted and production-ready. No exceptions.
+- No rough drafts. No "this is just a working version, we'll polish later." The first output IS the final output.
+- **Aesthetics is not optional.** Typography, visual hierarchy, color harmony, spacing, alignment — all of these are part of the craft. Every artifact should feel intentional, not accidental.
+- If it wouldn't look right being shown to a client, shipped to users, or published publicly, it doesn't leave vega-punk.
+
 ### Handle Off-Topic Input
 
 If the user sends a message unrelated to the current state's purpose:
@@ -163,7 +178,7 @@ If the user sends a message unrelated to the current state's purpose:
 ### Handle Cancel / Abort
 
 If the user says "stop", "cancel", "I don't want to do this anymore", or equivalent at any point:
-1. Delete `.vega-punk-state.json`.
+1. Apply Post-Completion Cleanup (archive specs, delete state).
 2. Acknowledge: "[vega-punk] Cancelled. What shall we build?"
 3. Set state: DONE. No spec, no plan, no handoff.
 
@@ -172,9 +187,15 @@ If the user says "stop", "cancel", "I don't want to do this anymore", or equival
 ## State Machine
 
 ```
-ROUTE → SCAN → CLARIFY → DESIGN → DESIGN_QA → DEPENDENCIES → SPEC → SPEC_QA → HANDOFF → DONE
-  ↓
-CONDENSED → HANDOFF
+ROUTE → SCAN → CLARIFY → DESIGN ────→ DEPENDENCIES → SPEC ────→ HANDOFF → DONE
+                        ↓                              ↓                        ↕
+                      DESIGN_QA                      SPEC_QA                  REVIEW
+                        ↓                              ↓
+                      ↩ DESIGN                       ↩ SPEC
+
+CONDENSED ──→ HANDOFF
+    ↓
+  ↩ SCAN  (if user rejects)
 ```
 
 **Never skip or reverse states.** Exception: the rollback rules below.
@@ -191,6 +212,8 @@ These are the only state reversals permitted. All other transitions are forward-
 | User changes direction during DEPENDENCIES | → DESIGN (if architecture changes needed) | Design needs adjustment before dependency analysis can continue |
 | CONDENSED rejected | → SCAN (user wants the full flow) | Condensed mode is a shortcut, not a commitment |
 | User rejects proposed design in DESIGN | Stay in DESIGN, restart from Phase 1 | Not a rollback — re-iteration within the same state |
+| REVIEW: execution failed | → CLARIFY (if requirements changed) or → DESIGN (if design was wrong) | Execution results don't match spec |
+| REVIEW: execution partial | → DESIGN (implement remaining) or → CLARIFY (if scope changed) | Some requirements not yet met |
 
 ---
 
@@ -201,6 +224,7 @@ These are the only state reversals permitted. All other transitions are forward-
 **Announce:** "Entering ROUTE..."
 
 **Action:**
+0. **Post-Completion Cleanup:** If state is "DONE" and `.vega-punk-state.json` exists, archive the previous spec file (rename `*.md` → `*.DONE.md`) and delete `.vega-punk-state.json`. This ensures a clean slate for the new task.
 1. **Apply the 1% Rule first.** Might any skill apply? Invoke it. Even a simple question is a task. Check for skills before responding.
 2. **Bug detection:** If user message contains bug-related keywords (`bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception`), invoke systematic-debugging skill first.
 3. Classify:
@@ -325,7 +349,7 @@ These are the only state reversals permitted. All other transitions are forward-
 
 **Retry mechanism:**
 - Maximum 3 retries (fix and resubmit for review)
-- Beyond 3 retries → escalate to manual handling
+- Beyond 3 retries → tell the user: "[vega-punk] I've hit the retry limit on this design. I cannot continue without a clear direction — please review the design manually and tell me how to proceed." Stay in DESIGN_QA until user provides new instructions.
 
 **State write:** Read the current JSON, change `state` to "DEPENDENCIES" (PASS) or "DESIGN" (FAIL), update `qa` fields.
 ```json
@@ -429,7 +453,7 @@ These are the only state reversals permitted. All other transitions are forward-
 
 **Retry mechanism:**
 - Maximum 3 retries
-- Beyond 3 retries → escalate to manual handling
+- Beyond 3 retries → tell the user: "[vega-punk] I've hit the retry limit on this spec. I cannot continue without a clear direction — please review the spec manually and tell me how to proceed." Stay in SPEC_QA until user provides new instructions.
 
 **State write:**
 ```json
@@ -453,7 +477,7 @@ These are the only state reversals permitted. All other transitions are forward-
 
 **State write:** Read the current JSON, change `state` to "HANDOFF", add `mode`, `spec`. Keep all existing fields.
 ```json
-{"state": "HANDOFF", "task": "...", "mode": "condensed", "spec": "<3-sentence summary>"}
+{"state": "HANDOFF", "task": "...", "context": "...", "selected_skills": [...], "scope": "...", "requirements": {...}, "mode": "condensed", "spec": "<3-sentence summary>"}
 ```
 
 ---
@@ -474,11 +498,11 @@ These are the only state reversals permitted. All other transitions are forward-
    - `requirements` — purpose, constraints, success criteria
 3. **HANDOFF is the ONLY exit.** Do NOT invoke frontend-design, mcp-builder, or any implementation skill directly. planning-with-json is the next and only step.
 4. **Fallback:** If planning-with-json is not available, tell the user: "The planning skill is not installed. Please install it first, or I can describe the execution plan verbally." Keep state as HANDOFF. Only set state to DONE after planning-with-json is successfully invoked.
-5. Set state: DONE. vega-punk's responsibility ends here.
+5. Set state: REVIEW. vega-punk's design responsibility ends, but it remains available to review execution results.
 
-**State write:** Read the current JSON, change `state` to "DONE", add `handoff_to`. Keep all existing fields — the full context remains available for downstream skills.
+**State write:** Read the current JSON, change `state` to "REVIEW", add `handoff_to`. Keep all existing fields — the full context remains available for downstream skills and execution callback.
 ```json
-{"state": "DONE", "task": "...", "handoff_to": "planning-with-json"}
+{"state": "REVIEW", "task": "...", "handoff_to": "planning-with-json"}
 ```
 
 **What happens next (managed by planning-with-json, not vega-punk):**
@@ -487,6 +511,33 @@ These are the only state reversals permitted. All other transitions are forward-
 - planning-with-json invokes executing-plans or subagent-driven-development based on user choice
 - **Execution-stage skills are triggered during the execution phase**
 - **After execution completes: automatically invoke verification-before-completion skill for final validation**
+- **After verification: update `.vega-punk-state.json` with `execution_result` and set state to REVIEW**
+
+---
+
+## REVIEW
+
+**Trigger:** State is REVIEW.
+
+**Purpose:** Receive execution results from planning-with-json, compare against the original spec's success criteria, and recommend next actions. This closes the design → execute → verify loop.
+
+**How planning-with-json triggers this:** After execution + verification completes, planning-with-json updates `.vega-punk-state.json`:
+```json
+{"state": "REVIEW", "task": "...", "...previous fields...": "...", "execution_result": {"status": "success|partial|failed", "summary": "...", "artifacts": ["path1", "path2"], "verification": "passed|failed", "notes": "..."}}
+```
+
+**Action:**
+1. Read `execution_result` from the state file.
+2. Compare against `requirements.success` from the original spec.
+3. Present a brief summary to the user:
+   - **success + passed:** "Execution complete. All success criteria met. Artifacts: [list]. Start a new task?"
+   - **success + failed:** "Execution complete but verification failed. Issues: [notes]. Iterate on the design or start fresh?"
+   - **partial:** "Execution partially complete. Done: [summary]. Remaining: [summary]. Continue or redesign?"
+   - **failed:** "Execution failed. Root cause: [notes]. Redesign needed?"
+4. Based on user response:
+   - **New task** → Post-Completion Cleanup → ROUTE
+   - **Iterate** → Set state: DESIGN with `execution_result` as context
+   - **Redesign** → Set state: CLARIFY with `execution_result` as context
 
 ---
 
@@ -495,6 +546,15 @@ These are the only state reversals permitted. All other transitions are forward-
 > **Ownership:** This phase is managed by **planning-with-json** during execution, using the **verification-before-completion** skill. vega-punk does NOT participate in execution or verification.
 >
 > The requirement is simple: every task type must have concrete, observable evidence before claiming done. What that evidence looks like, how to collect it, and how to retry — all defined by `verification-before-completion`. vega-punk only specifies **what success looks like** in the spec; the execution layer decides **how to prove it**.
+
+## Post-Completion Cleanup
+
+**Trigger:** ROUTE step 0 (when state is "DONE" and a new task starts), or user says "new task" / "start over" / "forget previous", or user cancels the flow.
+
+1. **Archive spec files:** Rename `vega-punk/specs/*.md` → `*.DONE.md` for completed tasks, or rename to `*.CANCELLED.md` for cancelled tasks. Never delete specs — archive them so history is always recoverable.
+2. **Delete `.vega-punk-state.json`.** The task is done or cancelled, the state is no longer needed for recovery.
+
+**REVIEW → new task transition:** If the user starts a new task while in REVIEW state, apply Post-Completion Cleanup then restart ROUTE.
 
 ---
 
@@ -515,6 +575,7 @@ These are the only state reversals permitted. All other transitions are forward-
 | "This doesn't count as a task" | Action = task. Check for skills. |
 | "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
 | "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
+| "This is just a draft, we'll polish later" | There are no drafts. Output must be aesthetically first-class — every time. |
 
 ## Skill Dependencies
 
