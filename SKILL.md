@@ -1,15 +1,23 @@
 ---
 name: vega-punk
 description: "Central nervous system for AI sessions. Routes requests, designs solutions, analyzes dependencies, selects skills, and hands off to planning. Use at session start for any task beyond simple Q&A. Triggers on: new session, ambiguous request, multi-step task, skill selection needed, or when user says 'let's think about' / 'how should we' / 'what's the plan'."
+user-invocable: true
+allowed-tools: "Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch"
+hooks:
+  SessionStart:
+    - type: command
+      command: "bash scripts/planning-resume.sh"
+    - type: command
+      command: "bash scripts/session-hook.sh 2>/dev/null || echo '[vega-punk] Ready. What shall we build?'"
 metadata:
-  session_start_hook: "bash scripts/session-hook.sh 2>/dev/null || echo '[vega-punk] Ready. What shall we build?'"
+  version: "9.0"
 ---
 
 # Vega-Punk: Session State Machine
 
 **Purpose:** Ensure every creative/implementation task follows a disciplined design flow before execution. Analyzes causal dependencies so the execution plan can maximize parallelism.
 
-**Boundary:** vega-punk is responsible for design and routing. After HANDOFF, planning-with-json takes over — it generates the plan, presents it to the user, and manages execution. vega-punk does not participate in execution.
+**Boundary:** vega-punk handles design and routing. After HANDOFF, the planning-with-json sub-skill takes over — it reads the state file, generates the roadmap, and manages execution. vega-punk remains available to review execution results in the REVIEW state.
 
 **State file:** `.vega-punk-state.json` in the working directory.
 **Spec directory:** `vega-punk/specs/` in the working directory.
@@ -23,9 +31,11 @@ For **OpenClaw**, the working directory is your current project. For **Claude Co
 2. If the file exists and `state` is not "DONE", **do NOT start from ROUTE**. Execute the current state's actions directly.
 3. If the file is missing or `state` is "DONE", start from ROUTE.
 
-**Special: REVIEW state.** If state is "REVIEW" and `execution_result` exists, enter REVIEW immediately. If `execution_result` is missing (execution hasn't completed yet), wait for user input — do not restart ROUTE.
+**Special: REVIEW state.** If state is "REVIEW" and `execution_result` exists, enter REVIEW immediately. If `execution_result` is missing (execution hasn't completed yet), wait for user input — do not restart ROUTE. If the planning sub-skill is in progress (roadmap.json exists with incomplete steps), resume execution from roadmap.json's `current_step`.
 
 **Recovery:** If the session_start_hook outputs "Resuming from [STATE]...", read `.vega-punk-state.json`, find the state value, and execute the actions for that state. Do NOT re-announce the resume message — the hook already did. Do NOT go back to ROUTE. Continue from where you left off.
+
+**Planning recovery:** If state is "REVIEW" and `execution_result` is missing but `roadmap.json` exists with incomplete steps, resume the planning sub-skill from `roadmap.json`'s `current_step`. The planning sub-skill's own session hook will report the current step.
 
 **Reset:** User says "start over" / "new task" / "forget previous" → apply Post-Completion Cleanup → restart ROUTE.
 
@@ -66,20 +76,21 @@ The final file contains the complete design context for downstream skills to rea
 
 If user asks "where are we?" or "how much left?", print current state and remaining steps.
 
-| State | Est. | Remaining |
-|-------|------|-----------|
-| ROUTE | 1 min | 9 states |
-| SCAN | 2 min | 8 states |
-| CLARIFY | 3-5 min | 7 states |
-| DESIGN | 5 min | 6 states |
-| DESIGN_QA | 2-3 min | 5 states |
-| DEPENDENCIES | 3 min | 4 states |
-| SPEC | 5 min | 3 states |
-| SPEC_QA | 2-3 min | 2 states |
-| HANDOFF | 1 min | 1 state |
-| REVIEW | 1 min | 0 |
+| State | Full Path | Condensed Path |
+|-------|-----------|----------------|
+| ROUTE | 9 states left | 3 states left |
+| SCAN | 8 | — |
+| CLARIFY | 7 | — |
+| DESIGN | 6 | — |
+| DESIGN_QA | 5 | — |
+| DEPENDENCIES | 4 | — |
+| SPEC | 3 | — |
+| SPEC_QA | 2 | — |
+| CONDENSED | — | 2 |
+| HANDOFF | 1 | 1 |
+| REVIEW | 0 | 0 |
 
-CONDENSED mode: 3 steps (3-sentence spec → approval → review).
+CONDENSED mode: 3 steps (minimal spec → approval → review), skips DESIGN/DEPENDENCIES/SPEC states.
 
 ---
 
@@ -129,43 +140,10 @@ Skills tell you HOW to explore. Check for skills BEFORE gathering information, B
 
 The skill itself tells you which. Read the current version — skills evolve.
 
-### Deep Understanding First
-
-- Understand the WHY before the WHAT
-- Identify the real problem, not just the stated request
-- Map constraints before proposing solutions
-
-### Ask, Don't Assume
-
-- Ambiguous requirements → ask ONE clarifying question
-- Prefer multiple-choice questions with recommended option
-- If user says "you decide" → document assumption, proceed
-
-### Code Over Words
-
-- When explaining, show code examples
-- When designing, show architecture diagrams in text
-- When comparing approaches, show concrete diffs
-
-### Safety First
-
-- NEVER commit/push without explicit request
-- NEVER run destructive commands without confirmation
-- Warn before any irreversible operation
-- Add to `.gitignore` before creating temp files
-
-### Verify Before Claiming Done
-
-- Run tests before saying "tests pass"
-- Run lint/typecheck before saying "code is clean"
-- Build before saying "it works"
-- Evidence before assertions, always
-
 ### Output Is Production
 
 - Every deliverable — spec, design doc, diagram, config, code, presentation, image — must be aesthetically crafted and production-ready. No exceptions.
 - No rough drafts. No "this is just a working version, we'll polish later." The first output IS the final output.
-- **Aesthetics is not optional.** Typography, visual hierarchy, color harmony, spacing, alignment — all of these are part of the craft. Every artifact should feel intentional, not accidental.
 - If it wouldn't look right being shown to a client, shipped to users, or published publicly, it doesn't leave vega-punk.
 
 ### Handle Off-Topic Input
@@ -187,9 +165,9 @@ If the user says "stop", "cancel", "I don't want to do this anymore", or equival
 ## State Machine
 
 ```
-ROUTE → SCAN → CLARIFY → DESIGN ────→ DEPENDENCIES → SPEC ────→ HANDOFF → DONE
-                        ↓                              ↓                        ↕
-                      DESIGN_QA                      SPEC_QA                  REVIEW
+ROUTE → SCAN → CLARIFY → DESIGN ────→ DEPENDENCIES → SPEC ────→ HANDOFF ─→ REVIEW ─→ DONE
+                        ↓                              ↓
+                      DESIGN_QA                      SPEC_QA
                         ↓                              ↓
                       ↩ DESIGN                       ↩ SPEC
 
@@ -364,7 +342,7 @@ These are the only state reversals permitted. All other transitions are forward-
 
 **Announce:** "Entering DEPENDENCIES..."
 
-**Purpose:** Analyze causal relationships. Output is INPUT for planning-with-json — NOT a plan.
+**Purpose:** Analyze causal relationships. Output is INPUT for the planning-with-json sub-skill — NOT a plan.
 
 **Action:**
 1. List all components from the approved design.
@@ -489,29 +467,32 @@ These are the only state reversals permitted. All other transitions are forward-
 **Announce:** "Entering HANDOFF... Design complete, transitioning to planning."
 
 **Action:**
-1. Invoke planning-with-json skill.
-2. **Data passing:** The `.vega-punk-state.json` file IS the data transfer mechanism. It contains the full design context accumulated through all states:
-   - `spec_path` (or `spec` if condensed) — the design document for planning-with-json to read
+1. **Invoke the sub-skill:** Read [references/planning-with-json.md](references/planning-with-json.md) and follow its planning workflow.
+2. **Data contract:** The `.vega-punk-state.json` file IS the data transfer mechanism. The sub-skill reads it directly to extract:
+   - `spec_path` (or `spec` if condensed) — the design document for planning
    - `dependencies` — serial/parallel analysis for phase structuring
    - `selected_skills` — relevant skills for the execution plan
    - `design` — architecture and component details
    - `requirements` — purpose, constraints, success criteria
-3. **HANDOFF is the ONLY exit.** Do NOT invoke frontend-design, mcp-builder, or any implementation skill directly. planning-with-json is the next and only step.
-4. **Fallback:** If planning-with-json is not available, tell the user: "The planning skill is not installed. Please install it first, or I can describe the execution plan verbally." Keep state as HANDOFF. Only set state to DONE after planning-with-json is successfully invoked.
-5. Set state: REVIEW. vega-punk's design responsibility ends, but it remains available to review execution results.
+3. **Transition to Planning Phase:** The sub-skill creates `roadmap.json` from this context. Follow its execution loop for step-by-step implementation.
 
 **State write:** Read the current JSON, change `state` to "REVIEW", add `handoff_to`. Keep all existing fields — the full context remains available for downstream skills and execution callback.
 ```json
 {"state": "REVIEW", "task": "...", "handoff_to": "planning-with-json"}
 ```
 
-**What happens next (managed by planning-with-json, not vega-punk):**
-- planning-with-json reads the spec and generates roadmap.json
-- planning-with-json presents the plan to the user and offers execution choices
-- planning-with-json invokes executing-plans or subagent-driven-development based on user choice
-- **Execution-stage skills are triggered during the execution phase**
-- **After execution completes: automatically invoke verification-before-completion skill for final validation**
-- **After verification: update `.vega-punk-state.json` with `execution_result` and set state to REVIEW**
+---
+
+## Planning with JSON (Sub-skill)
+
+Planning is managed by a sub-skill at [references/planning-with-json.md](references/planning-with-json.md). After HANDOFF, read that file and follow its workflow:
+
+1. **Read** `references/planning-with-json.md` — contains the full planning framework
+2. **Create** `roadmap.json` per the sub-skill's specification
+3. **Execute** steps per the sub-skill's execution loop
+4. **Offer** execution choice (Subagent-Driven vs Inline) per the sub-skill's handoff section
+
+The sub-skill defines: roadmap.json structure, step granularity rules, verification types, failure escalation, and anti-patterns.
 
 ---
 
@@ -519,9 +500,9 @@ These are the only state reversals permitted. All other transitions are forward-
 
 **Trigger:** State is REVIEW.
 
-**Purpose:** Receive execution results from planning-with-json, compare against the original spec's success criteria, and recommend next actions. This closes the design → execute → verify loop.
+**Purpose:** Receive execution results, compare against the original spec's success criteria, and recommend next actions. This closes the design → execute → verify loop.
 
-**How planning-with-json triggers this:** After execution + verification completes, planning-with-json updates `.vega-punk-state.json`:
+**How this is triggered:** After execution + verification completes, `.vega-punk-state.json` is updated:
 ```json
 {"state": "REVIEW", "task": "...", "...previous fields...": "...", "execution_result": {"status": "success|partial|failed", "summary": "...", "artifacts": ["path1", "path2"], "verification": "passed|failed", "notes": "..."}}
 ```
@@ -543,7 +524,7 @@ These are the only state reversals permitted. All other transitions are forward-
 
 ## Execution Phase: Verification Contract
 
-> **Ownership:** This phase is managed by **planning-with-json** during execution, using the **verification-before-completion** skill. vega-punk does NOT participate in execution or verification.
+> **Ownership:** This phase is managed by the **planning-with-json** sub-skill during execution, using the **verification-before-completion** skill.
 >
 > The requirement is simple: every task type must have concrete, observable evidence before claiming done. What that evidence looks like, how to collect it, and how to retry — all defined by `verification-before-completion`. vega-punk only specifies **what success looks like** in the spec; the execution layer decides **how to prove it**.
 
@@ -579,11 +560,11 @@ These are the only state reversals permitted. All other transitions are forward-
 
 ## Skill Dependencies
 
-**Direct dependency (vega-punk invokes):**
+**Sub-skill (referenced):**
 
-- **planning-with-json** — required (called from HANDOFF)
+- **planning-with-json** — [references/planning-with-json.md](references/planning-with-json.md) (called from HANDOFF)
 
-**Downstream dependencies (managed by planning-with-json during execution):**
+**External dependencies (called during execution):**
 
 - **executing-plans** — inline execution
 - **subagent-driven-development** — parallel execution
@@ -599,4 +580,4 @@ These are the only state reversals permitted. All other transitions are forward-
 - **One question at a time** — Don't overwhelm.
 - **YAGNI ruthlessly** — Remove unrequested features.
 - **Working in existing codebases** — Follow existing patterns. Targeted improvements only. No unrelated refactoring.
-- **Clear boundaries** — vega-punk stops at HANDOFF. planning-with-json manages everything after.
+- **Sub-skill architecture** — planning lives in `references/planning-with-json.md`. HANDOFF reads and follows it.
