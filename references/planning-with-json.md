@@ -275,15 +275,15 @@ After saving the plan, offer execution choice:
 
 **1. Subagent-Driven (recommended)** — Fresh subagent per task, review between tasks, fast iteration
 
-**2. Inline Execution** — Execute tasks in this session using executing-plans, batch execution with checkpoints
+**2. Inline Execution** — Execute tasks in this session, batch execution with checkpoints
 
 **Which approach?"**
 
 **If Subagent-Driven chosen:**
-- **REQUIRED SUB-SKILL:** Use superpowers:subagent-driven-development
+- Use `subagent-driven-development` skill
 
 **If Inline Execution chosen:**
-- **REQUIRED SUB-SKILL:** Use superpowers:executing-plans
+- Read [executing-plans.md](executing-plans.md) and follow its execution workflow
 
 ## Completion Contract — State Write-Back
 
