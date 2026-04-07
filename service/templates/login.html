@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TERMINAL // LOGIN</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+          --bg-dark: #080808;
+          --purple-main: #5c2e91;
+          --purple-glow: rgba(92, 46, 145, 0.6);
+          --purple-dim: rgba(92, 46, 145, 0.15);
+          --green-accent: #4ade80;
+          --green-glow: rgba(74, 222, 128, 0.6);
+          --red-alert: #ff0055;
+          --text-main: #f0f0f0;
+          --text-muted: #6b6b7a;
+          --font-display: 'Share Tech Mono', monospace;
+          --font-body: 'Rajdhani', sans-serif;
+          --radius-sm: 8px;
+          --radius-md: 12px;
+          --radius-lg: 16px;
+        }
+
+        * {
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0;
+        }
+
+        body {
+          background-color: var(--bg-dark);
+          color: var(--text-main);
+          font-family: var(--font-body);
+          min-height: 100vh;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          overflow: hidden;
+          position: relative;
+        }
+
+        body::before {
+          content: " ";
+          display: block;
+          position: absolute;
+          top: 0; left: 0; bottom: 0; right: 0;
+          background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+          z-index: 2;
+          background-size: 100% 2px, 3px 100%;
+          pointer-events: none;
+        }
+
+        #matrixCanvas {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          z-index: 0;
+        }
+
+        .login-panel {
+          position: relative;
+          z-index: 10;
+          width: 420px;
+          padding: 40px;
+          background: rgba(10, 5, 20, 0.85);
+          backdrop-filter: blur(10px);
+          
+          clip-path: polygon(0 0, calc(100% - 30px) 0, 100% 30px, 100% 100%, 30px 100%, 0 calc(100% - 30px));
+          border: 1px solid var(--purple-main);
+          box-shadow:
+            inset 0 0 20px var(--purple-dim),
+            0 0 30px var(--purple-dim);
+          transition: all 0.3s ease;
+        }
+
+        .login-panel::before, .login-panel::after {
+          content: '';
+          position: absolute;
+          width: 44px; height: 2px;
+          background: var(--green-accent);
+          box-shadow: 0 0 8px var(--green-glow);
+        }
+        
+        .login-panel::before {
+          top: 14px;
+          right: -6px;
+          transform: rotate(45deg);
+        }
+        
+        .login-panel::after {
+          bottom: 14px;
+          left: -6px;
+          transform: rotate(45deg);
+        }
+
+        .panel-header {
+          margin-bottom: 35px;
+          border-bottom: 1px solid var(--purple-dim);
+          padding-bottom: 15px;
+        }
+        .sys-id {
+          font-family: var(--font-display);
+          color: var(--green-accent);
+          font-size: 0.85rem;
+          letter-spacing: 2px;
+          display: block;
+          margin-bottom: 5px;
+        }
+        .panel-header h1 {
+          font-size: 2.2rem;
+          font-weight: 700;
+          letter-spacing: 4px;
+          text-transform: uppercase;
+          text-shadow: 0 0 10px var(--purple-glow);
+        }
+
+        .input-group {
+          margin-bottom: 25px;
+          position: relative;
+        }
+        .input-group label {
+          display: block;
+          font-family: var(--font-display);
+          font-size: 0.8rem;
+          color: var(--text-muted);
+          margin-bottom: 8px;
+          letter-spacing: 1px;
+        }
+
+        .input-wrapper {
+          position: relative;
+          display: flex;
+          align-items: center;
+        }
+
+        .input-wrapper::before {
+          content: '>';
+          position: absolute;
+          left: 0;
+          color: var(--purple-main);
+          font-family: var(--font-display);
+          font-size: 1.2rem;
+          animation: blink 1s step-end infinite;
+        }
+        @keyframes blink { 50% { opacity: 0; } }
+
+        input {
+          width: 100%;
+          background: transparent;
+          border: none;
+          border-bottom: 1px solid var(--text-muted);
+          padding: 10px 10px 10px 20px;
+          color: var(--green-accent);
+          font-family: var(--font-display);
+          font-size: 1.1rem;
+          letter-spacing: 2px;
+          outline: none;
+          transition: all 0.3s ease;
+        }
+
+        input::placeholder {
+          color: rgba(107, 92, 130, 0.4);
+        }
+
+        input:focus {
+          border-bottom-color: var(--green-accent);
+          box-shadow: 0 10px 10px -10px var(--green-glow);
+        }
+
+        .code-row {
+          display: flex;
+          gap: 15px;
+          align-items: flex-end;
+        }
+        .code-row .input-wrapper {
+          flex: 1;
+        }
+
+        .cyber-btn {
+          font-family: var(--font-display);
+          text-transform: uppercase;
+          cursor: pointer;
+          border: none;
+          outline: none;
+          transition: all 0.3s ease;
+          position: relative;
+          overflow: hidden;
+          letter-spacing: 1px;
+        }
+
+        .btn-outline {
+          background: transparent;
+          border: 1px solid var(--purple-main);
+          color: var(--purple-main);
+          padding: 10px 15px;
+          font-size: 0.9rem;
+          min-width: 120px;
+          height: 44px;
+        }
+        .btn-outline:hover:not(:disabled) {
+          background: var(--purple-dim);
+          box-shadow: 0 0 15px var(--purple-glow);
+        }
+        .btn-outline:disabled {
+          border-color: var(--text-muted);
+          color: var(--text-muted);
+          cursor: not-allowed;
+        }
+        .btn-outline.counting {
+          color: var(--green-accent);
+          border-color: var(--green-accent);
+        }
+
+        .btn-solid {
+          width: 100%;
+          background: var(--purple-main);
+          color: #fff;
+          padding: 15px;
+          font-size: 1.2rem;
+          font-weight: 600;
+          margin-top: 20px;
+          clip-path: polygon(0 0, calc(100% - 15px) 0, 100% 15px, 100% 100%, 15px 100%, 0 calc(100% - 15px));
+          box-shadow: 0 0 20px var(--purple-glow);
+        }
+        .btn-solid:hover:not(:disabled) {
+          background: var(--green-accent);
+          box-shadow: 0 0 30px var(--green-glow);
+          color: var(--bg-dark);
+        }
+        .btn-solid:disabled {
+          background: #332b40;
+          box-shadow: none;
+          color: var(--text-muted);
+          cursor: not-allowed;
+        }
+
+        .loading-text {
+          display: inline-block;
+        }
+        .loading-text::after {
+          content: '';
+          animation: dots 1.5s steps(4, end) infinite;
+        }
+        @keyframes dots {
+          0%, 20% { content: ''; }
+          40% { content: '.'; }
+          60% { content: '..'; }
+          80%, 100% { content: '...'; }
+        }
+
+        .err-msg {
+          display: block;
+          color: var(--red-alert);
+          font-family: var(--font-display);
+          font-size: 0.75rem;
+          min-height: 18px;
+          margin-top: 5px;
+          opacity: 0;
+          transform: translateY(-5px);
+          transition: all 0.3s ease;
+        }
+        .err-msg.show {
+          opacity: 1;
+          transform: translateY(0);
+        }
+
+        @media (max-width: 480px) {
+          .login-panel { width: 90%; padding: 30px 20px; }
+          .code-row { flex-direction: column; align-items: stretch; gap: 5px; }
+          .btn-outline { width: 100%; margin-top: 10px; }
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="matrixCanvas"></canvas>
+
+<main class="login-panel">
+    <div class="panel-header">
+        <span class="sys-id">SECURE.PORTAL // ETHEREAL</span>
+        <h1>SYSTEM LOGIN</h1>
+    </div>
+
+    <form id="authForm">
+
+        <div class="input-group">
+            <label for="phone">ID.COMM_LINK // 手机号码</label>
+            <div class="input-wrapper">
+                <input type="tel" id="phone" placeholder="11位手机号" maxlength="11" autocomplete="off">
+            </div>
+            <span class="err-msg" id="phoneErr">请输入有效的手机号码</span>
+        </div>
+
+        <div class="input-group">
+            <label for="code">AUTH.KEY // 验证许可码</label>
+            <div class="code-row">
+                <div class="input-wrapper">
+                    <input type="tel" id="code" placeholder="4位验证码" maxlength="4" autocomplete="off">
+                </div>
+                <button type="button" id="sendBtn" class="cyber-btn btn-outline">TRANSMIT</button>
+            </div>
+            <span class="err-msg" id="codeErr">请输入4位有效验证码</span>
+        </div>
+
+        <button type="submit" id="loginBtn" class="cyber-btn btn-solid">
+            <span class="btn-text">ESTABLISH CONNECTION</span>
+        </button>
+    </form>
+</main>
+
+<script>
+
+    async function apiSendSms(phone) {
+      const resp = await fetch('http://127.0.0.1:8092/send-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone })
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.code !== 200) throw new Error(data.desc || '发送失败');
+      return data;
+    }
+
+    async function apiLogin(phone, code) {
+      const resp = await fetch('http://127.0.0.1:8092/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, code })
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.code !== 200) throw new Error(data.desc || '登录失败');
+      return data;
+    }
+
+    const phoneInput = document.getElementById('phone');
+    const codeInput = document.getElementById('code');
+    const sendBtn = document.getElementById('sendBtn');
+    const loginBtn = document.getElementById('loginBtn');
+    const btnText = loginBtn.querySelector('.btn-text');
+    const phoneErr = document.getElementById('phoneErr');
+    const codeErr = document.getElementById('codeErr');
+
+    const phoneRegex = /^1[3-9]\d{9}$/;
+    const codeRegex = /^\d{4}$/;
+
+    let isCounting = false;
+    let timer = null;
+
+    phoneInput.addEventListener('input', () => {
+      phoneInput.value = phoneInput.value.replace(/\D/g, ''); // 仅允许输入数字
+      phoneErr.classList.remove('show');
+    });
+    codeInput.addEventListener('input', () => {
+      codeInput.value = codeInput.value.replace(/\D/g, '');
+      codeErr.classList.remove('show');
+    });
+
+    function validatePhone() {
+      const val = phoneInput.value.trim();
+      if (!phoneRegex.test(val)) {
+        phoneErr.innerText = 'ERR: 手机号码格式异常';
+        phoneErr.classList.add('show');
+        return false;
+      }
+      return true;
+    }
+
+    function validateCode() {
+      const val = codeInput.value.trim();
+      if (!codeRegex.test(val)) {
+        codeErr.innerText = 'ERR: 4位安全密钥格式异常';
+        codeErr.classList.add('show');
+        return false;
+      }
+      return true;
+    }
+
+    function startCountdown() {
+      isCounting = true;
+      let left = 60;
+      sendBtn.disabled = true;
+      sendBtn.classList.add('counting');
+
+      sendBtn.innerText = `T-${left}s`;
+
+      timer = setInterval(() => {
+        left--;
+        sendBtn.innerText = `T-${left}s`;
+        if (left <= 0) {
+          clearInterval(timer);
+          isCounting = false;
+          sendBtn.disabled = false;
+          sendBtn.classList.remove('counting');
+          sendBtn.innerText = 'RE-TRANSMIT';
+        }
+      }, 1000);
+    }
+
+    sendBtn.addEventListener('click', async () => {
+      if (isCounting || sendBtn.disabled) return;
+      if (!validatePhone()) return;
+
+      sendBtn.disabled = true;
+      const originalText = sendBtn.innerText;
+      sendBtn.innerHTML = `<span class="loading-text">SYNC</span>`;
+
+      try {
+        await apiSendSms(phoneInput.value.trim());
+
+        startCountdown();
+      } catch (err) {
+
+        phoneErr.innerText = err.message || 'ERR: 通讯链路故障';
+        phoneErr.classList.add('show');
+        sendBtn.disabled = false;
+        sendBtn.innerText = originalText;
+      }
+    });
+
+    document.getElementById('authForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const isPhoneValid = validatePhone();
+      const isCodeValid = validateCode();
+
+      if (!isPhoneValid || !isCodeValid) return;
+
+      loginBtn.disabled = true;
+      btnText.innerHTML = `<span class="loading-text">AUTHENTICATING</span>`;
+
+      try {
+        const data = await apiLogin(phoneInput.value.trim(), codeInput.value.trim());
+
+        if (data.data && data.data.userToken) {
+          localStorage.setItem('userToken', data.data.userToken);
+        }
+
+        btnText.innerText = 'ACCESS GRANTED';
+        loginBtn.style.background = 'var(--green-accent)';
+        loginBtn.style.color = 'var(--bg-dark)';
+
+        setTimeout(() => {
+          window.location.href = 'http://127.0.0.1:8893/chats';
+        }, 500);
+      } catch (err) {
+
+        codeErr.innerText = err.message || 'ERR: 认证被拒绝';
+        codeErr.classList.add('show');
+        loginBtn.disabled = false;
+        btnText.innerText = 'ESTABLISH CONNECTION';
+      }
+    });
+
+    const canvas = document.getElementById('matrixCanvas');
+    const ctx = canvas.getContext('2d');
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%^&*'.split('');
+    const fontSize = 14;
+    let columns = canvas.width / fontSize;
+    let drops = [];
+
+    function initDrops() {
+      columns = canvas.width / fontSize;
+      drops = [];
+      for (let x = 0; x < columns; x++) {
+
+        drops[x] = (Math.random() * canvas.height) / fontSize;
+      }
+    }
+    initDrops();
+    window.addEventListener('resize', initDrops);
+
+    function drawMatrix() {
+
+      ctx.fillStyle = 'rgba(7, 3, 13, 0.1)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = '#4ade80';
+      ctx.font = fontSize + 'px "Share Tech Mono", monospace';
+
+      for (let i = 0; i < drops.length; i++) {
+        const text = chars[Math.floor(Math.random() * chars.length)];
+        ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+
+        if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+          drops[i] = 0;
+        }
+        drops[i]++;
+      }
+    }
+
+    setInterval(drawMatrix, 90);
+</script>
+</body>
+</html>
