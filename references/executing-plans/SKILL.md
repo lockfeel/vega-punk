@@ -7,8 +7,6 @@ hooks:
   SessionStart:
     - type: command
       command: "bash scripts/planning-resume.sh"
-metadata:
-  version: "9.0"
 ---
 
 # Executing Plans
@@ -31,11 +29,15 @@ A. Load & Review:
    - Read roadmap.json, review plan structure critically
    - If concerns → raise with user before starting
 
-B. Execute Loop:
+B. Setup:
+   - REQUIRED: Invoke `using-git-worktrees` to set up isolated workspace before starting
+   - Verify baseline tests pass in the worktree
+
+C. Execute Loop:
    - Mark step in_progress → Execute tool/target → Verify → Mark complete
    - Write roadmap.json back after each step
 
-C. On Completion:
+D. On Completion:
    - If vega-punk mode → write execution_result to .vega-punk-state.json
    - If standalone → deliver summary + invoke finishing-a-development-branch
 ```
@@ -59,18 +61,20 @@ For each step in `roadmap.json`:
 1. Mark the step's `status` as `"in_progress"`
 2. Execute the step using the specified `tool` and `target`
    - If `code` field is present, write/edit the exact code as specified
-   - If `verify` field is present, run the verification after execution
+   - If `verify` field is present, follow the **verification-before-completion** skill rules before marking complete
 3. **On verification pass:** Set `status` to `"complete"`, set `result` to a brief outcome summary
 4. **On verification fail:** Increment `attempts`. If attempts < 3, retry with different approach. If attempts >= 3, set `status` to `"failed"` and stop.
 5. Update `current_step` to the next pending step's id
 6. Update `metadata.completed_steps` and `metadata.completion_rate`
 7. Write `roadmap.json` back after each step
 
+**Step execution loop details** (roadmap.json structure, verification types, failure escalation, anti-patterns) are defined in [../planning-with-json/SKILL.md](../planning-with-json/SKILL.md). Do not duplicate those rules here — follow them.
+
 ### Step 3: Complete Development
 
 After all steps complete and verified:
 - Announce: "I'm using the finishing-a-development-branch skill to complete this work."
-- **REQUIRED SUB-SKILL:** Use superpowers:finishing-a-development-branch
+- **REQUIRED SUB-SKILL:** Use `finishing-a-development-branch`
 - Follow that skill to verify tests, present options, execute choice
 
 ## When to Stop and Ask for Help
@@ -104,33 +108,27 @@ After all steps complete and verified:
 After execution completes and verification passes (or after finishing-a-development-branch completes):
 
 **If invoked from vega-punk** (`.vega-punk-state.json` exists):
-
-```
-1. Read .vega-punk-state.json
-2. Update state to "REVIEW"
-3. Add execution_result:
-   {
-     "status": "success|partial|failed",
-     "summary": "<brief outcome>",
-     "artifacts": ["path/to/file1", "path/to/file2"],
-     "verification": "passed|failed",
-     "notes": "<any issues or observations>"
-   }
-4. Write .vega-punk-state.json back
-5. This triggers vega-punk's REVIEW state automatically
-```
+- Follow the **Execution Result Writer Contract** in the vega-punk `SKILL.md` (REVIEW section): update state to "REVIEW" and add `execution_result`.
 
 **If standalone mode** (no `.vega-punk-state.json`):
 - No state write-back needed. Deliver summary to user directly.
 
 **If execution fails** (attempts exhausted on critical steps):
-- If vega-punk mode: update `.vega-punk-state.json` with status "failed" and error details in notes
-- If standalone: present failure report with specific step(s) that failed and suggested fixes
+- If vega-punk mode: update `.vega-punk-state.json` with status "failed" and error details in notes.
+- If standalone: present failure report with specific step(s) that failed and suggested fixes.
 
 ## Integration
 
 **Required workflow skills:**
 - **using-git-worktrees** — REQUIRED: Set up isolated workspace before starting
 - **vega-punk** — Creates the design that leads to planning-with-json
-- **planning-with-json** — Creates the `roadmap.json` this skill executes
+- **planning-with-json** — Creates the `roadmap.json` this skill executes (defines step structure, verification types, failure escalation)
 - **finishing-a-development-branch** — Complete development after all tasks
+
+**Execution skills:**
+- **test-driven-development** — Write tests before each implementation step
+- **verification-before-completion** — REQUIRED: Verify every step before marking complete
+
+**Code quality:**
+- **receiving-code-review** — Process code review feedback during execution
+- **requesting-code-review** — Request review at checkpoints

@@ -38,6 +38,8 @@ Task tool (general-purpose):
 
     Work from: [directory]
 
+    **Workspace context:** You are working in an isolated git worktree. Your changes will be committed to a feature branch and later merged. All file modifications stay within this worktree directory. Do NOT attempt to switch branches or modify files outside this directory.
+
     **While you work:** If you encounter something unexpected or unclear, **ask questions**.
     It's always OK to pause and clarify. Don't guess or make assumptions.
 

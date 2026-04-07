@@ -7,8 +7,6 @@ hooks:
   SessionStart:
     - type: command
       command: "bash scripts/planning-resume.sh"
-metadata:
-  version: "9.0"
 ---
 
 # Planning with JSON (Resilient)
@@ -37,24 +35,7 @@ metadata:
 
 ## Quick Reference — Execute This Every Session
 
-```
-A. Check context:
-   - If .vega-punk-state.json exists → extract design context (Entry Protocol)
-   - If roadmap.json exists with incomplete steps → resume from current_step
-   - If neither exists → create new plan from user request
-
-B. Execute loop:
-   1. Read current_step from roadmap.json
-   2. Execute step's tool + target
-   3. Verify: read target, check against step.verify.expected
-   4. If pass → mark complete, advance current_step, update metadata
-   5. If fail → increment attempts, retry differently (max 3)
-   6. Repeat until all steps complete
-
-C. On completion:
-   - If vega-punk mode → write back to .vega-punk-state.json (see Completion Contract)
-   - If standalone → deliver summary to user
-```
+See **Entry Protocol** for context loading, **Creating a Plan** for plan creation, and **Updating roadmap.json After Each Step** for the execute loop. On completion, see **Completion Contract — State Write-Back**.
 
 ## Creating a Plan
 
@@ -74,7 +55,7 @@ Before defining tasks, map out which files will be created or modified:
 1. Analyze the user's request and break it into phases and steps
 2. Write roadmap.json using the structure below
 3. Set `current_step` to the first step's id
-4. Begin execution immediately — do not ask for confirmation
+4. Offer execution choice — Subagent-Driven (recommended) or Inline Execution. Follow the chosen path per the Execution Handoff section.
 
 **roadmap.json structure:**
 ```json
@@ -102,6 +83,8 @@ Before defining tasks, map out which files will be created or modified:
           "status": "pending",
           "result": "",
           "checkpoint": false,
+          "depends_on": [],
+          "critical": true,
           "attempts": 0
         }
       ]
@@ -117,7 +100,7 @@ Before defining tasks, map out which files will be created or modified:
 
 **Fields:**
 - `architecture`: 2-3 sentences about the approach
-- `techStack`: Array of key technologies/libraries
+- `techStack`: Array of key technologies/libraries. Used to inform subagent dispatch context — each implementer subagent should know what technologies they're working with without reading the full spec.
 - `code`: Complete code block for Write/Edit steps (no placeholders allowed)
 
 ### Step Granularity Rules
@@ -126,18 +109,26 @@ Before defining tasks, map out which files will be created or modified:
 
 A step is small enough when the executing agent can perform it **without any additional thinking, decision-making, or inference**.
 
-**Code Writing Tasks — One Function Per Step:**
+**Code Writing Tasks — TDD Order:**
 
 1. **First step: Design the structure** — Define the file/class layout with all variables, constants, and method signatures (no implementation). This creates the skeleton.
-2. **Subsequent steps: One function/method per step** — Implement exactly one function at a time, with its complete body, tests, and verification.
+2. **For each function/method, create a TDD pair of steps:**
+   - **Step A (RED):** Write the test with exact test code, verify it fails
+   - **Step B (GREEN):** Write the minimal implementation with exact code, verify it passes
 3. **Each step must contain the exact code to write** — No "implement logic for..." descriptions. The `code` field must have the actual implementation.
 
 Example decomposition for a `UserService` class:
+
 - Step 1.1: Create `UserService.ts` with class definition, constants, property declarations, and method signatures (empty bodies)
-- Step 1.2: Implement `constructor()` — Write the exact constructor code
-- Step 1.3: Implement `validateEmail()` — Write the exact function body
-- Step 1.4: Write test for `validateEmail()` — Write the exact test code
-- Step 1.5: Run test — Execute `npm test -- validateEmail`
+- Step 1.2: Write test for `validateEmail()` — Write the exact test code
+- Step 1.3: Run test — Execute `npm test -- validateEmail`, expect FAIL
+- Step 1.4: Implement `validateEmail()` — Write the exact function body (minimal to pass)
+- Step 1.5: Run test — Execute `npm test -- validateEmail`, expect PASS
+- Step 1.6: Write test for `constructor()` — Write the exact test code
+- Step 1.7: Run test — Execute `npm test -- constructor`, expect FAIL
+- Step 1.8: Implement `constructor()` — Write the exact constructor code
+- Step 1.9: Run test — Execute `npm test -- constructor`, expect PASS
+
 
 **Non-Code Tasks — Smallest Executable Unit:**
 
@@ -172,18 +163,31 @@ Every step must contain the actual content an engineer needs. These are **plan f
 If the spec covers multiple independent subsystems, suggest breaking into separate plans — one per subsystem. Each plan should produce working, testable software on its own.
 
 **Verification types:**
-| Type | Check |
-|------|-------|
-| `file_exists` | Target file exists on disk |
-| `content_contains` | Target file contains the expected string |
-| `content_not_contains` | Target file does NOT contain the error string |
-| `command_success` | Running target as shell command exits with code 0 |
+
+| Type | What It Checks | How to Verify |
+|------|---------------|---------------|
+| `file_exists` | Target file exists on disk | Check disk |
+| `file_not_exists` | Target file does NOT exist | Check disk |
+| `content_contains` | Target file contains the expected string | Read file |
+| `content_not_contains` | Target file does NOT contain the error string | Read file |
+| `syntax_valid` | Code compiles/parses without errors | Run project's syntax checker (e.g. `tsc --noEmit`, `python -m py_compile`, `cargo check`, HTML validation) |
+| `tests_pass` | Associated tests pass | Run project's test command for the relevant test file |
+| `build_pass` | Project builds successfully | Run project's build command |
+| `lint_pass` | Code passes linting | Run project's linter |
+| `command_success` | Shell command exits 0 | Run command, check exit code |
+| `manual_verify` | Human-readable verification step | Describe the expected outcome clearly so the executor can verify visually or functionally |
+
+**Choosing the right command:** The step's `tool` and `target` tell you WHAT to verify. The executor MUST infer the correct command from the project's context — look at `package.json` scripts, `pyproject.toml`, `Cargo.toml`, `Makefile`, etc. Never assume a command exists.
 
 **Step fields:**
-- `checkpoint`: If `true`, pause after completing this step and wait for user confirmation before advancing
+- `checkpoint`: If `true`, pause after completing this step and wait for user confirmation before advancing. Use for: cross-phase boundaries, destructive operations (deletes, force pushes, data migrations), or architectural decision points.
 - `attempts`: Start at 0, increment on each verification failure
+- `depends_on`: Array of step IDs that must be complete before this step can start (e.g. `["1.1", "1.2"]`). If omitted, the step follows phase ordering.
+- `critical`: Default `true`. If `false`, step failure is logged but does not block subsequent steps. Use for optional features, non-blocking validations, or nice-to-have polish.
 
 ## Updating roadmap.json After Each Step
+
+> **Who executes this section:** When execution is delegated to the `executing-plans` skill, that skill handles the step loop. This section documents the behavior for reference.
 
 Use the `Write` tool to rewrite roadmap.json after each step. This is simpler and more reliable than trying to do field-level edits with the `Edit` tool.
 
@@ -206,7 +210,7 @@ Use the `Write` tool to rewrite roadmap.json after each step. This is simpler an
 1. Set the step's `status` to `"failed"` and `result` to the error description
 2. Update the `updated` timestamp
 3. Write the file back
-4. Log the error to progress.json and ask the user for direction
+4. Log the error to `progress.json` (create if not exists — append `{timestamp, step_id, error}` entry) and ask the user for direction
 
 ## Failure Escalation
 
@@ -226,19 +230,23 @@ After writing the complete plan, look at the spec with fresh eyes and check the 
 1. **Spec coverage:** Can you point to a step that implements each requirement? List any gaps.
 2. **Placeholder scan:** Search for red flags from "No Placeholders" section. Fix them.
 3. **Type consistency:** Do types, method signatures, and property names match across steps? A function called `clearLayers()` in step 1.3 but `clearFullLayers()` in step 2.7 is a bug.
+4. **Error handling completeness:** Does every external call (API, DB, file I/O) have an error path in the plan?
+5. **Boundary conditions:** Are edge cases (empty input, max values, concurrent access) covered by specific steps?
+6. **Performance impact:** Does the plan include any O(n²) or worse operations on unbounded data? If so, is it intentional?
+7. **Dependency order validity:** Could any step marked serial actually run in parallel? Over-constrained serial dependencies waste time.
 
 If you find issues, fix them inline. If you find a spec requirement with no step, add the step.
 
 ## Scripts
 
-> **Note:** These scripts are provided by the vega-punk project at `scripts/`. For standalone use, copy them to your project's `scripts/` directory.
+Scripts are at the project root `scripts/` directory (same level as `SKILL.md`).
 
 | Script | Purpose |
 |--------|---------|
-| `verify-step.sh <step_id>` | Verify a single step against its verify config. Exit 0=pass, 1=fail, 2=error |
-| `check-complete.sh` | Show overall progress across all phases |
-| `init-session.sh <name> <goal>` | Create empty planning files from template |
-| `session-catchup.py` | Recover unsynced context from previous Claude Code session |
+| `scripts/verify-step.sh <step_id>` | Verify a single step against its verify config. Exit 0=pass, 1=fail, 2=error |
+| `scripts/check-complete.sh` | Show overall progress across all phases |
+| `scripts/init-session.sh <name> <goal>` | Create empty planning files from template |
+| `scripts/session-catchup.py` | Recover unsynced context from previous Claude Code session |
 
 ## File Purposes
 
@@ -258,7 +266,7 @@ If you find issues, fix them inline. If you find a spec requirement with no step
 
 | Don't | Do |
 |-------|-----|
-| Start without roadmap.json | Create a plan first for complex tasks |
+| Skip planning for complex tasks | Create a plan first |
 | Skip verification | Always verify before marking a step complete |
 | Retry the same failed action | Change approach each time |
 | Rewrite entire roadmap.json | Rewrite is fine — use Write tool for clarity |
@@ -283,44 +291,18 @@ After saving the plan, offer execution choice:
 - Use `subagent-driven-development` skill
 
 **If Inline Execution chosen:**
-- Read [executing-plans.md](executing-plans.md) and follow its execution workflow
+- Read [../executing-plans/SKILL.md](../executing-plans/SKILL.md) and follow its execution workflow
 
 ## Completion Contract — State Write-Back
 
 After execution completes and verification passes (via verification-before-completion skill):
 
 **If invoked from vega-punk** (`.vega-punk-state.json` exists):
-
-```
-1. Read .vega-punk-state.json
-2. Update state to "REVIEW"
-3. Add execution_result:
-   {
-     "status": "success|partial|failed",
-     "summary": "<brief outcome>",
-     "artifacts": ["path/to/file1", "path/to/file2"],
-     "verification": "passed|failed",
-     "notes": "<any issues or observations>"
-   }
-4. Write .vega-punk-state.json back
-5. This triggers vega-punk's REVIEW state automatically
-```
+- Follow the **Execution Result Writer Contract** in the vega-punk `SKILL.md` (REVIEW section): update state to "REVIEW" and add `execution_result` with status, summary, artifacts, verification, and notes.
 
 **If standalone mode** (no `.vega-punk-state.json`):
-
-```
-1. Collect completed artifacts from roadmap.json steps
-2. Present final summary to user:
-   - Completed: X/Y steps
-   - Artifacts: list of created/modified files
-   - Verification status: passed/failed
-3. No state write-back needed
-```
+- Present final summary to user: completed steps, artifacts, verification status. No state write-back.
 
 **If execution fails** (attempts exhausted on critical steps):
-
-```
-1. If vega-punk mode: update .vega-punk-state.json with status "failed" and error details in notes
-2. If standalone: present failure report with specific step(s) that failed and suggested fixes
-3. Ask user: continue with remaining steps, or redesign?
-```
+- If vega-punk mode: update `.vega-punk-state.json` with status "failed" and error details in notes.
+- If standalone: present failure report with specific step(s) that failed and suggested fixes.

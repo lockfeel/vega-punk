@@ -7,7 +7,7 @@ description: Use when about to claim work is complete, fixed, or passing, before
 
 ## Overview
 
-Claiming work is complete without verification is dishonesty, not efficiency.
+Claiming work is complete without verification is unreliable — evidence before assertions always.
 
 **Core principle:** Evidence before claims, always.
 
@@ -34,7 +34,7 @@ BEFORE claiming any status or expressing satisfaction:
    - If YES: State claim WITH evidence
 5. ONLY THEN: Make the claim
 
-Skip any step = lying, not verifying
+Skip any step = unverified claim, not a verified result
 ```
 
 ## Common Failures
@@ -107,12 +107,18 @@ Skip any step = lying, not verifying
 
 ## Why This Matters
 
-From 24 failure memories:
-- your human partner said "I don't believe you" - trust broken
-- Undefined functions shipped - would crash
-- Missing requirements shipped - incomplete features
-- Time wasted on false completion → redirect → rework
-- Violates: "Honesty is a core value. If you lie, you'll be replaced."
+From failure memories: undefined functions shipped (would crash), missing requirements shipped (incomplete features), time wasted on false completion → redirect → rework. Unverified claims break trust and ship bugs.
+
+## How to Identify the Right Command
+
+When you need to verify a claim, infer the correct command from project context:
+- **Node.js:** Check `package.json` → `scripts` section for test/build/lint commands
+- **Python:** Look for `pyproject.toml`, `Makefile`, or `tox.ini`
+- **Rust:** `cargo test`, `cargo check`, `cargo clippy`
+- **Go:** `go test ./...`, `go vet ./...`
+- **Generic:** If no build system found, ask the user or use language-level tools (`python -m py_compile`, `tsc --noEmit`)
+
+Never assume a command exists. Always check the project's configuration first.
 
 ## When To Apply
 

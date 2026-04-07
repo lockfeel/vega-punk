@@ -9,8 +9,6 @@ hooks:
       command: "bash scripts/planning-resume.sh"
     - type: command
       command: "bash scripts/session-hook.sh 2>/dev/null || echo '[vega-punk] Ready. What shall we build?'"
-metadata:
-  version: "9.0"
 ---
 
 # Vega-Punk: Session State Machine
@@ -32,11 +30,9 @@ For **OpenClaw**, the working directory is your current project. For **Claude Co
 2. If the file exists and `state` is not "DONE", **do NOT start from ROUTE**. Execute the current state's actions directly.
 3. If the file is missing or `state` is "DONE", start from ROUTE.
 
-**Special: REVIEW state.** If state is "REVIEW" and `execution_result` exists, enter REVIEW immediately. If `execution_result` is missing (execution hasn't completed yet), wait for user input — do not restart ROUTE. If the planning sub-skill is in progress (roadmap.json exists with incomplete steps), resume execution from roadmap.json's `current_step`.
+**Special: REVIEW state.** If state is "REVIEW" and `execution_result` exists, enter REVIEW immediately. If `execution_result` is missing, check `roadmap.json`: if it exists with incomplete steps, resume execution from its `current_step` (the execution layer handles this). Otherwise wait for user input — do not restart ROUTE.
 
 **Recovery:** If the session_start_hook outputs "Resuming from [STATE]...", read `.vega-punk-state.json`, find the state value, and execute the actions for that state. Do NOT re-announce the resume message — the hook already did. Do NOT go back to ROUTE. Continue from where you left off.
-
-**Planning recovery:** If state is "REVIEW" and `execution_result` is missing but `roadmap.json` exists with incomplete steps, resume the planning sub-skill from `roadmap.json`'s `current_step`. The planning sub-skill's own session hook will report the current step.
 
 **Reset:** User says "start over" / "new task" / "forget previous" → apply Post-Completion Cleanup → restart ROUTE.
 
@@ -45,6 +41,8 @@ For **OpenClaw**, the working directory is your current project. For **Claude Co
 **Skill loop protection:** The `scan_depth` field in the state JSON tracks consecutive SCAN entries. If it reaches 3, skip skill routing and proceed directly to CLARIFY. This prevents skill → SCAN → skill loops. Increment on each SCAN entry, reset on each CLARIFY entry.
 
 **State JSON format:** Read the current JSON file, change the `state` field, add new fields, and write back. **Do NOT delete existing fields.** Always preserve `task`.
+
+**State JSON cleanup:** On transition to DONE, the state file is deleted (see Post-Completion Cleanup). On REVIEW → new task transition, the old state is archived via spec rename and state file deletion. This prevents indefinite growth.
 
 **Example state progression:**
 
@@ -108,7 +106,7 @@ After REVIEW (execution callback):
 
 The final file contains the complete design context for downstream skills to read.
 
-**Git:** Add `.vega-punk-state.json` and `vega-punk/` to `.gitignore` if not present.
+**Git:** Add `.vega-punk-state.json` to `.gitignore`. **Do NOT** gitignore `vega-punk/specs/` — spec history is project memory and should be committed.
 
 **Progress reporting:** At each transition:
 > "Entering [STATE]..."
@@ -125,11 +123,11 @@ If user asks "where are we?" or "how much left?", print current state and remain
 | DEPENDENCIES | 4             | —              |
 | SPEC         | 3             | —              |
 | SPEC_QA      | 2             | —              |
-| CONDENSED    | —             | 2              |
+| CONDENSED    | 3             | 3              |
 | HANDOFF      | 1             | 1              |
 | REVIEW       | 0             | 0              |
 
-CONDENSED mode: 3 steps (minimal spec → approval → review), skips DESIGN/DEPENDENCIES/SPEC states.
+CONDENSED mode: 3 steps (minimal spec → approval → review), skips DESIGN/DEPENDENCIES/SPEC states. From CONDENSED: 3 states left (CONDENSED → HANDOFF → REVIEW → DONE).
 
 ---
 
@@ -207,14 +205,12 @@ If the user says "stop", "cancel", "I don't want to do this anymore", or equival
 
 ```
 ROUTE → SCAN → CLARIFY → DESIGN ────→ DEPENDENCIES → SPEC ────→ HANDOFF ─→ REVIEW ─→ DONE
-                        ↓                              ↓
-                      DESIGN_QA                      SPEC_QA
-                        ↓                              ↓
-                      ↩ DESIGN                       ↩ SPEC
-
-CONDENSED ──→ HANDOFF
-    ↓
-  ↩ SCAN  (if user rejects)
+  ↓                     ↓                              ↓
+  ↓                   DESIGN_QA                      SPEC_QA
+  ↓                     ↓                              ↓
+CONDENSED ──→ HANDOFF ↩ DESIGN                       ↩ SPEC
+    ↓         ↘
+  ↩ SCAN  (if user rejects)  (if user rejects)
 ```
 
 **Never skip or reverse states.** Exception: the rollback rules below.
@@ -275,7 +271,7 @@ These are the only state reversals permitted. All other transitions are forward-
 
 1. **Check scope BEFORE asking questions.** If the request describes multiple independent subsystems (e.g., "build a platform with chat, file storage, billing, and analytics"), tell the user immediately that the project should be split. Don't spend time refining details of a project that needs to be decomposed first. Help the user identify independent pieces, how they relate, and what order to build them. Then proceed with the first sub-project.
 2. Check project context: files, docs, recent commits.
-3. **Skill Routing:** Read `scan_depth` from the state file. If it is 3 or greater, skip skill routing and proceed to step 4. Otherwise, try to read [references/skill-routing.md](references/skill-routing.md). If the file doesn't exist, skip skill routing and proceed to step 4. If it exists, match task against the routing table. Select ALL relevant skills and note execution order. Process skills first (brainstorming, debugging), implementation skills second.
+3. **Skill Routing:** Read `scan_depth` from the state file. If it is 3 or greater, skip skill routing and proceed to step 4. Otherwise, try to read [references/skill-routing.md](references/skill-routing.md). If the file doesn't exist, skip skill routing and proceed to step 4. If it exists, match task against the routing table. Select ALL relevant skills and note execution order. Process skills first (brainstorming, debugging), implementation skills second. **Also check for any newly installed skills not yet in the routing table — if a skill might apply, invoke it (1% Rule).**
 4. **Skill invocation purpose:** Invoking a skill loads its guidance into context — it tells you HOW to proceed. You do NOT execute the skill's implementation steps here. You use the skill's workflow to inform the CLARIFY → DESIGN → SPEC flow.
 
 **State write:** Read the current JSON, change `state` to "CLARIFY", add `context`, `selected_skills`, `scope`. Increment `scan_depth` (or set to 1 if not present). Keep all existing fields.
@@ -335,6 +331,8 @@ These are the only state reversals permitted. All other transitions are forward-
 
 **Announce:** "Entering DESIGN... Let's brainstorm the best approach together."
 
+**Phase tracking:** Update the `design_phase` field in the state JSON as you progress: `"brainstorm"` → `"converge"` → `"present"`. This lets recovery know exactly where you left off.
+
 **Phase 1 — Brainstorm (Collaborative):**
 
 1. Present 2-3 approaches with trade-offs. Frame them as options to explore together, not decisions to approve.
@@ -382,6 +380,25 @@ These are the only state reversals permitted. All other transitions are forward-
 
 ---
 
+## 通用 QA 模式 (Reusable QA Pattern)
+
+Both DESIGN_QA and SPEC_QA use the same two-layer QA structure:
+
+1. **Layer 1: Structured Self-Review** — Switch perspective, run domain-specific checklist, fix failures, re-run.
+2. **Layer 2: User Secondary Review** — Present findings (passed/fixed/risks), user makes final PASS/FAIL.
+
+**Decision Flow:**
+| Step | Action | Outcome |
+|------|--------|---------|
+| 1 | Self-review runs | Checklist findings collected |
+| 2 | Findings presented to user | User reviews and decides |
+| 3 | User passes | → Next state |
+| 3 (alt) | User fails | → Return to previous state (retry +1, max 3) |
+
+**Retry limit:** Beyond 3 retries → "[vega-punk] I've hit the retry limit. Please review manually and tell me how to proceed." Stay in current QA state.
+
+---
+
 ## DESIGN_QA
 
 **Trigger:** State is DESIGN_QA.
@@ -390,47 +407,33 @@ These are the only state reversals permitted. All other transitions are forward-
 
 **Action:**
 
-1. **Layer 1: Structured Self-Review (Adversarial Mode)**
-    - Switch perspective — critically review your own design as if you did not write it.
-    - Run through this checklist:
-        - **Architecture:** Does the design follow separation of concerns? Can units be understood and changed independently?
-        - **Technology choices:** Are selected tools justified? Is there a simpler alternative?
-        - **Data flow:** Are dependencies acyclic? Any circular references between components?
-        - **Error handling:** What happens when each external call fails? Are error boundaries defined?
-        - **Edge cases:** What are the top 3 ways this design could break in production?
-        - **Scope creep:** Does the design include unrequested features? Remove them.
-    - If any check fails, fix the design and re-run the checklist.
-    - If `receiving-code-review` skill is available, invoke it for an additional pass.
+Apply the **通用 QA 模式** (see below) with these design-specific checks:
 
-2. **Layer 2: User Secondary Review**
-    - Present the review findings (what passed, what was fixed, what risks remain) to the user.
-    - The user makes the final PASS/FAIL decision.
+- **Architecture:** Does the design follow separation of concerns? Can units be understood and changed independently?
+- **Technology choices:** Are selected tools justified? Is there a simpler alternative?
+- **Data flow:** Are dependencies acyclic? Any circular references between components?
+- **Error handling:** What happens when each external call fails? Are error boundaries defined?
+- **Edge cases:** What are the top 3 ways this design could break in production?
+- **Scope creep:** Does the design include unrequested features? Remove them.
 
-3. **QA Decision Flow**
+On PASS → Enter DEPENDENCIES. On FAIL → Return to DESIGN (retry count +1, max 3).
 
-   | Step | Action | Outcome |
-         |------|--------|---------|
-   | 1 | Structured self-review runs | Checklist findings collected |
-   | 2 | Findings presented to user | User reviews and decides |
-   | 3 | User passes | → Enter DEPENDENCIES |
-   | 3 (alt) | User fails | → Return to DESIGN (fix and retry, retry count +1, max 3) |
-
-**Retry mechanism:**
-
-- Maximum 3 retries (fix and resubmit for review)
-- Beyond 3 retries → tell the user: "[vega-punk] I've hit the retry limit on this design. I cannot continue without a clear direction — please review the design manually and tell me how to proceed." Stay in DESIGN_QA until user provides new instructions.
-
-**State write:** Read the current JSON, change `state` to "DEPENDENCIES" (PASS) or "DESIGN" (FAIL), update `qa` fields.
+**State write:** Read the current JSON, change `state` to "DEPENDENCIES" (PASS) or "DESIGN" (FAIL), update `qa` fields. Keep all existing fields.
 
 ```json
 {
   "state": "DEPENDENCIES",
   "task": "...",
-  "...": "...",
+  "context": "...",
+  "selected_skills": [],
+  "scope": "...",
+  "scan_depth": 0,
+  "requirements": {},
+  "design": {},
   "qa": {
-    "design_retries": 1,
-    "design_feedback": "expert feedback...",
-    "design_status": "PASS|FAIL"
+    "design_retries": 0,
+    "design_feedback": "",
+    "design_status": "PASS"
   }
 }
 ```
@@ -521,7 +524,13 @@ These are the only state reversals permitted. All other transitions are forward-
 {
   "state": "SPEC_QA",
   "task": "...",
-  "...": "...",
+  "context": "...",
+  "selected_skills": [],
+  "scope": "...",
+  "scan_depth": 0,
+  "requirements": {},
+  "design": {},
+  "dependencies": {},
   "spec_path": "vega-punk/specs/YYYY-MM-DD-<topic>-design.md",
   "qa": {
     "spec_retries": 0,
@@ -540,47 +549,34 @@ These are the only state reversals permitted. All other transitions are forward-
 
 **Action:**
 
-1. **Layer 1: Implementation Readiness Review**
-    - Switch perspective — read the spec as if you are the engineer who must implement it tomorrow.
-    - Run through this checklist:
-        - **Completeness:** Can every section be implemented without guessing? No TBD, TODO, or vague statements.
-        - **Consistency:** Do any sections contradict each other? Does the dependency graph match the architecture?
-        - **Interface contracts:** Are all inputs, outputs, and data shapes explicitly defined?
-        - **Testability:** Can every requirement be tested? Is there a clear pass/fail criterion for each?
-        - **Dependency accuracy:** Are serial dependencies justified? Could anything be parallelized that is marked serial?
-        - **Scope discipline:** Does the spec include unrequested features? Remove them.
-    - If any check fails, fix the spec and re-run the checklist.
-    - If `receiving-code-review` skill is available, invoke it for an additional pass.
+Apply the **通用 QA 模式** (see above) with these spec-specific checks:
 
-2. **Layer 2: User Secondary Review**
-    - Present the review findings (what passed, what was fixed, what risks remain) to the user.
-    - The user makes the final PASS/FAIL decision.
+- **Completeness:** Can every section be implemented without guessing? No TBD, TODO, or vague statements.
+- **Consistency:** Do any sections contradict each other? Does the dependency graph match the architecture?
+- **Interface contracts:** Are all inputs, outputs, and data shapes explicitly defined?
+- **Testability:** Can every requirement be tested? Is there a clear pass/fail criterion for each?
+- **Dependency accuracy:** Are serial dependencies justified? Could anything be parallelized that is marked serial?
+- **Scope discipline:** Does the spec include unrequested features? Remove them.
 
-3. **QA Decision Flow**
+On PASS → Enter HANDOFF. On FAIL → Return to SPEC (retry count +1, max 3).
 
-   | Step | Action | Outcome |
-   |------|--------|---------|
-   | 1 | Implementation readiness review runs | Checklist findings collected |
-   | 2 | Findings presented to user | User reviews and decides |
-   | 3 | User passes | → Enter HANDOFF |
-   | 3 (alt) | User fails | → Return to SPEC (fix and retry, retry count +1, max 3) |
-
-**Retry mechanism:**
-
-- Maximum 3 retries
-- Beyond 3 retries → tell the user: "[vega-punk] I've hit the retry limit on this spec. I cannot continue without a clear direction — please review the spec manually and tell me how to proceed." Stay in SPEC_QA until user provides new instructions.
-
-**State write:**
+**State write:** Read the current JSON, change `state` to "HANDOFF", update `qa` fields. Keep all existing fields.
 
 ```json
 {
   "state": "HANDOFF",
   "task": "...",
-  "...": "...",
+  "context": "...",
+  "selected_skills": [],
+  "scope": "...",
+  "requirements": {},
+  "design": {},
+  "dependencies": {},
+  "spec_path": "...",
   "qa": {
-    "spec_retries": 1,
-    "spec_feedback": "expert feedback...",
-    "spec_status": "PASS|FAIL"
+    "spec_retries": 0,
+    "spec_feedback": "",
+    "spec_status": "PASS"
   }
 }
 ```
@@ -597,9 +593,10 @@ These are the only state reversals permitted. All other transitions are forward-
 
 1. Write a minimal spec: What, Why, How (3 sentences max).
 2. Define at least one key interface or entry point: input → output, or function signature, or API shape. This gives the planning layer something concrete to structure phases around.
-3. Ask: "I'll implement [X] using [Y]. Proceed?"
-4. If approved → Set state: HANDOFF.
-5. If rejected → Set state: SCAN. User wants the full flow from the beginning.
+3. **Approval:** Ask: "I'll implement [X] using [Y]. Proceed?" Wait for user response.
+4. **If approved →** Set state: HANDOFF.
+5. **If rejected →** Set state: SCAN. User wants the full flow from the beginning.
+6. **After approval, before HANDOFF, do a quick self-review:** Are there any TBD, TODO, or ambiguous statements in the minimal spec? Fix them inline.
 
 **State write:** Read the current JSON, change `state` to "HANDOFF", add `mode`, `spec`. Keep all existing fields.
 
@@ -626,7 +623,7 @@ These are the only state reversals permitted. All other transitions are forward-
 
 **Action:**
 
-1. **Invoke the sub-skill:** Read [references/planning-with-json.md](references/planning-with-json.md) and follow its planning workflow.
+1. **Invoke the sub-skill:** Read [references/planning-with-json/SKILL.md](references/planning-with-json/SKILL.md) and follow its planning workflow.
 2. **Data contract:** The `.vega-punk-state.json` file IS the data transfer mechanism. The sub-skill reads it directly to extract:
     - `spec_path` (or `spec` if condensed) — the design document for planning
     - `dependencies` — serial/parallel analysis for phase structuring
@@ -641,6 +638,13 @@ These are the only state reversals permitted. All other transitions are forward-
 {
   "state": "REVIEW",
   "task": "...",
+  "context": "...",
+  "selected_skills": [],
+  "scope": "...",
+  "requirements": {},
+  "design": {},
+  "dependencies": {},
+  "spec_path": "...",
   "handoff_to": "planning-with-json"
 }
 ```
@@ -649,9 +653,9 @@ These are the only state reversals permitted. All other transitions are forward-
 
 ## Planning with JSON (Sub-skill)
 
-Planning is managed by a sub-skill at [references/planning-with-json.md](references/planning-with-json.md). After HANDOFF, read that file and follow its workflow:
+Planning is managed by a sub-skill at [references/planning-with-json/SKILL.md](references/planning-with-json/SKILL.md). After HANDOFF, read that file and follow its workflow:
 
-1. **Read** `references/planning-with-json.md` — contains the full planning framework
+1. **Read** `references/planning-with-json/SKILL.md` — contains the full planning framework
 2. **Create** `roadmap.json` per the sub-skill's specification
 3. **Execute** steps per the sub-skill's execution loop
 4. **Offer** execution choice (Subagent-Driven vs Inline) per the sub-skill's handoff section
@@ -666,7 +670,7 @@ The sub-skill defines: roadmap.json structure, step granularity rules, verificat
 
 **Purpose:** Receive execution results, compare against the original spec's success criteria, and recommend next actions. This closes the design → execute → verify loop.
 
-**How this is triggered:** After execution + verification completes, `.vega-punk-state.json` is updated:
+**Execution Result Writer Contract:** The execution layer (subagent-driven-development or executing-plans) is responsible for writing `execution_result` to `.vega-punk-state.json`. All execution sub-skills MUST follow this exact format when completing:
 
 ```json
 {
@@ -676,15 +680,16 @@ The sub-skill defines: roadmap.json structure, step granularity rules, verificat
   "execution_result": {
     "status": "success|partial|failed",
     "summary": "...",
-    "artifacts": [
-      "path1",
-      "path2"
-    ],
+    "artifacts": ["path1", "path2"],
     "verification": "passed|failed",
     "notes": "..."
   }
 }
 ```
+
+This update triggers vega-punk's REVIEW state automatically. Do NOT modify any other fields in the state JSON during this write.
+
+**How this is triggered:** After execution + verification completes, the execution layer writes the above JSON. vega-punk then reads `execution_result` and presents the outcome to the user.
 
 **Action:**
 
@@ -717,6 +722,15 @@ The sub-skill defines: roadmap.json structure, step granularity rules, verificat
 
 **REVIEW → new task transition:** If the user starts a new task while in REVIEW state, apply Post-Completion Cleanup then restart ROUTE.
 
+## Bootstrap (First Run)
+
+When vega-punk is invoked for the first time in a project:
+
+1. **Create spec directory:** `mkdir -p vega-punk/specs`
+2. **Verify gitignore:** Add `.vega-punk-state.json` to `.gitignore`. **Do NOT** gitignore `vega-punk/` — spec history should be committed.
+3. **Verify scripts exist:** `ls scripts/` should contain `planning-resume.sh`, `session-hook.sh`, etc. If missing, inform the user.
+4. Proceed to ROUTE state. No state file needed for first run.
+
 ---
 
 ## Red Flags — STOP, You're Rationalizing
@@ -740,10 +754,12 @@ The sub-skill defines: roadmap.json structure, step granularity rules, verificat
 
 ## Skill Dependencies
 
+**Version policy:** vega-punk version N.x requires all referenced sub-skills at version N.x or later. Sub-skills are released in lockstep with the main skill. If a sub-skill version lags, read the sub-skill's own documentation for breaking changes.
+
 **Sub-skills (referenced):**
 
-- **planning-with-json** — [references/planning-with-json.md](references/planning-with-json.md) (called from HANDOFF)
-- **executing-plans** — [references/executing-plans.md](references/executing-plans.md) (called from planning-with-json's Execution Handoff)
+- **planning-with-json** — [references/planning-with-json/SKILL.md](references/planning-with-json/SKILL.md) (called from HANDOFF)
+- **executing-plans** — [references/executing-plans/SKILL.md](references/executing-plans/SKILL.md) (called from planning-with-json's Execution Handoff)
 
 **External dependencies (called during execution):**
 
@@ -753,6 +769,9 @@ The sub-skill defines: roadmap.json structure, step granularity rules, verificat
 - **verification-before-completion** — before claiming done
 - **requesting-code-review** — before merge
 - **finishing-a-development-branch** — after all tasks complete
+- **dispatching-parallel-agents** — independent concurrent tasks
+- **using-git-worktrees** — isolated workspace for feature work
+- **receiving-code-review** — process code review feedback
 
 ## Key Principles
 
@@ -761,4 +780,22 @@ The sub-skill defines: roadmap.json structure, step granularity rules, verificat
 - **One question at a time** — Don't overwhelm.
 - **YAGNI ruthlessly** — Remove unrequested features.
 - **Working in existing codebases** — Follow existing patterns. Targeted improvements only. No unrelated refactoring.
-- **Sub-skill architecture** — planning in `planning-with-json.md`, execution in `executing-plans.md`. HANDOFF reads and follows them.
+- **Sub-skill architecture** — planning in `planning-with-json/SKILL.md`, execution in `executing-plans/SKILL.md`. HANDOFF reads and follows them.
+
+## Skill Trigger Reference
+
+Centralized trigger conditions for all referenced skills:
+
+| Skill | When to Invoke | Trigger Keywords / Conditions |
+|-------|---------------|------------------------------|
+| **systematic-debugging** | ROUTE detects bug keywords | `bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception` |
+| **planning-with-json** | HANDOFF → create roadmap.json | `.vega-punk-state.json` has spec_path or spec |
+| **executing-plans** | Inline execution chosen | `roadmap.json` exists, user chose inline |
+| **test-driven-development** | Any code implementation step | Every feature, bugfix, refactor |
+| **verification-before-completion** | Before claiming any step/task done | Every verification gate |
+| **using-git-worktrees** | Before starting feature work | Required by subagent-driven-development and executing-plans |
+| **subagent-driven-development** | After planning, parallel tasks preferred | `roadmap.json` exists, tasks mostly independent |
+| **dispatching-parallel-agents** | 2+ independent tasks with no shared state | Different test files, different subsystems, no shared dependencies |
+| **requesting-code-review** | After each task or before merge | Mandatory in subagent-driven-development |
+| **receiving-code-review** | Processing review feedback | Code review comments received |
+| **finishing-a-development-branch** | All tasks complete, tests passing | Merge/PR/keep/discard decision |

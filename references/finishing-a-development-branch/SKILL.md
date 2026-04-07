@@ -20,8 +20,9 @@ Guide completion of development work by presenting clear options and handling ch
 **Before presenting options, verify tests pass:**
 
 ```bash
-# Run project's test suite
-npm test / cargo test / pytest / go test ./...
+# Auto-detect project test command (same as using-git-worktrees setup detection)
+# Check package.json scripts, pyproject.toml, Cargo.toml, go.mod, etc.
+# Run: npm test / cargo test / pytest / go test ./... / project-appropriate command
 ```
 
 **If tests fail:**
@@ -103,7 +104,7 @@ EOF
 )"
 ```
 
-Then: Cleanup worktree (Step 5)
+Then: Report branch/PR location. **Don't cleanup worktree** — user may want to iterate on PR review feedback.
 
 #### Option 3: Keep As-Is
 
@@ -135,7 +136,7 @@ Then: Cleanup worktree (Step 5)
 
 ### Step 5: Cleanup Worktree
 
-**For Options 1, 2, 4:**
+**For Options 1 and 4:**
 
 Check if in worktree:
 ```bash
@@ -147,7 +148,11 @@ If yes:
 git worktree remove <worktree-path>
 ```
 
-**For Option 3:** Keep worktree.
+If removal fails (uncommitted files), either:
+- Stash/commit the changes first, then remove
+- Or force remove: `git worktree remove -f <worktree-path>` (warn the user first)
+
+**For Options 2 and 3:** Keep worktree. User may need it for PR review iterations or further development.
 
 ## Quick Reference
 

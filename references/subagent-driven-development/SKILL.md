@@ -9,7 +9,7 @@ Execute plan by dispatching fresh subagent per task, with two-stage review after
 
 **Why subagents:** You delegate tasks to specialized agents with isolated context. By precisely crafting their instructions and context, you ensure they stay focused and succeed at their task. They should never inherit your session's context or history — you construct exactly what they need. This also preserves your own context for coordination work.
 
-**Core principle:** Fresh subagent per task + two-stage review (spec then quality) = high quality, fast iteration
+**Two-stage review order:** Spec compliance review first, then code quality review. Rationale: verify we built the right thing before verifying we built it well. A beautifully coded wrong feature is still wrong.
 
 ## When to Use
 
@@ -37,7 +37,7 @@ Execute plan by dispatching fresh subagent per task, with two-stage review after
    - Dispatch code quality reviewer subagent (`code-quality-reviewer-prompt.md`)
    - If code reviewer finds issues → implementer fixes → re-review until ✅
    - Mark task complete
-4. **Final code review** — dispatch reviewer for entire implementation
+4. **Final code review** — dispatch reviewer for entire implementation (use `requesting-code-review/code-reviewer.md` template with the full git range from first to last commit)
 5. **finishing-a-development-branch** — complete development
 
 ## Model Selection
@@ -51,9 +51,19 @@ Use the least powerful model that can handle each role to conserve cost and incr
 **Architecture, design, and review tasks**: use the most capable available model.
 
 **Task complexity signals:**
-- Touches 1-2 files with a complete spec → cheap model
+- Touches 1-2 files with a complete spec → fast model
 - Touches multiple files with integration concerns → standard model
 - Requires design judgment or broad codebase understanding → most capable model
+
+**Dispatch example (Claude Code):**
+```
+Task tool (general-purpose, model: "haiku"):
+  description: "Implement Task 1.1: Create UserService skeleton"
+  prompt: |
+    [implementer-prompt.md content]
+```
+
+**Dispatch example (OpenClaw):** Use `openclaw agent dispatch --model fast` or the platform's equivalent model selection mechanism.
 
 ## Handling Implementer Status
 
@@ -73,86 +83,42 @@ Implementer subagents report one of four statuses. Handle each appropriately:
 
 **Never** ignore an escalation or force the same model to retry without changes. If the implementer said it's stuck, something needs to change.
 
+## Review Error Recovery
+
+If a reviewer finds issues, the implementer fixes and the reviewer re-reviews. If this cycle repeats, apply these limits:
+
+**Spec compliance review — max 3 cycles:**
+- Cycle 1-2: Implementer fixes, reviewer re-reviews
+- Cycle 3: If still failing, the spec itself may be ambiguous. Escalate to human with specific discrepancy (spec says X, implementer built Y, who's right?)
+
+**Code quality review — max 2 cycles:**
+- Cycle 1: Implementer fixes, reviewer re-reviews
+- Cycle 2: If reviewer still finds Important/Critical issues, the implementer may be fundamentally misunderstanding the pattern. Escalate to human with the conflicting perspectives.
+
+**If reviewer is wrong:** Implementer should push back with technical reasoning (file:line evidence, test results, spec quotes). The controller (you) makes the final call — don't let the review loop indefinitely.
+
 ## Prompt Templates
 
-- `implementer-prompt.md` — Dispatch implementer subagent. Fill in `{TASK_TEXT}`, `{CONTEXT}`, `{FILES}` placeholders before dispatching.
-- `spec-reviewer-prompt.md` — Dispatch spec compliance reviewer. Provide `{SPEC_TEXT}`, `{GIT_SHA_BEFORE}`, `{GIT_SHA_AFTER}`.
-- `code-quality-reviewer-prompt.md` — Dispatch code quality reviewer. Provide `{GIT_SHA_BEFORE}`, `{GIT_SHA_AFTER}`.
+- `implementer-prompt.md` — Dispatch implementer subagent. Copy the full template, fill in task-specific details (task name, full text, context, file structure) before dispatching.
+- `spec-reviewer-prompt.md` — Dispatch spec compliance reviewer. Copy the full template, fill in the requested spec text and git SHAs.
+- `code-quality-reviewer-prompt.md` — Dispatch code quality reviewer. Copy the full template, fill in git SHAs and task description.
 
 ## Example Workflow
 
 ```
 You: I'm using Subagent-Driven Development to execute this plan.
+[Extract all tasks from roadmap.json → Create TodoWrite entries]
 
-[Read plan file once: docs/superpowers/plans/feature-plan.md]
-[Extract all 5 tasks with full text and context]
-[Create TodoWrite with all tasks]
+For each task:
+  1. Dispatch implementer (implementer-prompt.md + full task text + context)
+  2. If implementer asks questions → answer → re-dispatch
+  3. Dispatch spec reviewer (spec-reviewer-prompt.md) → fix issues → re-review until ✅
+  4. Dispatch code quality reviewer (code-quality-reviewer-prompt.md) → fix issues → re-review until ✅
+  5. Mark task complete
 
-Task 1: Hook installation script
-
-[Get Task 1 text and context (already extracted)]
-[Dispatch implementation subagent with full task text + context]
-
-Implementer: "Before I begin - should the hook be installed at user or system level?"
-
-You: "User level (~/.config/superpowers/hooks/)"
-
-Implementer: "Got it. Implementing now..."
-[Later] Implementer:
-  - Implemented install-hook command
-  - Added tests, 5/5 passing
-  - Self-review: Found I missed --force flag, added it
-  - Committed
-
-[Dispatch spec compliance reviewer]
-Spec reviewer: ✅ Spec compliant - all requirements met, nothing extra
-
-[Get git SHAs, dispatch code quality reviewer]
-Code reviewer: Strengths: Good test coverage, clean. Issues: None. Approved.
-
-[Mark Task 1 complete]
-
-Task 2: Recovery modes
-
-[Get Task 2 text and context (already extracted)]
-[Dispatch implementation subagent with full task text + context]
-
-Implementer: [No questions, proceeds]
-Implementer:
-  - Added verify/repair modes
-  - 8/8 tests passing
-  - Self-review: All good
-  - Committed
-
-[Dispatch spec compliance reviewer]
-Spec reviewer: ❌ Issues:
-  - Missing: Progress reporting (spec says "report every 100 items")
-  - Extra: Added --json flag (not requested)
-
-[Implementer fixes issues]
-Implementer: Removed --json flag, added progress reporting
-
-[Spec reviewer reviews again]
-Spec reviewer: ✅ Spec compliant now
-
-[Dispatch code quality reviewer]
-Code reviewer: Strengths: Solid. Issues (Important): Magic number (100)
-
-[Implementer fixes]
-Implementer: Extracted PROGRESS_INTERVAL constant
-
-[Code reviewer reviews again]
-Code reviewer: ✅ Approved
-
-[Mark Task 2 complete]
-
-...
-
-[After all tasks]
-[Dispatch final code-reviewer]
-Final reviewer: All requirements met, ready to merge
-
-Done!
+After all tasks:
+  Final code review (requesting-code-review/code-reviewer.md, full git range)
+  → finishing-a-development-branch
 ```
 
 ## Advantages
@@ -193,7 +159,8 @@ Done!
 - Start implementation on main/master branch without explicit user consent
 - Skip reviews (spec compliance OR code quality)
 - Proceed with unfixed issues
-- Dispatch multiple implementation subagents in parallel (conflicts)
+- Dispatch multiple implementation subagents in parallel **within the same task** (conflicts on shared files)
+- Dispatch independent tasks in parallel **across different subagent-driven-development sessions** (use `dispatching-parallel-agents` for this pattern)
 - Make subagent read plan file (provide full text instead)
 - Skip scene-setting context (subagent needs to understand where task fits)
 - Ignore subagent questions (answer before letting them proceed)
@@ -221,14 +188,15 @@ Done!
 ## Integration
 
 **Required workflow skills:**
-- **superpowers:using-git-worktrees** - REQUIRED: Set up isolated workspace before starting
-- **superpowers:vega-punk** - Creates the design that leads to planning-with-json
-- **superpowers:planning-with-json** - Creates the `roadmap.json` this skill executes
-- **superpowers:requesting-code-review** - Code review template for reviewer subagents
-- **superpowers:finishing-a-development-branch** - Complete development after all tasks
+- **using-git-worktrees** - REQUIRED: Set up isolated workspace before starting
+- **vega-punk** - Creates the design that leads to planning-with-json
+- **planning-with-json** - Creates the `roadmap.json` this skill executes
+- **requesting-code-review** - Code review template for reviewer subagents
+- **verification-before-completion** - REQUIRED: Subagents verify each task before reporting done
+- **finishing-a-development-branch** - Complete development after all tasks
 
 **Subagents should use:**
-- **superpowers:test-driven-development** - Subagents follow TDD for each task
+- **test-driven-development** - Subagents follow TDD for each task
 
 **Alternative workflow:**
-- **superpowers:executing-plans** - Use for parallel session instead of same-session execution
+- **executing-plans** - Use for parallel session instead of same-session execution

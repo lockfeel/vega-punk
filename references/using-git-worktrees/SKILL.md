@@ -30,7 +30,7 @@ ls -d worktrees 2>/dev/null      # Alternative
 ### 2. Check CLAUDE.md
 
 ```bash
-grep -i "worktree.*director" CLAUDE.md 2>/dev/null
+grep -i "worktree.*director" CLAUDE.md AGENTS.md 2>/dev/null
 ```
 
 **If preference specified:** Use it without asking.
@@ -43,7 +43,7 @@ If no directory exists and no CLAUDE.md preference:
 No worktree directory found. Where should I create worktrees?
 
 1. .worktrees/ (project-local, hidden)
-2. ~/.config/superpowers/worktrees/<project-name>/ (global location)
+2. ~/.config/vega-punk/worktrees/<project-name>/ (global location)
 
 Which would you prefer?
 ```
@@ -61,14 +61,14 @@ git check-ignore -q .worktrees 2>/dev/null || git check-ignore -q worktrees 2>/d
 
 **If NOT ignored:**
 
-Per Jesse's rule "Fix broken things immediately":
+Per "Fix broken things immediately" rule:
 1. Add appropriate line to .gitignore
 2. Commit the change
 3. Proceed with worktree creation
 
 **Why critical:** Prevents accidentally committing worktree contents to repository.
 
-### For Global Directory (~/.config/superpowers/worktrees)
+### For Global Directory (~/.config/vega-punk/worktrees)
 
 No .gitignore verification needed - outside project entirely.
 
@@ -88,8 +88,8 @@ case $LOCATION in
   .worktrees|worktrees)
     path="$LOCATION/$BRANCH_NAME"
     ;;
-  ~/.config/superpowers/worktrees/*)
-    path="~/.config/superpowers/worktrees/$project/$BRANCH_NAME"
+  ~/.config/vega-punk/worktrees/*)
+    path="~/.config/vega-punk/worktrees/$project/$BRANCH_NAME"
     ;;
 esac
 
@@ -103,8 +103,12 @@ cd "$path"
 Auto-detect and run appropriate setup:
 
 ```bash
-# Node.js
-if [ -f package.json ]; then npm install; fi
+# Node.js — check for monorepo first
+if [ -f pnpm-workspace.yaml ] || [ -f lerna.json ]; then
+  pnpm install  # or npm/yarn
+elif [ -f package.json ]; then
+  npm install
+fi
 
 # Rust
 if [ -f Cargo.toml ]; then cargo build; fi
@@ -116,6 +120,8 @@ if [ -f pyproject.toml ]; then poetry install; fi
 # Go
 if [ -f go.mod ]; then go mod download; fi
 ```
+
+**Monorepo note:** In monorepos, run the install at the workspace root. Individual package builds will be handled by the task's specific steps.
 
 ### 4. Verify Clean Baseline
 
@@ -209,9 +215,9 @@ Ready to implement auth feature
 ## Integration
 
 **Called by:**
-- **brainstorming** (Phase 4) - REQUIRED when design is approved and implementation follows
-- **subagent-driven-development** - REQUIRED before executing any tasks
-- **executing-plans** - REQUIRED before executing any tasks
+- **vega-punk** (DESIGN → HANDOFF) — REQUIRED when design is approved and implementation follows
+- **subagent-driven-development** — REQUIRED before executing any tasks
+- **executing-plans** — REQUIRED before executing any tasks
 - Any skill needing isolated workspace
 
 **Pairs with:**

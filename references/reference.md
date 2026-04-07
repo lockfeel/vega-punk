@@ -1,5 +1,7 @@
 # Reference: Context Engineering Principles
 
+> **Purpose:** This file is reference material for vega-punk designers — it explains WHY the state machine and filesystem-based planning work the way they do. You don't need to follow these principles directly; they inform the architecture of vega-punk itself. Read when you need to understand the "why" behind KV-cache design, context compression, or multi-agent isolation.
+
 Context engineering principles for AI coding agents: OpenClaw, OpenCode, ClaudeCode, Codex.
 
 ## The 6 Core Principles
@@ -171,6 +173,8 @@ AI coding agents operate in a continuous loop:
 | `findings.json` | Discoveries, decisions | After ANY discovery | After viewing images/PDFs |
 | `progress.json` | Session log, what's done | At breakpoints | Throughout session |
 | Code files | Implementation | Before execution | After errors |
+
+**Schema reference:** See `references/planning-with-json/templates/` directory for canonical JSON structures.
 
 ---
 

@@ -34,10 +34,10 @@ digraph when_to_use {
 ```
 
 **Use when:**
-- 3+ test files failing with different root causes
+- 2+ independent tasks that can run without shared state
+- Different test files failing with different root causes
 - Multiple subsystems broken independently
 - Each problem can be understood without context from others
-- No shared state between investigations
 
 **Don't use when:**
 - Failures are related (fix one might fix others)
