@@ -8,7 +8,7 @@ hooks:
     - type: command
       command: "bash scripts/planning-resume.sh"
 metadata:
-  version: "8.0"
+  version: "9.0"
 ---
 
 # Planning with JSON (Resilient)
@@ -17,7 +17,7 @@ metadata:
 
 ## Entry Protocol — Data Contract
 
-When invoked from vega-punk's HANDOFF state, the `.vega-punk-state.json` file in the working directory is the **single source of truth** for all design context. Read it first before doing anything else.
+**From vega-punk HANDOFF:** The `.vega-punk-state.json` file in the working directory is the **single source of truth** for all design context. Read it first before doing anything else.
 
 ```
 1. Read .vega-punk-state.json
@@ -33,18 +33,27 @@ When invoked from vega-punk's HANDOFF state, the `.vega-punk-state.json` file in
 
 **Full flow path:** When the state JSON has `spec_path`, read the spec file, use `dependencies` for phase structuring, and create a multi-phase roadmap.json.
 
+**Standalone mode (direct invocation):** If `.vega-punk-state.json` does not exist, operate in standalone mode. Create roadmap.json from the user's request directly. Skip the vega-punk state write-back on completion — just deliver the completed plan to the user.
+
 ## Quick Reference — Execute This Every Session
 
 ```
-0. Read .vega-punk-state.json (if called from vega-punk HANDOFF)
-1. Read roadmap.json
-2. If missing → create plan (see "Creating a Plan" below)
-3. If current_step is "" → find first pending step, set it
-4. Execute current_step's tool + target
-5. Verify: read target, check against step.verify.expected
-6. If pass → mark complete, advance current_step, update metadata
-7. If fail → increment attempts, retry differently (max 3)
-8. Repeat until all steps complete → deliver to user
+A. Check context:
+   - If .vega-punk-state.json exists → extract design context (Entry Protocol)
+   - If roadmap.json exists with incomplete steps → resume from current_step
+   - If neither exists → create new plan from user request
+
+B. Execute loop:
+   1. Read current_step from roadmap.json
+   2. Execute step's tool + target
+   3. Verify: read target, check against step.verify.expected
+   4. If pass → mark complete, advance current_step, update metadata
+   5. If fail → increment attempts, retry differently (max 3)
+   6. Repeat until all steps complete
+
+C. On completion:
+   - If vega-punk mode → write back to .vega-punk-state.json (see Completion Contract)
+   - If standalone → deliver summary to user
 ```
 
 ## Creating a Plan
@@ -106,7 +115,7 @@ Before defining tasks, map out which files will be created or modified:
 }
 ```
 
-**New fields in v8.0:**
+**Fields:**
 - `architecture`: 2-3 sentences about the approach
 - `techStack`: Array of key technologies/libraries
 - `code`: Complete code block for Write/Edit steps (no placeholders allowed)
@@ -222,7 +231,7 @@ If you find issues, fix them inline. If you find a spec requirement with no step
 
 ## Scripts
 
-These scripts live in the skill's `scripts/` directory. Copy them to your project if you need to run them:
+> **Note:** These scripts are provided by the vega-punk project at `scripts/`. For standalone use, copy them to your project's `scripts/` directory.
 
 | Script | Purpose |
 |--------|---------|
@@ -256,6 +265,7 @@ These scripts live in the skill's `scripts/` directory. Copy them to your projec
 | Use TodoWrite for persistence | Use roadmap.json as the single source of truth |
 | Use placeholders in code | Include complete, actual code in every step |
 | Write vague steps | Make each step 2-5 minutes of concrete work |
+| Forget to write back state | Always update .vega-punk-state.json on completion |
 
 ## Execution Handoff
 
@@ -274,3 +284,43 @@ After saving the plan, offer execution choice:
 
 **If Inline Execution chosen:**
 - **REQUIRED SUB-SKILL:** Use superpowers:executing-plans
+
+## Completion Contract — State Write-Back
+
+After execution completes and verification passes (via verification-before-completion skill):
+
+**If invoked from vega-punk** (`.vega-punk-state.json` exists):
+
+```
+1. Read .vega-punk-state.json
+2. Update state to "REVIEW"
+3. Add execution_result:
+   {
+     "status": "success|partial|failed",
+     "summary": "<brief outcome>",
+     "artifacts": ["path/to/file1", "path/to/file2"],
+     "verification": "passed|failed",
+     "notes": "<any issues or observations>"
+   }
+4. Write .vega-punk-state.json back
+5. This triggers vega-punk's REVIEW state automatically
+```
+
+**If standalone mode** (no `.vega-punk-state.json`):
+
+```
+1. Collect completed artifacts from roadmap.json steps
+2. Present final summary to user:
+   - Completed: X/Y steps
+   - Artifacts: list of created/modified files
+   - Verification status: passed/failed
+3. No state write-back needed
+```
+
+**If execution fails** (attempts exhausted on critical steps):
+
+```
+1. If vega-punk mode: update .vega-punk-state.json with status "failed" and error details in notes
+2. If standalone: present failure report with specific step(s) that failed and suggested fixes
+3. Ask user: continue with remaining steps, or redesign?
+```
