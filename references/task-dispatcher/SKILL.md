@@ -1,5 +1,5 @@
 ---
-name: subagent-driven-development
+name: task-dispatcher
 description: Use when executing implementation plans with independent tasks in the current session
 ---
 
@@ -14,7 +14,7 @@ Execute plan by dispatching fresh subagent per task, with two-stage review after
 ## When to Use
 
 **Use this skill when:**
-- You have an implementation plan (`roadmap.json` from planning-with-json)
+- You have an implementation plan (`roadmap.json` from plan-builder)
 - Tasks are mostly independent (can be dispatched separately)
 - You want to stay in the same session (no context switch)
 
@@ -37,8 +37,8 @@ Execute plan by dispatching fresh subagent per task, with two-stage review after
    - Dispatch code quality reviewer subagent (`code-quality-reviewer-prompt.md`)
    - If code reviewer finds issues → implementer fixes → re-review until ✅
    - Mark task complete
-4. **Final code review** — dispatch reviewer for entire implementation (use `requesting-code-review/code-reviewer.md` template with the full git range from first to last commit)
-5. **finishing-a-development-branch** — complete development
+4. **Final code review** — dispatch reviewer for entire implementation (use `review-request/code-reviewer.md` template with the full git range from first to last commit)
+5. **branch-landing** — complete development
 
 ## Model Selection
 
@@ -117,8 +117,8 @@ For each task:
   5. Mark task complete
 
 After all tasks:
-  Final code review (requesting-code-review/code-reviewer.md, full git range)
-  → finishing-a-development-branch
+  Final code review (review-request/code-reviewer.md, full git range)
+  → branch-landing
 ```
 
 ## Advantages
@@ -160,7 +160,7 @@ After all tasks:
 - Skip reviews (spec compliance OR code quality)
 - Proceed with unfixed issues
 - Dispatch multiple implementation subagents in parallel **within the same task** (conflicts on shared files)
-- Dispatch independent tasks in parallel **across different subagent-driven-development sessions** (use `dispatching-parallel-agents` for this pattern)
+- Dispatch independent tasks in parallel **across different task-dispatcher sessions** (use `parallel-swarm` for this pattern)
 - Make subagent read plan file (provide full text instead)
 - Skip scene-setting context (subagent needs to understand where task fits)
 - Ignore subagent questions (answer before letting them proceed)
@@ -188,15 +188,15 @@ After all tasks:
 ## Integration
 
 **Required workflow skills:**
-- **using-git-worktrees** - REQUIRED: Set up isolated workspace before starting
-- **vega-punk** - Creates the design that leads to planning-with-json
-- **planning-with-json** - Creates the `roadmap.json` this skill executes
-- **requesting-code-review** - Code review template for reviewer subagents
-- **verification-before-completion** - REQUIRED: Subagents verify each task before reporting done
-- **finishing-a-development-branch** - Complete development after all tasks
+- **worktree-setup** - REQUIRED: Set up isolated workspace before starting
+- **vega-punk** - Creates the design that leads to plan-builder
+- **plan-builder** - Creates the `roadmap.json` this skill executes
+- **review-request** - Code review template for reviewer subagents
+- **verify-gate** - REQUIRED: Subagents verify each task before reporting done
+- **branch-landing** - Complete development after all tasks
 
 **Subagents should use:**
-- **test-driven-development** - Subagents follow TDD for each task
+- **test-first** - Subagents follow TDD for each task
 
 **Alternative workflow:**
-- **executing-plans** - Use for parallel session instead of same-session execution
+- **plan-executor** - Use for parallel session instead of same-session execution

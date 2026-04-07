@@ -1,5 +1,5 @@
 ---
-name: executing-plans
+name: plan-executor
 description: Use when you have a written implementation plan (roadmap.json) to execute in the current session with review checkpoints
 user-invocable: true
 allowed-tools: "Read, Write, Edit, Bash, Glob, Grep"
@@ -13,7 +13,7 @@ hooks:
 
 ## Entry Protocol
 
-This skill is invoked from the planning-with-json sub-skill's Execution Handoff section.
+This skill is invoked from the plan-builder sub-skill's Execution Handoff section.
 The `roadmap.json` in the working directory is the **single source of truth** for all tasks.
 
 ```
@@ -30,7 +30,7 @@ A. Load & Review:
    - If concerns → raise with user before starting
 
 B. Setup:
-   - REQUIRED: Invoke `using-git-worktrees` to set up isolated workspace before starting
+   - REQUIRED: Invoke `worktree-setup` to set up isolated workspace before starting
    - Verify baseline tests pass in the worktree
 
 C. Execute Loop:
@@ -39,7 +39,7 @@ C. Execute Loop:
 
 D. On Completion:
    - If vega-punk mode → write execution_result to .vega-punk-state.json
-   - If standalone → deliver summary + invoke finishing-a-development-branch
+   - If standalone → deliver summary + invoke branch-landing
 ```
 
 ## The Process
@@ -61,20 +61,20 @@ For each step in `roadmap.json`:
 1. Mark the step's `status` as `"in_progress"`
 2. Execute the step using the specified `tool` and `target`
    - If `code` field is present, write/edit the exact code as specified
-   - If `verify` field is present, follow the **verification-before-completion** skill rules before marking complete
+   - If `verify` field is present, follow the **verify-gate** skill rules before marking complete
 3. **On verification pass:** Set `status` to `"complete"`, set `result` to a brief outcome summary
 4. **On verification fail:** Increment `attempts`. If attempts < 3, retry with different approach. If attempts >= 3, set `status` to `"failed"` and stop.
 5. Update `current_step` to the next pending step's id
 6. Update `metadata.completed_steps` and `metadata.completion_rate`
 7. Write `roadmap.json` back after each step
 
-**Step execution loop details** (roadmap.json structure, verification types, failure escalation, anti-patterns) are defined in [../planning-with-json/SKILL.md](../planning-with-json/SKILL.md). Do not duplicate those rules here — follow them.
+**Step execution loop details** (roadmap.json structure, verification types, failure escalation, anti-patterns) are defined in [../plan-builder/SKILL.md](../plan-builder/SKILL.md). Do not duplicate those rules here — follow them.
 
 ### Step 3: Complete Development
 
 After all steps complete and verified:
-- Announce: "I'm using the finishing-a-development-branch skill to complete this work."
-- **REQUIRED SUB-SKILL:** Use `finishing-a-development-branch`
+- Announce: "I'm using the branch-landing skill to complete this work."
+- **REQUIRED SUB-SKILL:** Use `branch-landing`
 - Follow that skill to verify tests, present options, execute choice
 
 ## When to Stop and Ask for Help
@@ -105,7 +105,7 @@ After all steps complete and verified:
 
 ## Completion Contract — State Write-Back
 
-After execution completes and verification passes (or after finishing-a-development-branch completes):
+After execution completes and verification passes (or after branch-landing completes):
 
 **If invoked from vega-punk** (`.vega-punk-state.json` exists):
 - Follow the **Execution Result Writer Contract** in the vega-punk `SKILL.md` (REVIEW section): update state to "REVIEW" and add `execution_result`.
@@ -120,15 +120,15 @@ After execution completes and verification passes (or after finishing-a-developm
 ## Integration
 
 **Required workflow skills:**
-- **using-git-worktrees** — REQUIRED: Set up isolated workspace before starting
-- **vega-punk** — Creates the design that leads to planning-with-json
-- **planning-with-json** — Creates the `roadmap.json` this skill executes (defines step structure, verification types, failure escalation)
-- **finishing-a-development-branch** — Complete development after all tasks
+- **worktree-setup** — REQUIRED: Set up isolated workspace before starting
+- **vega-punk** — Creates the design that leads to plan-builder
+- **plan-builder** — Creates the `roadmap.json` this skill executes (defines step structure, verification types, failure escalation)
+- **branch-landing** — Complete development after all tasks
 
 **Execution skills:**
-- **test-driven-development** — Write tests before each implementation step
-- **verification-before-completion** — REQUIRED: Verify every step before marking complete
+- **test-first** — Write tests before each implementation step
+- **verify-gate** — REQUIRED: Verify every step before marking complete
 
 **Code quality:**
-- **receiving-code-review** — Process code review feedback during execution
-- **requesting-code-review** — Request review at checkpoints
+- **review-intake** — Process code review feedback during execution
+- **review-request** — Request review at checkpoints

@@ -1,5 +1,5 @@
 ---
-name: finishing-a-development-branch
+name: branch-landing
 description: Use when implementation is complete, all tests pass, and you need to decide how to integrate the work - guides completion of development work by presenting structured options for merge, PR, or cleanup
 ---
 
@@ -11,7 +11,7 @@ Guide completion of development work by presenting clear options and handling ch
 
 **Core principle:** Verify tests → Present options → Execute choice → Clean up.
 
-**Announce at start:** "I'm using the finishing-a-development-branch skill to complete this work."
+**Announce at start:** "I'm using the branch-landing skill to complete this work."
 
 ## The Process
 
@@ -20,7 +20,7 @@ Guide completion of development work by presenting clear options and handling ch
 **Before presenting options, verify tests pass:**
 
 ```bash
-# Auto-detect project test command (same as using-git-worktrees setup detection)
+# Auto-detect project test command (same as worktree-setup setup detection)
 # Check package.json scripts, pyproject.toml, Cargo.toml, go.mod, etc.
 # Run: npm test / cargo test / pytest / go test ./... / project-appropriate command
 ```
@@ -198,8 +198,8 @@ If removal fails (uncommitted files), either:
 ## Integration
 
 **Called by:**
-- **subagent-driven-development** (Step 7) - After all tasks complete
-- **executing-plans** (Step 5) - After all batches complete
+- **task-dispatcher** (Step 7) - After all tasks complete
+- **plan-executor** (Step 5) - After all batches complete
 
 **Pairs with:**
-- **using-git-worktrees** - Cleans up worktree created by that skill
+- **worktree-setup** - Cleans up worktree created by that skill

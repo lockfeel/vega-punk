@@ -1,5 +1,5 @@
 ---
-name: using-git-worktrees
+name: worktree-setup
 description: Use when starting feature work that needs isolation from current workspace or before executing implementation plans - creates isolated git worktrees with smart directory selection and safety verification
 ---
 
@@ -11,7 +11,7 @@ Git worktrees create isolated workspaces sharing the same repository, allowing w
 
 **Core principle:** Systematic directory selection + safety verification = reliable isolation.
 
-**Announce at start:** "I'm using the using-git-worktrees skill to set up an isolated workspace."
+**Announce at start:** "I'm using the worktree-setup skill to set up an isolated workspace."
 
 ## Directory Selection Process
 
@@ -184,7 +184,7 @@ Ready to implement <feature-name>
 ## Example Workflow
 
 ```
-You: I'm using the using-git-worktrees skill to set up an isolated workspace.
+You: I'm using the worktree-setup skill to set up an isolated workspace.
 
 [Check .worktrees/ - exists]
 [Verify ignored - git check-ignore confirms .worktrees/ is ignored]
@@ -216,9 +216,9 @@ Ready to implement auth feature
 
 **Called by:**
 - **vega-punk** (DESIGN → HANDOFF) — REQUIRED when design is approved and implementation follows
-- **subagent-driven-development** — REQUIRED before executing any tasks
-- **executing-plans** — REQUIRED before executing any tasks
+- **task-dispatcher** — REQUIRED before executing any tasks
+- **plan-executor** — REQUIRED before executing any tasks
 - Any skill needing isolated workspace
 
 **Pairs with:**
-- **finishing-a-development-branch** - REQUIRED for cleanup after work complete
+- **branch-landing** - REQUIRED for cleanup after work complete

@@ -1,5 +1,5 @@
 ---
-name: planning-with-json
+name: plan-builder
 description: Resilient executable planning that never loses context. Creates roadmap.json with phases, steps, code, tools, and verification. Auto-recovers from mid-task disconnects. AI executes step-by-step with automatic progression. Use when you have a spec or requirements for a multi-step task, before touching code.
 user-invocable: true
 allowed-tools: "Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch"
@@ -187,7 +187,7 @@ If the spec covers multiple independent subsystems, suggest breaking into separa
 
 ## Updating roadmap.json After Each Step
 
-> **Who executes this section:** When execution is delegated to the `executing-plans` skill, that skill handles the step loop. This section documents the behavior for reference.
+> **Who executes this section:** When execution is delegated to the `plan-executor` skill, that skill handles the step loop. This section documents the behavior for reference.
 
 Use the `Write` tool to rewrite roadmap.json after each step. This is simpler and more reliable than trying to do field-level edits with the `Edit` tool.
 
@@ -288,14 +288,14 @@ After saving the plan, offer execution choice:
 **Which approach?"**
 
 **If Subagent-Driven chosen:**
-- Use `subagent-driven-development` skill
+- Use `task-dispatcher` skill
 
 **If Inline Execution chosen:**
-- Read [../executing-plans/SKILL.md](../executing-plans/SKILL.md) and follow its execution workflow
+- Read [../plan-executor/SKILL.md](../plan-executor/SKILL.md) and follow its execution workflow
 
 ## Completion Contract — State Write-Back
 
-After execution completes and verification passes (via verification-before-completion skill):
+After execution completes and verification passes (via verify-gate skill):
 
 **If invoked from vega-punk** (`.vega-punk-state.json` exists):
 - Follow the **Execution Result Writer Contract** in the vega-punk `SKILL.md` (REVIEW section): update state to "REVIEW" and add `execution_result` with status, summary, artifacts, verification, and notes.

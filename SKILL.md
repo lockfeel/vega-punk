@@ -15,7 +15,7 @@ hooks:
 
 **Purpose:** Ensure every creative/implementation task follows a disciplined design flow before execution. Analyzes causal dependencies so the execution plan can maximize parallelism.
 
-**Boundary:** vega-punk handles design and routing. After HANDOFF, the planning-with-json sub-skill takes over — it reads the state file, generates the roadmap, and manages execution. vega-punk remains available to review execution results in the REVIEW state.
+**Boundary:** vega-punk handles design and routing. After HANDOFF, the plan-builder sub-skill takes over — it reads the state file, generates the roadmap, and manages execution. vega-punk remains available to review execution results in the REVIEW state.
 
 **State file:** `.vega-punk-state.json` in the working directory.
 **Spec directory:** `vega-punk/specs/` in the working directory.
@@ -84,7 +84,7 @@ After HANDOFF:
   "design": {},
   "dependencies": {},
   "spec_path": "...",
-  "handoff_to": "planning-with-json"
+  "handoff_to": "plan-builder"
 }
 ```
 
@@ -172,7 +172,7 @@ Skills tell you HOW to explore. Check for skills BEFORE gathering information, B
 
 ### Skill Types
 
-- **Rigid** (TDD, systematic-debugging, verification-before-completion): Follow exactly. Don't adapt away discipline.
+- **Rigid** (TDD, root-cause, verify-gate): Follow exactly. Don't adapt away discipline.
 - **Flexible** (ui-ux-pro-max, frontend-design): Adapt principles to context.
 
 The skill itself tells you which. Read the current version — skills evolve.
@@ -242,7 +242,7 @@ These are the only state reversals permitted. All other transitions are forward-
 
 0. **Post-Completion Cleanup:** If state is "DONE" and `.vega-punk-state.json` exists, archive the previous spec file (rename `*.md` → `*.DONE.md`) and delete `.vega-punk-state.json`. This ensures a clean slate for the new task.
 1. **Apply the 1% Rule first.** Might any skill apply? Invoke it. Even a simple question is a task. Check for skills before responding.
-2. **Bug detection:** If user message contains bug-related keywords (`bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception`), invoke systematic-debugging skill first.
+2. **Bug detection:** If user message contains bug-related keywords (`bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception`), invoke root-cause skill first.
 3. Classify:
     - **Informational** (simple Q&A, definitions, explanations) → Answer directly. Set state: DONE. Stop.
     - **Creative/Implementation** (build, fix, modify, design, create) → Set state: SCAN. Proceed.
@@ -446,7 +446,7 @@ On PASS → Enter DEPENDENCIES. On FAIL → Return to DESIGN (retry count +1, ma
 
 **Announce:** "Entering DEPENDENCIES..."
 
-**Purpose:** Analyze causal relationships. Output is INPUT for the planning-with-json sub-skill — NOT a plan.
+**Purpose:** Analyze causal relationships. Output is INPUT for the plan-builder sub-skill — NOT a plan.
 
 **Action:**
 
@@ -623,7 +623,7 @@ On PASS → Enter HANDOFF. On FAIL → Return to SPEC (retry count +1, max 3).
 
 **Action:**
 
-1. **Invoke the sub-skill:** Read [references/planning-with-json/SKILL.md](references/planning-with-json/SKILL.md) and follow its planning workflow.
+1. **Invoke the sub-skill:** Read [references/plan-builder/SKILL.md](references/plan-builder/SKILL.md) and follow its planning workflow.
 2. **Data contract:** The `.vega-punk-state.json` file IS the data transfer mechanism. The sub-skill reads it directly to extract:
     - `spec_path` (or `spec` if condensed) — the design document for planning
     - `dependencies` — serial/parallel analysis for phase structuring
@@ -645,7 +645,7 @@ On PASS → Enter HANDOFF. On FAIL → Return to SPEC (retry count +1, max 3).
   "design": {},
   "dependencies": {},
   "spec_path": "...",
-  "handoff_to": "planning-with-json"
+  "handoff_to": "plan-builder"
 }
 ```
 
@@ -653,9 +653,9 @@ On PASS → Enter HANDOFF. On FAIL → Return to SPEC (retry count +1, max 3).
 
 ## Planning with JSON (Sub-skill)
 
-Planning is managed by a sub-skill at [references/planning-with-json/SKILL.md](references/planning-with-json/SKILL.md). After HANDOFF, read that file and follow its workflow:
+Planning is managed by a sub-skill at [references/plan-builder/SKILL.md](references/plan-builder/SKILL.md). After HANDOFF, read that file and follow its workflow:
 
-1. **Read** `references/planning-with-json/SKILL.md` — contains the full planning framework
+1. **Read** `references/plan-builder/SKILL.md` — contains the full planning framework
 2. **Create** `roadmap.json` per the sub-skill's specification
 3. **Execute** steps per the sub-skill's execution loop
 4. **Offer** execution choice (Subagent-Driven vs Inline) per the sub-skill's handoff section
@@ -670,7 +670,7 @@ The sub-skill defines: roadmap.json structure, step granularity rules, verificat
 
 **Purpose:** Receive execution results, compare against the original spec's success criteria, and recommend next actions. This closes the design → execute → verify loop.
 
-**Execution Result Writer Contract:** The execution layer (subagent-driven-development or executing-plans) is responsible for writing `execution_result` to `.vega-punk-state.json`. All execution sub-skills MUST follow this exact format when completing:
+**Execution Result Writer Contract:** The execution layer (task-dispatcher or plan-executor) is responsible for writing `execution_result` to `.vega-punk-state.json`. All execution sub-skills MUST follow this exact format when completing:
 
 ```json
 {
@@ -709,9 +709,9 @@ This update triggers vega-punk's REVIEW state automatically. Do NOT modify any o
 
 ## Execution Phase: Verification Contract
 
-> **Ownership:** This phase is managed by the **planning-with-json** sub-skill during execution, using the **verification-before-completion** skill.
+> **Ownership:** This phase is managed by the **plan-builder** sub-skill during execution, using the **verify-gate** skill.
 >
-> The requirement is simple: every task type must have concrete, observable evidence before claiming done. What that evidence looks like, how to collect it, and how to retry — all defined by `verification-before-completion`. vega-punk only specifies **what success looks like** in the spec; the execution layer decides **how to prove it**.
+> The requirement is simple: every task type must have concrete, observable evidence before claiming done. What that evidence looks like, how to collect it, and how to retry — all defined by `verify-gate`. vega-punk only specifies **what success looks like** in the spec; the execution layer decides **how to prove it**.
 
 ## Post-Completion Cleanup
 
@@ -758,20 +758,20 @@ When vega-punk is invoked for the first time in a project:
 
 **Sub-skills (referenced):**
 
-- **planning-with-json** — [references/planning-with-json/SKILL.md](references/planning-with-json/SKILL.md) (called from HANDOFF)
-- **executing-plans** — [references/executing-plans/SKILL.md](references/executing-plans/SKILL.md) (called from planning-with-json's Execution Handoff)
+- **plan-builder** — [references/plan-builder/SKILL.md](references/plan-builder/SKILL.md) (called from HANDOFF)
+- **plan-executor** — [references/plan-executor/SKILL.md](references/plan-executor/SKILL.md) (called from plan-builder's Execution Handoff)
 
 **External dependencies (called during execution):**
 
-- **subagent-driven-development** — parallel execution
-- **systematic-debugging** — on bugs
-- **test-driven-development** — per task
-- **verification-before-completion** — before claiming done
-- **requesting-code-review** — before merge
-- **finishing-a-development-branch** — after all tasks complete
-- **dispatching-parallel-agents** — independent concurrent tasks
-- **using-git-worktrees** — isolated workspace for feature work
-- **receiving-code-review** — process code review feedback
+- **task-dispatcher** — parallel execution
+- **root-cause** — on bugs
+- **test-first** — per task
+- **verify-gate** — before claiming done
+- **review-request** — before merge
+- **branch-landing** — after all tasks complete
+- **parallel-swarm** — independent concurrent tasks
+- **worktree-setup** — isolated workspace for feature work
+- **review-intake** — process code review feedback
 
 ## Key Principles
 
@@ -780,7 +780,7 @@ When vega-punk is invoked for the first time in a project:
 - **One question at a time** — Don't overwhelm.
 - **YAGNI ruthlessly** — Remove unrequested features.
 - **Working in existing codebases** — Follow existing patterns. Targeted improvements only. No unrelated refactoring.
-- **Sub-skill architecture** — planning in `planning-with-json/SKILL.md`, execution in `executing-plans/SKILL.md`. HANDOFF reads and follows them.
+- **Sub-skill architecture** — planning in `plan-builder/SKILL.md`, execution in `plan-executor/SKILL.md`. HANDOFF reads and follows them.
 
 ## Skill Trigger Reference
 
@@ -788,14 +788,14 @@ Centralized trigger conditions for all referenced skills:
 
 | Skill | When to Invoke | Trigger Keywords / Conditions |
 |-------|---------------|------------------------------|
-| **systematic-debugging** | ROUTE detects bug keywords | `bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception` |
-| **planning-with-json** | HANDOFF → create roadmap.json | `.vega-punk-state.json` has spec_path or spec |
-| **executing-plans** | Inline execution chosen | `roadmap.json` exists, user chose inline |
-| **test-driven-development** | Any code implementation step | Every feature, bugfix, refactor |
-| **verification-before-completion** | Before claiming any step/task done | Every verification gate |
-| **using-git-worktrees** | Before starting feature work | Required by subagent-driven-development and executing-plans |
-| **subagent-driven-development** | After planning, parallel tasks preferred | `roadmap.json` exists, tasks mostly independent |
-| **dispatching-parallel-agents** | 2+ independent tasks with no shared state | Different test files, different subsystems, no shared dependencies |
-| **requesting-code-review** | After each task or before merge | Mandatory in subagent-driven-development |
-| **receiving-code-review** | Processing review feedback | Code review comments received |
-| **finishing-a-development-branch** | All tasks complete, tests passing | Merge/PR/keep/discard decision |
+| **root-cause** | ROUTE detects bug keywords | `bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception` |
+| **plan-builder** | HANDOFF → create roadmap.json | `.vega-punk-state.json` has spec_path or spec |
+| **plan-executor** | Inline execution chosen | `roadmap.json` exists, user chose inline |
+| **test-first** | Any code implementation step | Every feature, bugfix, refactor |
+| **verify-gate** | Before claiming any step/task done | Every verification gate |
+| **worktree-setup** | Before starting feature work | Required by task-dispatcher and plan-executor |
+| **task-dispatcher** | After planning, parallel tasks preferred | `roadmap.json` exists, tasks mostly independent |
+| **parallel-swarm** | 2+ independent tasks with no shared state | Different test files, different subsystems, no shared dependencies |
+| **review-request** | After each task or before merge | Mandatory in task-dispatcher |
+| **review-intake** | Processing review feedback | Code review comments received |
+| **branch-landing** | All tasks complete, tests passing | Merge/PR/keep/discard decision |

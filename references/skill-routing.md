@@ -38,22 +38,22 @@ Complete dispatch logic for all installed skills. Use during SCAN state to match
 
 | Skill | When to Use | Triggers |
 |-------|-------------|----------|
-| **planning-with-json** | Create structured implementation plans | `plan`, `roadmap.json`, `multi-step task`, `break down`, `implementation plan`, `create a plan`, `spec to tasks`, `计划`, `规划` |
-| **executing-plans** | Execute roadmap.json step by step | `execute plan`, `roadmap.json`, `implementation plan`, `execute steps`, `执行计划` |
-| **subagent-driven-development** | Parallel task execution with subagents | `subagent-driven development`, `dispatch subagent`, `implement tasks`, `roadmap execution`, `子代理` |
-| **dispatching-parallel-agents** | Run 2+ independent tasks concurrently | `parallel`, `independent tasks`, `multiple failures`, `different root causes`, `dispatch agents`, `并行`, `并发` |
-| **using-git-worktrees** | Isolated workspace for feature work | `worktree`, `isolated workspace`, `feature branch`, `set up workspace`, `隔离工作区` |
-| **finishing-a-development-branch** | Post-implementation integration decisions | `implementation complete`, `merge`, `create PR`, `finish development`, `complete branch`, `integrate work`, `合并代码` |
+| **plan-builder** | Create structured implementation plans | `plan`, `roadmap.json`, `multi-step task`, `break down`, `implementation plan`, `create a plan`, `spec to tasks`, `计划`, `规划` |
+| **plan-executor** | Execute roadmap.json step by step | `execute plan`, `roadmap.json`, `implementation plan`, `execute steps`, `执行计划` |
+| **task-dispatcher** | Parallel task execution with subagents | `subagent-driven development`, `dispatch subagent`, `implement tasks`, `roadmap execution`, `子代理` |
+| **parallel-swarm** | Run 2+ independent tasks concurrently | `parallel`, `independent tasks`, `multiple failures`, `different root causes`, `dispatch agents`, `并行`, `并发` |
+| **worktree-setup** | Isolated workspace for feature work | `worktree`, `isolated workspace`, `feature branch`, `set up workspace`, `隔离工作区` |
+| **branch-landing** | Post-implementation integration decisions | `implementation complete`, `merge`, `create PR`, `finish development`, `complete branch`, `integrate work`, `合并代码` |
 
 ## Code Quality
 
 | Skill | When to Use | Triggers |
 |-------|-------------|----------|
-| **test-driven-development** | Write tests before implementation | `TDD`, `test-driven`, `write test first`, `red-green-refactor`, `implement feature`, `bug fix`, `refactoring`, `测试驱动`, `先写测试` |
-| **systematic-debugging** | Debug bugs, test failures, unexpected behavior | `bug`, `test failure`, `unexpected behavior`, `debug`, `fix this issue`, `not working`, `error`, `performance problem`, `调试`, `修复 bug` |
-| **receiving-code-review** | Process code review feedback | `code review feedback`, `reviewer suggestion`, `fix review comments`, `implement feedback`, `reviewer said`, `处理审查意见` |
-| **requesting-code-review** | Request code review before merge | `code review`, `review my code`, `request review`, `before merge`, `check code quality`, `代码审查` |
-| **verification-before-completion** | Verify before claiming done | `done`, `complete`, `fixed`, `all tests pass`, `build succeeds`, `ready to commit`, `should work`, `验证完成` |
+| **test-first** | Write tests before implementation | `TDD`, `test-driven`, `write test first`, `red-green-refactor`, `implement feature`, `bug fix`, `refactoring`, `测试驱动`, `先写测试` |
+| **root-cause** | Debug bugs, test failures, unexpected behavior | `bug`, `test failure`, `unexpected behavior`, `debug`, `fix this issue`, `not working`, `error`, `performance problem`, `调试`, `修复 bug` |
+| **review-intake** | Process code review feedback | `code review feedback`, `reviewer suggestion`, `fix review comments`, `implement feedback`, `reviewer said`, `处理审查意见` |
+| **review-request** | Request code review before merge | `code review`, `review my code`, `request review`, `before merge`, `check code quality`, `代码审查` |
+| **verify-gate** | Verify before claiming done | `done`, `complete`, `fixed`, `all tests pass`, `build succeeds`, `ready to commit`, `should work`, `验证完成` |
 
 ## Automation & Tools
 
@@ -80,17 +80,17 @@ Tasks often require multiple skills in sequence. Recognize these patterns:
 
 ### Web App Development
 ```
-ui-ux-pro-max → frontend-design → test-driven-development → verification-before-completion → requesting-code-review
+ui-ux-pro-max → frontend-design → test-first → verify-gate → review-request
 ```
 
 ### Bug Fix
 ```
-systematic-debugging → test-driven-development → verification-before-completion
+root-cause → test-first → verify-gate
 ```
 
 ### Feature Development
 ```
-planning-with-json → subagent-driven-development → requesting-code-review → finishing-a-development-branch
+plan-builder → task-dispatcher → review-request → branch-landing
 ```
 
 ### PDF/Document Processing
@@ -100,7 +100,7 @@ pdf → (docx or xlsx if extraction needed) → internal-comms if writing report
 
 ### Design to Code
 ```
-flutter-lens → verification-before-completion → requesting-code-review
+flutter-lens → verify-gate → review-request
 ```
 
 ### Data Analysis
@@ -110,7 +110,7 @@ xlsx → (pdf if report needed) → internal-comms if presenting findings
 
 ### Browser Automation
 ```
-agent-browser → xlsx (if scraping data) → systematic-debugging (if issues)
+agent-browser → xlsx (if scraping data) → root-cause (if issues)
 ```
 
 ### Skill Development
@@ -122,10 +122,10 @@ skill-creator → self-improving-agent (to learn from the experience)
 
 ## Decision Rules
 
-1. **Always select verification-before-completion** for any implementation task
-2. **Always select test-driven-development** for any feature/bugfix in codebases with tests
-3. **Always select systematic-debugging** when something is broken or failing
+1. **Always select verify-gate** for any implementation task
+2. **Always select test-first** for any feature/bugfix in codebases with tests
+3. **Always select root-cause** when something is broken or failing
 4. **Prefer ui-ux-pro-max over frontend-design** when design decisions come first
-5. **Prefer subagent-driven-development over dispatching-parallel-agents** when there's a roadmap.json
+5. **Prefer task-dispatcher over parallel-swarm** when there's a roadmap.json
 6. **CONDENSED mode** for tasks completable in < 5 minutes of work
 7. **Full flow** for anything spanning multiple files, components, or subsystems

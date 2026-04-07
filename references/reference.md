@@ -174,7 +174,7 @@ AI coding agents operate in a continuous loop:
 | `progress.json` | Session log, what's done | At breakpoints | Throughout session |
 | Code files | Implementation | Before execution | After errors |
 
-**Schema reference:** See `references/planning-with-json/templates/` directory for canonical JSON structures.
+**Schema reference:** See `references/plan-builder/templates/` directory for canonical JSON structures.
 
 ---
 
