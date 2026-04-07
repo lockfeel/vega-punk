@@ -877,7 +877,7 @@
         try {
             const userToken = localStorage.getItem('userToken') || '';
             console.log('[API] 请求 /user-info, token:', userToken ? '存在' : '空');
-            const response = await fetch('http://127.0.0.1:8092/user-info', {
+            const response = await fetch('https://skill.amemo.cn/user-info', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ token: userToken })

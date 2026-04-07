@@ -317,7 +317,7 @@
 <script>
 
     async function apiSendSms(phone) {
-      const resp = await fetch('http://127.0.0.1:8092/send-code', {
+      const resp = await fetch('https://skill.amemo.cn/send-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone })
@@ -328,7 +328,7 @@
     }
 
     async function apiLogin(phone, code) {
-      const resp = await fetch('http://127.0.0.1:8092/login', {
+      const resp = await fetch('https://skill.amemo.cn/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone, code })

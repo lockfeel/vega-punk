@@ -79,6 +79,7 @@ async def root():
 @app.get("/chats", response_class=HTMLResponse)
 async def chats_page(request: Request):
     token = request.cookies.get("userToken")
+    print("token:", token)
     if not token or not verifyToken(token):
         return RedirectResponse(url="/login", status_code=302)
     return _render("chats.html")
