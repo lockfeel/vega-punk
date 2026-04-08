@@ -286,6 +286,24 @@
             color: var(--secondary-green);
         }
 
+        .bot-list {
+            display: none;
+        }
+
+        .bot-list.visible {
+            display: block;
+        }
+
+        .session-panel {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .session-panel.hidden {
+            display: none;
+        }
+
         .chat-area {
             flex: 1;
             display: flex;
@@ -752,10 +770,10 @@
     </div>
 
     <div class="nav-icons">
-        <div class="nav-item active">
+        <div class="nav-item active" id="navSessions">
             <i data-lucide="message-square"></i>
         </div>
-        <div class="nav-item">
+        <div class="nav-item" id="navBots">
             <i data-lucide="bot"></i>
         </div>
     </div>
@@ -777,19 +795,21 @@
     </div>
 
     <div class="list-items">
-
-        <div class="list-item active">
-            <div class="item-avatar" id="sessionBotAvatar">
-                <img src="https://res.amemo.cn/vega-punk.png" alt="User" style="width:100%; border-radius:12px;">
-            </div>
-            <div class="item-content">
-                <div class="item-header">
-                    <span class="item-name" id="sessionBotName">VegaPunk</span>
-                    <span class="item-time">昨天 14:26</span>
+        <div class="session-panel" id="sessionPanel">
+            <div class="list-item active">
+                <div class="item-avatar" id="sessionBotAvatar">
+                    <img src="https://res.amemo.cn/vega-punk.png" alt="User" style="width:100%; border-radius:12px;">
                 </div>
-                <div class="item-preview">AI大脑</div>
+                <div class="item-content">
+                    <div class="item-header">
+                        <span class="item-name" id="sessionBotName">VegaPunk</span>
+                        <span class="item-time">昨天 14:26</span>
+                    </div>
+                    <div class="item-preview">AI大脑</div>
+                </div>
             </div>
         </div>
+        <div class="bot-list" id="botList"></div>
     </div>
 </aside>
 
@@ -837,7 +857,8 @@
     let lastReplyTime = null;
     let pendingMessage = null;
     let heartbeatTimer = null;
-    const HEARTBEAT_INTERVAL = 30000; // 30秒
+    let botsCache = {};
+    const HEARTBEAT_INTERVAL = 30000;
 
     function checkAndInsertTimestamp() {
         const now = Date.now();
@@ -870,6 +891,78 @@
             document.querySelectorAll('.user-head img').forEach(img => {
                 img.src = userData.userHeadurl;
             });
+        }
+    }
+
+    async function loadBots() {
+        try {
+            const response = await fetch('/bots',{method: 'POST'});
+            const result = await response.json();
+            console.log('[API] /bots 响应:', result);
+            if (result.bots) {
+                result.bots.forEach(bot => {
+                    botsCache[bot.botId] = bot;
+                });
+                console.log('[API] botsCache 已加载:', Object.keys(botsCache).length, '个 bot');
+                renderBotList();
+            }
+        } catch (error) {
+            console.error('[API] /bots 请求失败:', error);
+        }
+    }
+
+    function renderBotList() {
+        const botList = document.getElementById('botList');
+        const bots = Object.values(botsCache);
+        if (!bots.length) return;
+        botList.innerHTML = bots.map(bot => `
+            <div class="list-item" data-bot-id="${bot.botId}">
+                <div class="item-avatar">
+                    <img src="${bot.avatar || 'https://res.amemo.cn/vega-punk.png'}" alt="${bot.name}" style="width:100%; border-radius:12px;">
+                </div>
+                <div class="item-content">
+                    <div class="item-header">
+                        <span class="item-name">${bot.name}</span>
+                    </div>
+                    <div class="item-preview">${bot.botId}</div>
+                </div>
+            </div>
+        `).join('');
+        botList.querySelectorAll('.list-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const botId = item.dataset.botId;
+                const bot = botsCache[botId];
+                if (bot) switchBot(bot);
+            });
+        });
+    }
+
+    let currentBot = { botId: 'vega-punk', name: 'VegaPunk', avatar: 'https://res.amemo.cn/vega-punk.png' };
+
+    function switchBot(bot) {
+        currentBot = bot;
+        document.getElementById('sessionBotName').textContent = bot.name;
+        document.getElementById('headerBotName').textContent = bot.name;
+        const avatarEl = document.getElementById('sessionBotAvatar');
+        avatarEl.innerHTML = `<img src="${bot.avatar || 'https://res.amemo.cn/vega-punk.png'}" alt="${bot.name}" style="width:100%; border-radius:12px;">`;
+        showPanel('sessions');
+    }
+
+    function showPanel(type) {
+        const sessionPanel = document.getElementById('sessionPanel');
+        const botList = document.getElementById('botList');
+        const navSessions = document.getElementById('navSessions');
+        const navBots = document.getElementById('navBots');
+        if (type === 'sessions') {
+            sessionPanel.classList.remove('hidden');
+            botList.classList.remove('visible');
+            navSessions.classList.add('active');
+            navBots.classList.remove('active');
+        } else {
+            sessionPanel.classList.add('hidden');
+            botList.classList.add('visible');
+            navBots.classList.add('active');
+            navSessions.classList.remove('active');
         }
     }
 
@@ -1061,7 +1154,11 @@
             }
         });
 
+        loadBots();
         loadUserInfo();
+
+        document.getElementById('navSessions').addEventListener('click', () => showPanel('sessions'));
+        document.getElementById('navBots').addEventListener('click', () => showPanel('bots'));
     });
 </script>
 </body>

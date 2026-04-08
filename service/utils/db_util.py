@@ -33,11 +33,11 @@ class DBase:
                     name TEXT NOT NULL,
                     role TEXT NOT NULL DEFAULT 'pm',
                     avatar TEXT,
-                    skills TEXT,
                     managerId TEXT,
                     status TEXT DEFAULT 'idle',
                     progress INTEGER DEFAULT 0,
                     createTime INTEGER DEFAULT (strftime('%s', 'now')),
+                    lastTime INTEGER DEFAULT (strftime('%s', 'now')),
                     deleted INTEGER DEFAULT 0
                 );
 
@@ -115,39 +115,39 @@ class DBase:
 
     def _initBots(self):
         bots = [
-            ("plan-executor", "执行星使", "https://res.amemo.cn/executing-plans.png"),
-            ("branch-landing", "分支卫士", "https://res.amemo.cn/finishing-a-development-branch.png"),
-            ("plan-builder", "规划谋士", "https://res.amemo.cn/planning-with-json.png"),
-            ("review-intake", "评审接引人", "https://res.amemo.cn/receiving-code-review.png"),
-            ("review-request", "审阅使", "https://res.amemo.cn/requesting-code-review.png"),
-            ("parallel-swarm", "并行大师", "https://res.amemo.cn/dispatching-parallel-agents.png"),
-            ("task-dispatcher", "子代理官", "https://res.amemo.cn/subagent-driven-development.png"),
-            ("root-cause", "系统调试师", "https://res.amemo.cn/systematic-debugging.png"),
-            ("test-first", "测试驱动者", "https://res.amemo.cn/test-driven-development.png"),
-            ("verify-gate", "验核先锋", "https://res.amemo.cn/verification-before-completion.png"),
-            ("worktree-setup", "分支管家", "https://res.amemo.cn/using-git-worktrees.png"),
-            ("agent-browser", "浏览器精灵", "https://res.amemo.cn/agent-browser.png"),
-            ("algorithmic-art", "算法画师", "https://res.amemo.cn/algorithmic-art.png"),
-            ("brand-guidelines", "品牌管家", "https://res.amemo.cn/brand-guidelines.png"),
-            ("canvas-design", "画布设计师", "https://res.amemo.cn/canvas-design.png"),
-            ("docx", "文档匠人", "https://res.amemo.cn/docx.png"),
-            ("find-skills", "技能探知", "https://res.amemo.cn/find-skills.png"),
-            ("flutter-lens", "Flutter透视", "https://res.amemo.cn/flutter-lens.png"),
-            ("frontend-design", "前端筑梦师", "https://res.amemo.cn/frontend-design.png"),
-            ("internal-comms", "内宣使者", "https://res.amemo.cn/internal-comms.png"),
-            ("mcp-builder", "MCP建造师", "https://res.amemo.cn/mcp-builder.png"),
-            ("pdf", "PDF圣手", "https://res.amemo.cn/pdf.png"),
-            ("pptx", "演示大师", "https://res.amemo.cn/pptx.png"),
-            ("self-improving-agent", "自省者", "https://res.amemo.cn/self-improving-agent.png"),
-            ("skill-creator", "技能锻造师", "https://res.amemo.cn/skill-creator.png"),
-            ("slack-gif-creator", "动态图匠", "https://res.amemo.cn/slack-gif-creator.png"),
-            ("theme-factory", "主题工厂", "https://res.amemo.cn/theme-factory.png"),
-            ("ui-ux-pro-max", "UI/UX极客", "https://res.amemo.cn/ui-ux-pro-max.png"),
-            ("vega-punk", "慎思者", "https://res.amemo.cn/vega-punk.png"),
-            ("xlsx", "表格圣手", "https://res.amemo.cn/xlsx.png"),
+            ("plan-executor", "执行星使", "https://res.amemo.cn/executing-plans.png", "vega-punk"),
+            ("branch-landing", "分支卫士", "https://res.amemo.cn/finishing-a-development-branch.png", "vega-punk"),
+            ("plan-builder", "规划谋士", "https://res.amemo.cn/planning-with-json.png", "vega-punk"),
+            ("review-intake", "评审接引人", "https://res.amemo.cn/receiving-code-review.png", "vega-punk"),
+            ("review-request", "审阅使", "https://res.amemo.cn/requesting-code-review.png", "vega-punk"),
+            ("parallel-swarm", "并行大师", "https://res.amemo.cn/dispatching-parallel-agents.png", "vega-punk"),
+            ("task-dispatcher", "子代理官", "https://res.amemo.cn/subagent-driven-development.png", "vega-punk"),
+            ("root-cause", "系统调试师", "https://res.amemo.cn/systematic-debugging.png", "vega-punk"),
+            ("test-first", "测试驱动者", "https://res.amemo.cn/test-driven-development.png", "vega-punk"),
+            ("verify-gate", "验核先锋", "https://res.amemo.cn/verification-before-completion.png", "vega-punk"),
+            ("worktree-setup", "分支管家", "https://res.amemo.cn/using-git-worktrees.png", "vega-punk"),
+            ("agent-browser", "浏览器精灵", "https://res.amemo.cn/agent-browser.png", "user"),
+            ("algorithmic-art", "算法画师", "https://res.amemo.cn/algorithmic-art.png", "user"),
+            ("brand-guidelines", "品牌管家", "https://res.amemo.cn/brand-guidelines.png", "user"),
+            ("canvas-design", "画布设计师", "https://res.amemo.cn/canvas-design.png", "user"),
+            ("docx", "文档匠人", "https://res.amemo.cn/docx.png", "user"),
+            ("find-skills", "技能探知", "https://res.amemo.cn/find-skills.png", "user"),
+            ("flutter-lens", "Flutter透视", "https://res.amemo.cn/flutter-lens.png", "user"),
+            ("frontend-design", "前端筑梦师", "https://res.amemo.cn/frontend-design.png", "user"),
+            ("internal-comms", "内宣使者", "https://res.amemo.cn/internal-comms.png", "user"),
+            ("mcp-builder", "MCP建造师", "https://res.amemo.cn/mcp-builder.png", "user"),
+            ("pdf", "PDF圣手", "https://res.amemo.cn/pdf.png", "user"),
+            ("pptx", "演示大师", "https://res.amemo.cn/pptx.png", "user"),
+            ("self-improving-agent", "自省者", "https://res.amemo.cn/self-improving-agent.png", "user"),
+            ("skill-creator", "技能锻造师", "https://res.amemo.cn/skill-creator.png", "user"),
+            ("slack-gif-creator", "动态图匠", "https://res.amemo.cn/slack-gif-creator.png", "user"),
+            ("theme-factory", "主题工厂", "https://res.amemo.cn/theme-factory.png", "user"),
+            ("ui-ux-pro-max", "UI/UX极客", "https://res.amemo.cn/ui-ux-pro-max.png", "user"),
+            ("vega-punk", "慎思者", "https://res.amemo.cn/vega-punk.png", "user"),
+            ("xlsx", "表格圣手", "https://res.amemo.cn/xlsx.png", "user"),
         ]
-        for botId, name, avatar in bots:
-            self.upsertBot(botId=botId, name=name, role="skill", avatar=avatar)
+        for botId, name, avatar, mid in bots:
+            self.upsertBot(botId=botId, name=name, role="skill", avatar=avatar, managerId=mid)
 
     @contextmanager
     def _conn(self):
@@ -174,14 +174,14 @@ class DBase:
             return _rowsToDicts(rows)
 
     def upsertBot(self, botId: str, name: str, role: str = 'pm', avatar: str = None,
-                  skills: list = None, managerId: str = None):
+                  managerId: str = None):
         self.execute(
-            "INSERT INTO bots (botId, name, role, avatar, skills, managerId, status) "
-            "VALUES (?, ?, ?, ?, ?, ?, 'idle') "
+            "INSERT INTO bots (botId, name, role, avatar, managerId, status) "
+            "VALUES (?, ?, ?, ?, ?, 'idle') "
             "ON CONFLICT(botId) DO UPDATE SET "
             "name=excluded.name, role=excluded.role, avatar=COALESCE(excluded.avatar, bots.avatar), "
-            "skills=COALESCE(excluded.skills, bots.skills), managerId=COALESCE(excluded.managerId, bots.managerId)",
-            (botId, name, role, avatar, json.dumps(skills) if skills else None, managerId)
+            "managerId=COALESCE(excluded.managerId, bots.managerId)",
+            (botId, name, role, avatar, managerId)
         )
 
     def getBot(self, botId: str) -> Optional[Dict[str, Any]]:
@@ -197,10 +197,15 @@ class DBase:
         return self.fetchAll("SELECT * FROM bots WHERE deleted = 0 ORDER BY createTime")
 
     def updateBotStatus(self, botId: str, status: str, progress: int = None):
+        now = int(time.time())
         if progress is not None:
-            self.execute("UPDATE bots SET status = ?, progress = ? WHERE botId = ?", (status, progress, botId))
+            self.execute("UPDATE bots SET status = ?, progress = ?, lastTime = ? WHERE botId = ?", (status, progress, now, botId))
         else:
-            self.execute("UPDATE bots SET status = ? WHERE botId = ?", (status, botId))
+            self.execute("UPDATE bots SET status = ?, lastTime = ? WHERE botId = ?", (status, now, botId))
+
+    def touchBot(self, botId: str):
+        now = int(time.time())
+        self.execute("UPDATE bots SET lastTime = ? WHERE botId = ?", (now, botId))
 
     def deleteBot(self, botId: str):
         self.execute("UPDATE bots SET deleted = 1 WHERE botId = ?", (botId,))

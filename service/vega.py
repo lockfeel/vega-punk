@@ -14,7 +14,7 @@ sys.path.append(f"{rootDir}")
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, Response, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, RedirectResponse
 from starlette.websockets import WebSocket, WebSocketDisconnect
 from utils.common_util import clearPycache
 from utils.token_util import verifyToken
@@ -94,6 +94,14 @@ async def favicon():
     return Response(status_code=204)
 
 
+@app.post("/bots")
+async def listBots():
+    if not db:
+        return JSONResponse({"error": "数据库未就绪"}, status_code=503)
+    bots = db.getAllBots()
+    return JSONResponse({"bots": bots})
+
+
 @app.websocket("/chatClaw")
 async def chatClaw(websocket: WebSocket):
     await websocket.accept()
@@ -101,10 +109,9 @@ async def chatClaw(websocket: WebSocket):
         await websocket.send_json({"error": "OpenClaw 未就绪"})
         await websocket.close()
         return
-
-    currentRunId = None
     currentSessionKey = None
     accumulatedText = ""
+    savedRunIds = set()
 
     async def onChatEvent(payload: dict):
         nonlocal currentRunId, currentSessionKey, accumulatedText
@@ -133,6 +140,10 @@ async def chatClaw(websocket: WebSocket):
                 logger.error(f"[WS] 发送 delta 失败: {e}")
 
         elif phase == 'end':
+            if runId and runId in savedRunIds:
+                return
+            if runId:
+                savedRunIds.add(runId)
             try:
                 hasDangerous, dangerousCmds = OutputFilter.auditOutput(accumulatedText)
                 responseData = {
