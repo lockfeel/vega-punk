@@ -67,16 +67,18 @@ BEGIN STATE_RESOLUTION
     ENTER current state directly
     DO NOT go back to ROUTE
 
-    /* skill loop protection */
-    IF scan_depth >= 3:
+    /* skill loop protection — only applies during SCAN entry */
+    IF state == "SCAN" AND scan_depth >= 3:
         SKIP skill routing
         GOTO CLARIFY
-    ELSE:
-        INCREMENT scan_depth on SCAN entry
-        RESET scan_depth on CLARIFY entry
+
+    /* scan_depth lifecycle — applies on state transitions, NOT immediate execution */
+    /* On SCAN entry:   INCREMENT scan_depth   */
+    /* On CLARIFY entry: RESET scan_depth = 0 */
 
     /* state compaction (prevent unbounded growth) */
-    IF qa.retries > 2 OR transition_count > 5:
+    /* threshold > 12 allows a full 9-state flow + retries without premature compaction */
+    IF qa.retries > 2 OR transition_count > 12:
         COMPACT:
             PRESERVE: state, task, context, selected_skills, scope, requirements, design, dependencies, spec_path
             COMPRESS qa → { "retries": N, "last_feedback": "<summary>", "status": "FAIL" }
@@ -92,15 +94,25 @@ BEGIN STATE_RESOLUTION
 END
 
 BEGIN Post-Completion Cleanup
+    /* Step 1: save counters BEFORE deleting state file */
+    IF .vega-punk-state.json has consecutive_dissatisfied_count:
+        WRITE .vega-punk-counters.json:
+            { "consecutive_dissatisfied_count": value }
+
+    /* Step 2: archive + delete state */
     RENAME vega-punk/specs/*.md → *.DONE.md (completed) or *.CANCELLED.md (cancelled)
     DELETE .vega-punk-state.json
-    /* On REVIEW → new task: archive specs + delete state, then restart ROUTE */
+
+    /* On REVIEW → new task: archive specs + preserve counters, then restart ROUTE */
+    /* On "start over" / "new task" / "forget previous": also clear counter */
+    IF user says "forget previous":
+        DELETE .vega-punk-counters.json
 END
 ```
 
 **Key rule:** Always preserve `task` field across all state transitions.
 
-**Git:** Add `.vega-punk-state.json` to `.gitignore`. **Do NOT** gitignore `vega-punk/specs/` — spec history is project memory and should be committed.
+**Git:** Add `.vega-punk-state.json` and `.vega-punk-counters.json` to `.gitignore`. **Do NOT** gitignore `vega-punk/specs/` — spec history is project memory and should be committed.
 
 **Progress reporting:** At each transition:
 > "Entering [STATE]..."
@@ -119,16 +131,16 @@ If user asks "where are we?" or "how much left?", print current state and remain
 | SPEC_QA      | 2             | —              |
 | CONDENSED    | 3             | 3              |
 | HANDOFF      | 1             | 1              |
-| REVIEW       | 0             | 0              |
+| REVIEW       | 0             | 1              |
 
 **Three execution modes:**
 
-| Mode          | Steps                            | When                                       | State File | Skill Check |
-|---------------|----------------------------------|--------------------------------------------|------------|-------------|
-| **CONDENSED** | Minimal spec → Approval → Review | All tasks (single component to multi-step) | Required   | Full SCAN   |
-| **FULL**      | All 9 states                     | Large/multi-step tasks, ambiguous scope    | Required   | Full SCAN   |
+| Mode          | Steps                             | When                                      | State File | Skill Check |
+|---------------|-----------------------------------|-------------------------------------------|------------|-------------|
+| **CONDENSED** | Minimal spec → Approval → Handoff | Small changes, single features, emergency | Required   | Full SCAN   |
+| **FULL**      | All 9 states                      | Large/multi-step tasks, ambiguous scope   | Required   | Full SCAN   |
 
-CONDENSED mode: 3 steps (minimal spec → approval → review), skips DESIGN/DEPENDENCIES/SPEC states. From CONDENSED: 3 states left (CONDENSED → HANDOFF → REVIEW → DONE).
+CONDENSED mode: 3 steps (minimal spec → approval → handoff), skips DESIGN/DEPENDENCIES/SPEC states. From CONDENSED: 3 states left (CONDENSED → HANDOFF → REVIEW → DONE).
 
 ---
 
@@ -273,6 +285,12 @@ END
 
 ```
 BEGIN ROUTE
+    /* load preserved counters from previous task */
+    IF .vega-punk-counters.json exists:
+        READ consecutive_dissatisfied_count into context
+    ELSE:
+        INITIALIZE consecutive_dissatisfied_count = 0
+
     /* Step 0: clean slate */
     IF state == "DONE" AND .vega-punk-state.json exists:
         RENAME vega-punk/specs/*.md → *.DONE.md
@@ -281,6 +299,18 @@ BEGIN ROUTE
     /* Step 1: bug detection first */
     IF message contains bug keywords (`bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception`):
         INVOKE root-cause skill
+
+    /* Step 1b: emergency mode — production outage or critical fix */
+    IF user says "urgent" / "emergency" / "hotfix" / "prod down" / "critical":
+        /* if bug keywords present, root-cause was already invoked above */
+        IF root-cause skill was invoked:
+            TELL: "[vega-punk] Emergency mode — root-cause done, switching to fast execution."
+        ELSE:
+            TELL: "[vega-punk] Emergency mode — minimal design, fast execution."
+        /* Step 3: write state (emergency skips SCAN, goes straight to CONDENSED) */
+        WRITE .vega-punk-state.json:
+            { "state": "CONDENSED", "task": "<user request>", "mode": "emergency", "transition_count": 1 }
+        GOTO CONDENSED
 
     /* Step 2: classify task type */
     MATCH task type:
@@ -332,7 +362,11 @@ BEGIN SCAN
         SKIP skill routing
     ELSE:
         RUN bash scripts/discover-skills.sh
-        MATCH task against skill descriptions
+        IF script fails or not found:
+            FALLBACK: scan registered skills from system prompt skill list
+            MATCH task against built-in skill descriptions
+        ELSE:
+            MATCH task against skill descriptions
         SELECT ALL relevant skills + note execution order
 
     /* 4. invoke skills for guidance (NOT implementation) */
@@ -363,13 +397,21 @@ BEGIN CLARIFY
         EXTRACT purpose, constraints, success from request + SCAN context
         GOTO DESIGN
 
-    /* ask questions one at a time */
-    ASK ONE clarifying question (prefer multiple choice)
-    FOCUS on: purpose, constraints, success criteria
+    /* enforce ONE-question-at-a-time: AI must NOT batch multiple questions */
+    IF more_than_one clarifying_dimension exists:
+        ASK single question: "Most critical unknown" → prefer multiple choice
+        WAIT for answer before asking next
+        IF user says "you decide" on all remaining:
+            document assumptions → PROCEED to DESIGN
+    ELSE:
+        ASK single clarifying question → prefer multiple choice
+        FOCUS on: purpose, constraints, success criteria
+        WAIT for answer
 
-    IF user says "you decide":
+    /* handle "you decide" — only fires if the question above was answered with "you decide" */
+    IF current_question_answered_with "you decide":
         DOCUMENT assumption
-        PROCEED
+        PROCEED to DESIGN
 
     /* state write */
     WRITE .vega-punk-state.json:
@@ -684,8 +726,26 @@ BEGIN REVIEW
     CASE failed:
         TELL: "Execution failed. Redesign needed?"
 
-    /* capture satisfaction */
+    /* capture satisfaction and act on it */
     RECORD user_satisfaction: "satisfied" / "neutral" / "dissatisfied"
+
+    /* update consecutive dissatisfaction counter */
+    IF user_satisfaction == "dissatisfied":
+        INCREMENT consecutive_dissatisfied_count
+    ELSE:
+        RESET consecutive_dissatisfied_count = 0
+
+    /* persist counter to survive Post-Completion Cleanup */
+    WRITE .vega-punk-counters.json:
+        { "consecutive_dissatisfied_count": value }
+
+    IF user_satisfaction == "dissatisfied" AND execution_result.status == success:
+        TELL: "Criteria met but you're not happy — what's missing?"
+        GOTO CLARIFY /* realign requirements */
+
+    IF consecutive_dissatisfied_count >= 3:
+        TELL: "[vega-punk] Last 3 tasks dissatisfied. Let's pause and align on process."
+        ASK: "Should I change approach? (1) more clarification upfront, (2) tighter QA, (3) different workflow)"
 
     MATCH user response:
     CASE new task:
@@ -703,8 +763,8 @@ END
 ```
 BEGIN BOOTSTRAP
     MKDIR vega-punk/specs
-    ADD .vega-punk-state.json to .gitignore
-    DO NOT gitignore vega-punk/ (spec history is project memory)
+    ADD .vega-punk-state.json and .vega-punk-counters.json to .gitignore
+    DO NOT gitignore vega-punk/ (spec history is project memory, commit it)
     VERIFY scripts/ exists (session-hook.sh, etc.)
     IF missing → inform user
     GOTO ROUTE
@@ -810,6 +870,8 @@ END
 | "I know what that means"                   | Knowing the concept ≠ using the skill. Invoke it.                           |
 | "This feels productive"                    | Undisciplined action wastes time. Skills prevent this.                      |
 | "This is just a draft, we'll polish later" | There are no drafts. Output must be aesthetically first-class — every time. |
+| "I'll ask all my questions at once"        | CLARIFY enforces one question at a time. Batch questions = batch confusion  |
+| "This bug needs the full flow"             | Emergency mode exists — prod down → CONDENSED, diagnose → FULL              |
 
 ## Skill Dependencies
 
@@ -846,4 +908,8 @@ Skills vega-punk directly invokes:
 | **root-cause**   | ROUTE   | message contains `bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception` |
 | **plan-builder** | HANDOFF | `.vega-punk-state.json` has `spec_path` or `spec`                                     |
 
--**How to choose skills:** During SCAN, you have access to the full list of registered skills (from `discover-skills.sh`). Match the task intent against each skill's description and trigger conditions. Select all relevant skills. You decide the execution order based on the specific task context — don't follow fixed chains. Trust your judgment about what's needed and in what order. 
+> ### ⚠ How to choose skills — CRITICAL
+> 1. Run `discover-skills.sh` to get the full list of registered skills
+> 2. Match task intent against each skill's description and trigger conditions
+> 3. Select all relevant skills (1% Rule) and decide execution order from task context — don't follow fixed chains
+> 4. Trust your judgment about what's needed and in what order 
