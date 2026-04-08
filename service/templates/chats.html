@@ -822,8 +822,9 @@
     <div class="chat-input-wrapper">
         <div class="chat-input-container">
             <div class="input-toolbar">
-                <button class="toolbar-btn" title="Attachment"><i data-lucide="paperclip"></i></button>
-                <button class="toolbar-btn" title="Image"><i data-lucide="image"></i></button>
+                <input type="file" id="fileInput" style="display: none" accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.pdf,.txt,.json">
+                <button class="toolbar-btn" id="uploadBtn" title="上传文件"><i data-lucide="paperclip"></i></button>
+                <button class="toolbar-btn" id="imageBtn" title="上传图片"><i data-lucide="image"></i></button>
                 <button class="toolbar-btn" title="Code Snippet"><i data-lucide="code"></i></button>
                 <div style="flex:1"></div>
                 <button class="toolbar-btn" title="History"><i data-lucide="history"></i></button>
@@ -897,6 +898,7 @@
 
     function renderSessionPanel(activeChats) {
         const sessionPanel = document.getElementById('sessionPanel');
+        activeBotsSet = new Set(activeChats.map(chat => chat.botId));
         sessionPanel.innerHTML = activeChats.map((chat, idx) => `
             <div class="list-item ${chat.botId === currentBot.botId ? 'active' : ''}" data-bot-id="${chat.botId}">
                 <div class="item-avatar">
@@ -958,7 +960,7 @@
         botList.innerHTML = bots.map(bot => `
             <div class="list-item" data-bot-id="${bot.botId}">
                 <div class="item-avatar">
-                    <img src="${bot.avatar || 'https://res.amemo.cn/vega-punk.png'}" alt="${bot.name}" style="width:100%; border-radius:12px;">
+                    <img src="${bot.avatar}" alt="${bot.name}" style="width:100%; border-radius:12px;">
                 </div>
                 <div class="item-content">
                     <div class="item-header">
@@ -983,11 +985,25 @@
         avatar: 'https://res.amemo.cn/vega-punk.png'
     };
 
+    let activeBotsSet = new Set();
+
     async function switchBot(bot) {
         currentBot = bot;
         document.getElementById('headerBotName').textContent = bot.name;
         showPanel('sessions');
+
+        const isInSession = activeBotsSet.has(bot.botId);
         await loadActiveChats();
+
+        if (!isInSession) {
+            console.log('[UI] BOT 不在会话列表中，发送 /init-bot');
+            sendWebSocketMessage('/init-bot');
+            setTimeout(async () => {
+                console.log('[UI] 1秒后刷新会话列表');
+                await loadActiveChats();
+            }, 500);
+        }
+
         await loadMessages();
     }
 
@@ -1012,14 +1028,12 @@
     async function loadUserInfo() {
         try {
             const userToken = localStorage.getItem('userToken') || '';
-            console.log('[API] 请求 /user-info, token:', userToken ? '存在' : '空');
             const response = await fetch('https://skill.amemo.cn/user-info', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ token: userToken })
             });
             const result = await response.json();
-            console.log('[API] /user-info 响应:', result);
             if (result.code === 200 && result.data) {
                 const userData = result.data;
                 localStorage.setItem('userInfo', JSON.stringify(userData));
@@ -1036,7 +1050,6 @@
         heartbeatTimer = setInterval(() => {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 try {
-                    console.log('[WS] 发送心跳 ping');
                     ws.send(JSON.stringify({ type: 'ping' }));
                 } catch (e) {
                     console.error('[WS] 发送心跳失败:', e);
@@ -1056,10 +1069,8 @@
         if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
             return;
         }
-        console.log('[WS] 尝试连接 WebSocket...');
         ws = new WebSocket(`ws://127.0.0.1:8893/chatClaw`);
         stopHeartbeat();
-
         ws.onopen = () => {
             console.log('[WS] 连接已建立');
             startHeartbeat();
@@ -1069,10 +1080,6 @@
                 pendingMessage = null;
                 return;
             }
-            const userData = JSON.parse(localStorage.getItem('userInfo') || '{}');
-            const systemText = '/init-bot';
-            console.log('[WS] 发送系统指令, botId:', currentBot.botId);
-            ws.send(JSON.stringify({ user: userData.userId || '', text: systemText, botId: currentBot.botId }));
         };
 
         ws.onmessage = (event) => {
@@ -1097,7 +1104,7 @@
                         msgRow.setAttribute('data-runid', data.runId);
                         msgRow.innerHTML = `
                             <div class="msg-avatar">
-                                <img src="${bot.avatar || 'https://res.amemo.cn/vega-punk.png'}" style="width:100%;height:100%;border-radius:12px;object-fit:cover;">
+                                <img src="${bot.avatar}" style="width:100%;height:100%;border-radius:12px;object-fit:cover;">
                             </div>
                             <div class="msg-content">
                                 <span class="msg-author">${bot.name}</span>
@@ -1279,7 +1286,6 @@
         loadBots();
         loadUserInfo();
         loadMessages();
-
         document.getElementById('navSessions').addEventListener('click', () => showPanel('sessions'));
         document.getElementById('navBots').addEventListener('click', () => showPanel('bots'));
     });
