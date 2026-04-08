@@ -1,6 +1,8 @@
 ---
 name: parallel-swarm
 description: Use when facing 2+ independent tasks that can be worked on without shared state or sequential dependencies
+categories: ["workflow"]
+triggers: ["parallel", "independent tasks", "multiple failures", "different root causes", "dispatch agents"]
 ---
 
 # Dispatching Parallel Agents

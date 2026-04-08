@@ -1,6 +1,8 @@
 ---
 name: branch-landing
 description: Use when implementation is complete, all tests pass, and you need to decide how to integrate the work - guides completion of development work by presenting structured options for merge, PR, or cleanup
+categories: ["workflow"]
+triggers: ["implementation complete", "merge", "create PR", "finish development", "complete branch", "integrate work"]
 ---
 
 # Finishing a Development Branch

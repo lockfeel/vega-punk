@@ -1,6 +1,8 @@
 ---
 name: verify-gate
 description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+categories: ["code-quality"]
+triggers: ["done", "complete", "fixed", "all tests pass", "build succeeds", "ready to commit", "should work"]
 ---
 
 # Verification Before Completion

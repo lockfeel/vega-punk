@@ -1,6 +1,8 @@
 ---
 name: plan-executor
-description: Use when you have a written implementation plan (roadmap.json) to execute in the current session with review checkpoints
+description: Use when you have a written implementation plan (roadmap.json) to execute inline in the current session with review checkpoints
+categories: ["workflow"]
+triggers: ["execute plan", "roadmap.json", "implementation plan", "execute steps"]
 user-invocable: true
 allowed-tools: "Read, Write, Edit, Bash, Glob, Grep"
 hooks:
@@ -9,12 +11,11 @@ hooks:
       command: "bash scripts/planning-resume.sh"
 ---
 
-# Executing Plans
+# Executing Plans (Inline)
+
+Inline execution of roadmap.json — each step runs in this session. For subagent-driven execution, use `task-dispatcher` instead.
 
 ## Entry Protocol
-
-This skill is invoked from the plan-builder sub-skill's Execution Handoff section.
-The `roadmap.json` in the working directory is the **single source of truth** for all tasks.
 
 ```
 1. Read roadmap.json
@@ -25,110 +26,95 @@ The `roadmap.json` in the working directory is the **single source of truth** fo
 ## Quick Reference
 
 ```
-A. Load & Review:
-   - Read roadmap.json, review plan structure critically
-   - If concerns → raise with user before starting
-
-B. Setup:
-   - REQUIRED: Invoke `worktree-setup` to set up isolated workspace before starting
-   - Verify baseline tests pass in the worktree
-
-C. Execute Loop:
-   - Mark step in_progress → Execute tool/target → Verify → Mark complete
-   - Write roadmap.json back after each step
-
-D. On Completion:
-   - If vega-punk mode → write execution_result to .vega-punk-state.json
-   - If standalone → deliver summary + invoke branch-landing
+A. Load & Review: Read roadmap.json, raise concerns before starting
+B. Setup: Invoke worktree-setup → verify baseline tests pass
+C. Execute Loop: in_progress → Execute → Verify (verify-gate) → complete → write back
+D. On Completion: vega-punk mode → write execution_result; standalone → deliver summary + branch-landing
 ```
 
 ## The Process
 
-### Step 1: Load and Review Plan
+### Step 1: Load and Review
 
-1. Read `roadmap.json`
-2. Review the plan structure:
-   - `project` / `goal` / `architecture` — understand what we're building
-   - `phases[].steps[]` — each step has `action`, `tool`, `target`, `code`, `verify`
-   - `current_step` — resume from here if previously interrupted
-3. If concerns: Raise them with your human partner before starting
-4. If no concerns: Proceed to Step 2
+1. Read `roadmap.json` — understand goal, phases, steps, current_step
+2. If concerns: raise with user before starting
+3. If no concerns: proceed
 
 ### Step 2: Execute Steps
 
-For each step in `roadmap.json`:
+Step structure, verification types, failure escalation, and anti-patterns are defined in [../plan-builder/SKILL.md](../plan-builder/SKILL.md). Follow them exactly.
 
-1. Mark the step's `status` as `"in_progress"`
-2. Execute the step using the specified `tool` and `target`
-   - If `code` field is present, write/edit the exact code as specified
-   - If `verify` field is present, follow the **verify-gate** skill rules before marking complete
-3. **On verification pass:** Set `status` to `"complete"`, set `result` to a brief outcome summary
-4. **On verification fail:** Increment `attempts`. If attempts < 3, retry with different approach. If attempts >= 3, set `status` to `"failed"` and stop.
-5. Update `current_step` to the next pending step's id
-6. Update `metadata.completed_steps` and `metadata.completion_rate`
-7. Write `roadmap.json` back after each step
+For each step:
+1. Mark status `"in_progress"`
+2. Execute using the specified `tool` and `target` (use `code` field content if present)
+3. Verify per **verify-gate** rules
+4. On pass → set `"complete"` with outcome summary; on fail → increment `attempts` (max 3, then mark `"failed"` and ask user)
+5. Update `current_step`, `metadata`, and `updated` timestamp
+6. Write `roadmap.json` back
 
-**Step execution loop details** (roadmap.json structure, verification types, failure escalation, anti-patterns) are defined in [../plan-builder/SKILL.md](../plan-builder/SKILL.md). Do not duplicate those rules here — follow them.
+### Step 2a: Step Type Handling
+
+| Step type | How to execute | Verify with |
+|-----------|---------------|-------------|
+| `Write` | Write `code` to `target` | `file_exists` / `content_contains` |
+| `Edit` | Apply edit from `code` to `target` (read first to disambiguate) | `content_contains` / `content_not_contains` |
+| `Bash` | Run command in `target` (never add `--force`/`--yes` unless plan specifies) | `command_success` / `tests_pass` / `build_pass` |
+| `Glob`/`Grep` | Search for context before Write/Edit | Non-empty results |
+| `WebSearch`/`WebFetch` | Fetch content, write to `findings.json` (not roadmap.json) | `content_contains` on findings |
+
+### Step 2b: Checkpoint Handling
+
+When a step has `checkpoint: true`: execute, verify, then **pause** and wait for user confirmation before advancing.
+
+### Step 2c: Dependency-Aware Execution
+
+Steps with `depends_on` must wait for all dependency steps to be `"complete"`. Independent steps in the same phase can run sequentially without unnecessary pauses.
 
 ### Step 3: Complete Development
 
 After all steps complete and verified:
 - Announce: "I'm using the branch-landing skill to complete this work."
-- **REQUIRED SUB-SKILL:** Use `branch-landing`
-- Follow that skill to verify tests, present options, execute choice
+- Use `branch-landing` to verify tests, present options, execute choice
 
-## When to Stop and Ask for Help
+## Execution Recovery
 
-**STOP executing immediately when:**
-- Hit a blocker (missing dependency, test fails, instruction unclear)
-- Plan has critical gaps preventing starting
-- You don't understand an instruction
-- Verification fails repeatedly (attempts >= 3)
+**Mid-task disconnect:** Read `roadmap.json` → `current_step` shows resume point. If step was `"in_progress"`, re-verify: pass → mark complete; fail → re-execute from scratch.
 
-**Ask for clarification rather than guessing.**
+**Stale roadmap:** If `updated` > 24 hours ago, re-read codebase, compare remaining steps. If diverged → suggest re-planning.
 
-## When to Revisit Earlier Steps
+## Execution Anti-Patterns
 
-**Return to Review (Step 1) when:**
-- Partner updates the plan based on your feedback
-- Fundamental approach needs rethinking
-
-**Don't force through blockers** - stop and ask.
+| Don't | Do |
+|-------|-----|
+| Skip verification to go faster | Every step must be verified before marking complete |
+| Modify the plan without telling user | Raise concerns, let user decide |
+| Retry the exact same failing command | Change approach each retry attempt |
+| Execute steps out of dependency order | Respect `depends_on` fields |
+| Skip checkpoints | Pause and wait for confirmation |
+| Edit code beyond what the step specifies | Follow the plan's `code` field exactly |
+| Start on main/master branch | Use worktree-setup for isolation |
 
 ## Remember
-- Read `roadmap.json` first — it is the single source of truth
+- Read `roadmap.json` first — single source of truth
 - Follow each step's `tool`, `target`, and `code` exactly
-- Don't skip verifications specified in `verify` field
 - Update `roadmap.json` after every step
 - Stop when blocked, don't guess
-- Never start implementation on main/master branch without explicit user consent
+- Never start on main/master without explicit user consent
 
-## Completion Contract — State Write-Back
+## Completion Contract
 
 After execution completes and verification passes (or after branch-landing completes):
 
-**If invoked from vega-punk** (`.vega-punk-state.json` exists):
-- Follow the **Execution Result Writer Contract** in the vega-punk `SKILL.md` (REVIEW section): update state to "REVIEW" and add `execution_result`.
+**If invoked from vega-punk** (`.vega-punk-state.json` exists): update state to "REVIEW" and add `execution_result` per vega-punk REVIEW section.
 
-**If standalone mode** (no `.vega-punk-state.json`):
-- No state write-back needed. Deliver summary to user directly.
+**If standalone mode**: no state write-back. Deliver summary to user directly.
 
-**If execution fails** (attempts exhausted on critical steps):
-- If vega-punk mode: update `.vega-punk-state.json` with status "failed" and error details in notes.
-- If standalone: present failure report with specific step(s) that failed and suggested fixes.
+**If execution fails** (critical step attempts exhausted): if vega-punk mode, update state with "failed" and error details; if standalone, present failure report with suggested fixes.
 
 ## Integration
 
-**Required workflow skills:**
-- **worktree-setup** — REQUIRED: Set up isolated workspace before starting
-- **vega-punk** — Creates the design that leads to plan-builder
-- **plan-builder** — Creates the `roadmap.json` this skill executes (defines step structure, verification types, failure escalation)
-- **branch-landing** — Complete development after all tasks
+**Required:** worktree-setup (isolation), verify-gate (each step), plan-builder (defines step structure, verification types, failure escalation)
 
-**Execution skills:**
-- **test-first** — Write tests before each implementation step
-- **verify-gate** — REQUIRED: Verify every step before marking complete
+**On completion:** branch-landing
 
-**Code quality:**
-- **review-intake** — Process code review feedback during execution
-- **review-request** — Request review at checkpoints
+**Code quality:** test-first (each implementation step), review-intake (process feedback), review-request (checkpoints)

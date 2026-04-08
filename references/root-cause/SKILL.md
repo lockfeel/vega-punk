@@ -1,6 +1,8 @@
 ---
 name: root-cause
 description: Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes
+categories: ["code-quality"]
+triggers: ["bug", "fix", "error", "not working", "crash", "failed", "exception", "test failure", "unexpected behavior", "debug", "performance problem"]
 ---
 
 # Systematic Debugging

@@ -1,6 +1,8 @@
 ---
 name: test-first
 description: Use when implementing any feature or bugfix, before writing implementation code
+categories: ["code-quality"]
+triggers: ["TDD", "test-driven", "write test first", "red-green-refactor", "implement feature", "bug fix", "refactoring"]
 ---
 
 # Test-Driven Development (TDD)
@@ -72,8 +74,12 @@ digraph tdd_cycle {
 
 Write one minimal test showing what should happen.
 
-<Good>
+| Quality | Good | Bad |
+|---------|------|-----|
+| **Example** | `test('retries failed operations 3 times', ...)` — Clear name, tests real behavior, one thing | `test('retry works', ...)` with mock — Vague name, tests mock not code |
+
 ```typescript
+// Good: Clear name, tests real behavior, one thing
 test('retries failed operations 3 times', async () => {
   let attempts = 0;
   const operation = () => {
@@ -87,12 +93,8 @@ test('retries failed operations 3 times', async () => {
   expect(result).toBe('success');
   expect(attempts).toBe(3);
 });
-```
-Clear name, tests real behavior, one thing
-</Good>
 
-<Bad>
-```typescript
+// Bad: Vague name, tests mock not code
 test('retry works', async () => {
   const mock = jest.fn()
     .mockRejectedValueOnce(new Error())
@@ -102,8 +104,6 @@ test('retry works', async () => {
   expect(mock).toHaveBeenCalledTimes(3);
 });
 ```
-Vague name, tests mock not code
-</Bad>
 
 **Requirements:**
 - One behavior
@@ -132,8 +132,12 @@ Confirm:
 
 Write simplest code to pass the test.
 
-<Good>
+| Quality | Good | Bad |
+|---------|------|-----|
+| **Example** | Just enough to pass — 3 lines of logic | Over-engineered — options, backoff, callbacks that no test requires |
+
 ```typescript
+// Good: Just enough to pass
 async function retryOperation<T>(fn: () => Promise<T>): Promise<T> {
   for (let i = 0; i < 3; i++) {
     try {
@@ -144,12 +148,8 @@ async function retryOperation<T>(fn: () => Promise<T>): Promise<T> {
   }
   throw new Error('unreachable');
 }
-```
-Just enough to pass
-</Good>
 
-<Bad>
-```typescript
+// Bad: Over-engineered (YAGNI)
 async function retryOperation<T>(
   fn: () => Promise<T>,
   options?: {
@@ -161,8 +161,6 @@ async function retryOperation<T>(
   // YAGNI
 }
 ```
-Over-engineered
-</Bad>
 
 Don't add features, refactor other code, or "improve" beyond the test.
 

@@ -6,8 +6,6 @@ allowed-tools: "Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch"
 hooks:
   SessionStart:
     - type: command
-      command: "bash scripts/planning-resume.sh"
-    - type: command
       command: "bash scripts/session-hook.sh 2>/dev/null || echo '[vega-punk] Ready. What shall we build?'"
 ---
 
@@ -22,6 +20,30 @@ hooks:
 
 For **OpenClaw**, the working directory is your current project. For **Claude Code**, it's the directory where you started the session.
 
+## Quick Start
+
+Three scenarios to get going immediately:
+
+### Scenario 1: Quick Fix (< 5 min)
+```
+You: "Fix the typo in the login button label"
+→ QUICK mode: "I'll change the label from 'SigIn' to 'SignIn'. Proceed?" → Execute → Verify → Done
+```
+
+### Scenario 2: Single Feature (clear scope)
+```
+You: "Add a dark mode toggle to the settings page"
+→ CONDENSED mode: Brief spec → "I'll implement [X] using [Y]. Proceed?" → Plan → Execute → Review → Done
+```
+
+### Scenario 3: Complex Project (ambiguous scope)
+```
+You: "Build a notification system with email and push"
+→ Full flow: ROUTE → SCAN → CLARIFY → DESIGN → QA → DEPENDENCIES → SPEC → QA → HANDOFF → Execute → REVIEW → Done
+```
+
+**First time?** Just describe what you want to build. vega-punk will pick the right mode automatically. Say "quick" for tiny tasks, or "let's think about this" for complex ones.
+
 ## How State Works
 
 **On every user message:**
@@ -32,7 +54,7 @@ For **OpenClaw**, the working directory is your current project. For **Claude Co
 
 **Special: REVIEW state.** If state is "REVIEW" and `execution_result` exists, enter REVIEW immediately. If `execution_result` is missing, check `roadmap.json`: if it exists with incomplete steps, resume execution from its `current_step` (the execution layer handles this). Otherwise wait for user input — do not restart ROUTE.
 
-**Recovery:** If the session_start_hook outputs "Resuming from [STATE]...", read `.vega-punk-state.json`, find the state value, and execute the actions for that state. Do NOT re-announce the resume message — the hook already did. Do NOT go back to ROUTE. Continue from where you left off.
+**Recovery:** If the state file exists and `state` is not "DONE", read `.vega-punk-state.json` and execute the actions for the current state. Do NOT go back to ROUTE. Continue from where you left off.
 
 **Reset:** User says "start over" / "new task" / "forget previous" → apply Post-Completion Cleanup → restart ROUTE.
 
@@ -43,6 +65,13 @@ For **OpenClaw**, the working directory is your current project. For **Claude Co
 **State JSON format:** Read the current JSON file, change the `state` field, add new fields, and write back. **Do NOT delete existing fields.** Always preserve `task`.
 
 **State JSON cleanup:** On transition to DONE, the state file is deleted (see Post-Completion Cleanup). On REVIEW → new task transition, the old state is archived via spec rename and state file deletion. This prevents indefinite growth.
+
+**State compaction:** When `qa.retries` for any QA state exceeds 2, compact the state file before the next iteration:
+1. Preserve: `state`, `task`, `context`, `selected_skills`, `scope`, `requirements`, `design`, `dependencies`, `spec_path`
+2. Compress `qa` to: `{ "retries": N, "last_feedback": "<summary>", "status": "FAIL" }` — drop intermediate feedback, keep only the latest and the count
+3. Drop any field whose value exceeds 500 characters and is not in the preserve list — replace with a 1-sentence summary
+
+This prevents the state file from growing unbounded through repeated QA cycles.
 
 **Example state progression:**
 
@@ -113,19 +142,27 @@ The final file contains the complete design context for downstream skills to rea
 
 If user asks "where are we?" or "how much left?", print current state and remaining steps.
 
-| State        | Full Path     | Condensed Path |
-|--------------|---------------|----------------|
-| ROUTE        | 9 states left | 3 states left  |
-| SCAN         | 8             | —              |
-| CLARIFY      | 7             | —              |
-| DESIGN       | 6             | —              |
-| DESIGN_QA    | 5             | —              |
-| DEPENDENCIES | 4             | —              |
-| SPEC         | 3             | —              |
-| SPEC_QA      | 2             | —              |
-| CONDENSED    | 3             | 3              |
-| HANDOFF      | 1             | 1              |
-| REVIEW       | 0             | 0              |
+| State        | Full Path     | Condensed Path | Quick Path |
+|--------------|---------------|----------------|------------|
+| ROUTE        | 9 states left | 3 states left  | 1 step     |
+| SCAN         | 8             | —              | —          |
+| CLARIFY      | 7             | —              | —          |
+| DESIGN       | 6             | —              | —          |
+| DESIGN_QA    | 5             | —              | —          |
+| DEPENDENCIES | 4             | —              | —          |
+| SPEC         | 3             | —              | —          |
+| SPEC_QA      | 2             | —              | —          |
+| CONDENSED    | 3             | 3              | —          |
+| HANDOFF      | 1             | 1              | —          |
+| REVIEW       | 0             | 0              | —          |
+
+**Three execution modes:**
+
+| Mode | Steps | When | State File | Skill Check |
+|------|-------|------|------------|-------------|
+| **QUICK** | Confirm → Execute → Verify | < 5 min micro-tasks (fix typo, add config, one-line change) | Optional | 1% Rule still applies |
+| **CONDENSED** | Minimal spec → Approval → Review | Medium tasks (single component, clear scope) | Required | Full SCAN |
+| **Full** | All 9 states | Large/multi-step tasks, ambiguous scope | Required | Full SCAN |
 
 CONDENSED mode: 3 steps (minimal spec → approval → review), skips DESIGN/DEPENDENCIES/SPEC states. From CONDENSED: 3 states left (CONDENSED → HANDOFF → REVIEW → DONE).
 
@@ -137,7 +174,7 @@ These are rules. Do not treat them as suggestions.
 
 ### 1. HARD-GATE: No Design, No Execute
 
-Do NOT execute anything — write code, scaffold projects, generate documents, create designs, produce content, modify configurations, invoke any implementation skill, or take any implementation action — until the design has been presented and the user has approved it. This applies to EVERY task regardless of perceived simplicity. A todo list, a single-function utility, a config change, a document, a presentation, a data analysis — all of them. The design can be short (a few sentences for truly simple projects via CONDENSED mode), but you MUST present it and get approval.
+Do NOT execute anything — write code, scaffold projects, generate documents, create designs, produce content, modify configurations, invoke any implementation skill, or take any implementation action — until the design has been presented and the user has approved it. This applies to EVERY task regardless of perceived simplicity. A todo list, a single-function utility, a config change, a document, a presentation, a data analysis — all of them. The design can be short (a few sentences for truly simple projects via CONDENSED mode), or a single confirmation sentence for micro-tasks via QUICK mode, but you MUST present it and get approval.
 
 ### 2. The 1% Rule: When in Doubt, Invoke
 
@@ -211,6 +248,10 @@ ROUTE → SCAN → CLARIFY → DESIGN ────→ DEPENDENCIES → SPEC ─�
 CONDENSED ──→ HANDOFF ↩ DESIGN                       ↩ SPEC
     ↓         ↘
   ↩ SCAN  (if user rejects)  (if user rejects)
+
+QUICK ──→ (Confirm → Execute → Verify → DONE)   [no state file, < 5 min]
+  ↓
+CONDENSED (if task grows)
 ```
 
 **Never skip or reverse states.** Exception: the rollback rules below.
@@ -248,6 +289,7 @@ These are the only state reversals permitted. All other transitions are forward-
     - **Creative/Implementation** (build, fix, modify, design, create) → Set state: SCAN. Proceed.
     - **Ambiguous** → Ask one question to classify.
 4. **If user says "just write code" / "skip design" / "just do it" / "don't overthink":** Set state: CONDENSED.
+5. **If task is a micro-task (< 5 min, single file, no ambiguity):** Enter QUICK mode directly. No state file needed.
 
 **State write:**
 
@@ -380,7 +422,7 @@ These are the only state reversals permitted. All other transitions are forward-
 
 ---
 
-## 通用 QA 模式 (Reusable QA Pattern)
+## Reusable QA Pattern
 
 Both DESIGN_QA and SPEC_QA use the same two-layer QA structure:
 
@@ -407,7 +449,7 @@ Both DESIGN_QA and SPEC_QA use the same two-layer QA structure:
 
 **Action:**
 
-Apply the **通用 QA 模式** (see below) with these design-specific checks:
+Apply the **Reusable QA Pattern** (see below) with these design-specific checks:
 
 - **Architecture:** Does the design follow separation of concerns? Can units be understood and changed independently?
 - **Technology choices:** Are selected tools justified? Is there a simpler alternative?
@@ -549,7 +591,7 @@ On PASS → Enter DEPENDENCIES. On FAIL → Return to DESIGN (retry count +1, ma
 
 **Action:**
 
-Apply the **通用 QA 模式** (see above) with these spec-specific checks:
+Apply the **Reusable QA Pattern** (see above) with these spec-specific checks:
 
 - **Completeness:** Can every section be implemented without guessing? No TBD, TODO, or vague statements.
 - **Consistency:** Do any sections contradict each other? Does the dependency graph match the architecture?
@@ -615,103 +657,77 @@ On PASS → Enter HANDOFF. On FAIL → Return to SPEC (retry count +1, max 3).
 
 ---
 
+## QUICK
+
+**Trigger:** User says "quick fix" / "just do it" / "tiny change" / "one-liner", OR ROUTE classifies task as estimated < 5 minutes.
+
+**Announce:** "Entering QUICK mode..."
+
+**Action:**
+
+1. **1% Rule still applies.** Check for relevant skills before proceeding. If a skill matches, invoke it — even quick tasks deserve discipline.
+2. **Confirm intent:** State what you'll do in one sentence: "I'll [action] by [method]. Proceed?"
+   - This single confirmation IS the design approval for micro-tasks — it satisfies HARD-GATE as a lightweight approval path.
+3. **If approved →** Execute directly. No state file required. No spec. Just do it.
+4. **Verify after execution:** Apply verify-gate mentally — evidence before claiming done.
+5. **If rejected →** User wants more deliberation. Set state: CONDENSED and proceed from there.
+
+**When NOT to use QUICK:**
+- Task touches > 1 file
+- Task involves architectural decisions
+- Task has unclear scope or dependencies
+- You're not confident it's < 5 minutes
+- User explicitly says "let's think about this" / "what's the plan"
+
+**If task grows beyond 5 minutes during QUICK:** Stop. Tell user: "This is bigger than expected. Switch to CONDENSED or full flow?" Respect their choice.
+
+**State write:** No state file required for QUICK mode. If switching to CONDENSED, create state file normally.
+
+---
+
 ## HANDOFF
 
 **Trigger:** State is HANDOFF.
 
-**Announce:** "Entering HANDOFF... Design complete, transitioning to planning."
+**Announce:** "Design complete, handing off to planning."
 
 **Action:**
 
-1. **Invoke the sub-skill:** Read [references/plan-builder/SKILL.md](references/plan-builder/SKILL.md) and follow its planning workflow.
-2. **Data contract:** The `.vega-punk-state.json` file IS the data transfer mechanism. The sub-skill reads it directly to extract:
-    - `spec_path` (or `spec` if condensed) — the design document for planning
-    - `dependencies` — serial/parallel analysis for phase structuring
-    - `selected_skills` — relevant skills for the execution plan
-    - `design` — architecture and component details
-    - `requirements` — purpose, constraints, success criteria
-3. **Transition to Planning Phase:** The sub-skill creates `roadmap.json` from this context. Follow its execution loop for step-by-step implementation.
+1. Read [references/plan-builder/SKILL.md](references/plan-builder/SKILL.md) and follow its workflow
+2. `.vega-punk-state.json` is the data contract — plan-builder reads it directly
 
-**State write:** Read the current JSON, change `state` to "REVIEW", add `handoff_to`. Keep all existing fields — the full context remains available for downstream skills and execution callback.
-
-```json
-{
-  "state": "REVIEW",
-  "task": "...",
-  "context": "...",
-  "selected_skills": [],
-  "scope": "...",
-  "requirements": {},
-  "design": {},
-  "dependencies": {},
-  "spec_path": "...",
-  "handoff_to": "plan-builder"
-}
-```
-
----
-
-## Planning with JSON (Sub-skill)
-
-Planning is managed by a sub-skill at [references/plan-builder/SKILL.md](references/plan-builder/SKILL.md). After HANDOFF, read that file and follow its workflow:
-
-1. **Read** `references/plan-builder/SKILL.md` — contains the full planning framework
-2. **Create** `roadmap.json` per the sub-skill's specification
-3. **Execute** steps per the sub-skill's execution loop
-4. **Offer** execution choice (Subagent-Driven vs Inline) per the sub-skill's handoff section
-
-The sub-skill defines: roadmap.json structure, step granularity rules, verification types, failure escalation, and anti-patterns.
-
----
-
-## REVIEW
-
-**Trigger:** State is REVIEW.
-
-**Purpose:** Receive execution results, compare against the original spec's success criteria, and recommend next actions. This closes the design → execute → verify loop.
-
-**Execution Result Writer Contract:** The execution layer (task-dispatcher or plan-executor) is responsible for writing `execution_result` to `.vega-punk-state.json`. All execution sub-skills MUST follow this exact format when completing:
+**State write:** Change `state` to "REVIEW", add `"handoff_to": "plan-builder"`. Keep all existing fields.
 
 ```json
 {
   "state": "REVIEW",
   "task": "...",
   "...previous fields...": "...",
-  "execution_result": {
-    "status": "success|partial|failed",
-    "summary": "...",
-    "artifacts": ["path1", "path2"],
-    "verification": "passed|failed",
-    "notes": "..."
-  }
+  "handoff_to": "plan-builder"
 }
 ```
 
-This update triggers vega-punk's REVIEW state automatically. Do NOT modify any other fields in the state JSON during this write.
-
-**How this is triggered:** After execution + verification completes, the execution layer writes the above JSON. vega-punk then reads `execution_result` and presents the outcome to the user.
-
-**Action:**
-
-1. Read `execution_result` from the state file.
-2. Compare against `requirements.success` from the original spec.
-3. Present a brief summary to the user:
-    - **success + passed:** "Execution complete. All success criteria met. Artifacts: [list]. Start a new task?"
-    - **success + failed:** "Execution complete but verification failed. Issues: [notes]. Iterate on the design or start fresh?"
-    - **partial:** "Execution partially complete. Done: [summary]. Remaining: [summary]. Continue or redesign?"
-    - **failed:** "Execution failed. Root cause: [notes]. Redesign needed?"
-4. Based on user response:
-    - **New task** → Post-Completion Cleanup → ROUTE
-    - **Iterate** → Set state: DESIGN with `execution_result` as context
-    - **Redesign** → Set state: CLARIFY with `execution_result` as context
+Planning and execution are handled by downstream skills.
 
 ---
 
-## Execution Phase: Verification Contract
+## REVIEW
 
-> **Ownership:** This phase is managed by the **plan-builder** sub-skill during execution, using the **verify-gate** skill.
->
-> The requirement is simple: every task type must have concrete, observable evidence before claiming done. What that evidence looks like, how to collect it, and how to retry — all defined by `verify-gate`. vega-punk only specifies **what success looks like** in the spec; the execution layer decides **how to prove it**.
+**Trigger:** State is REVIEW with `execution_result` present.
+
+**Action:**
+
+1. Read `execution_result` from the state file
+2. Compare against `requirements.success`
+3. Present summary to user and ask next step:
+   - **success + passed** → "All criteria met. Start a new task?"
+   - **success + failed** → "Verification failed. Iterate or redesign?"
+   - **partial** → "Partially done. Continue or redesign?"
+   - **failed** → "Execution failed. Redesign needed?"
+
+Based on user response → DESIGN (iterate), CLARIFY (redesign), or Post-Completion Cleanup → ROUTE (new task).
+
+---
 
 ## Post-Completion Cleanup
 
@@ -728,8 +744,12 @@ When vega-punk is invoked for the first time in a project:
 
 1. **Create spec directory:** `mkdir -p vega-punk/specs`
 2. **Verify gitignore:** Add `.vega-punk-state.json` to `.gitignore`. **Do NOT** gitignore `vega-punk/` — spec history should be committed.
-3. **Verify scripts exist:** `ls scripts/` should contain `planning-resume.sh`, `session-hook.sh`, etc. If missing, inform the user.
+3. **Verify scripts exist:** `ls scripts/` should contain `session-hook.sh`, etc. If missing, inform the user.
 4. Proceed to ROUTE state. No state file needed for first run.
+
+## Self-Recovery Guide
+
+See [references/self-recovery.md](references/self-recovery.md) for the full recovery procedures.
 
 ---
 
@@ -753,8 +773,6 @@ When vega-punk is invoked for the first time in a project:
 | "This is just a draft, we'll polish later" | There are no drafts. Output must be aesthetically first-class — every time. |
 
 ## Skill Dependencies
-
-**Version policy:** vega-punk version N.x requires all referenced sub-skills at version N.x or later. Sub-skills are released in lockstep with the main skill. If a sub-skill version lags, read the sub-skill's own documentation for breaking changes.
 
 **Sub-skills (referenced):**
 

@@ -1,6 +1,8 @@
 ---
 name: plan-builder
 description: Resilient executable planning that never loses context. Creates roadmap.json with phases, steps, code, tools, and verification. Auto-recovers from mid-task disconnects. AI executes step-by-step with automatic progression. Use when you have a spec or requirements for a multi-step task, before touching code.
+categories: ["workflow"]
+triggers: ["plan", "roadmap.json", "multi-step task", "break down", "implementation plan", "create a plan", "spec to tasks"]
 user-invocable: true
 allowed-tools: "Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch"
 hooks:

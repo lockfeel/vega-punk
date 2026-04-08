@@ -1,6 +1,8 @@
 ---
 name: task-dispatcher
 description: Use when executing implementation plans with independent tasks in the current session
+categories: ["workflow"]
+triggers: ["subagent-driven development", "dispatch subagent", "implement tasks", "roadmap execution"]
 ---
 
 # Subagent-Driven Development
