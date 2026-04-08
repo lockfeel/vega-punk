@@ -30,8 +30,8 @@ trap 'rm -f "$TMPFILE"' EXIT
 # ── 1. Local sub-skills (references/*/SKILL.md) ──────────────
 for f in references/*/SKILL.md; do
   [[ -f "$f" ]] || continue
-  name=$(grep '^name:' "$f" | head -1 | sed 's/name: *//')
-  desc=$(grep '^description:' "$f" | head -1 | sed 's/description: *//' | sed 's/^"//' | sed 's/"$//')
+  name=$(grep '^name:' "$f" 2>/dev/null | head -1 | sed 's/name: *//' || true)
+  desc=$(grep '^description:' "$f" 2>/dev/null | head -1 | sed 's/description: *//' | sed 's/^"//' | sed 's/"$//' || true)
   [[ -z "$name" ]] && continue
   echo "$name	$desc	local	$f" >> "$TMPFILE"
 done
@@ -46,31 +46,29 @@ if [[ -f "SKILL.md" ]]; then
     if [[ -f "references/${name}/SKILL.md" ]]; then
       continue
     fi
-    # Avoid duplicates
-    if grep -q "^${name}	" "$TMPFILE" 2>/dev/null; then
-      continue
-    fi
     echo "$name	external system skill	system	-" >> "$TMPFILE"
   done
 fi
 
-# ── 3. Platform skills (~/.claude/skills, .claude/skills) ───
-for dir in "$HOME/.claude/skills" ".claude/skills"; do
+# ── 3. Platform skills (all known directories) ───────────────
+platform_dirs=(
+  "$HOME/.claude/skills"
+  "$HOME/.openclaw/skills"
+  "$HOME/.openclaw/workspace/skills"
+)
+
+for dir in "${platform_dirs[@]}"; do
   [[ -d "$dir" ]] || continue
   for f in "$dir"/*/SKILL.md "$dir"/*.md; do
     [[ -f "$f" ]] || continue
-    name=$(grep '^name:' "$f" | head -1 | sed 's/name: *//')
-    desc=$(grep '^description:' "$f" | head -1 | sed 's/description: *//' | sed 's/^"//' | sed 's/"$//')
+    name=$(grep '^name:' "$f" 2>/dev/null | head -1 | sed 's/name: *//' || true)
+    desc=$(grep '^description:' "$f" 2>/dev/null | head -1 | sed 's/description: *//' | sed 's/^"//' | sed 's/"$//' || true)
     [[ -z "$name" ]] && name=$(basename "$(dirname "$f")")
-    # Avoid duplicates
-    if grep -q "^${name}	" "$TMPFILE" 2>/dev/null; then
-      continue
-    fi
     echo "$name	$desc	platform	$f" >> "$TMPFILE"
   done
 done
 
-# ── 4. Assemble JSON ─────────────────────────────────────────
+# ── 4. Assemble JSON (deduplicate by name, prefer local > system > platform) ──
 if [[ ! -s "$TMPFILE" ]]; then
   echo "[]"
 else
@@ -78,28 +76,33 @@ else
     node -e "
       const fs = require('fs');
       const lines = fs.readFileSync(process.argv[1], 'utf8').trim().split('\n').filter(l => l);
-      const skills = lines.map(l => {
+      const priority = { local: 0, system: 1, platform: 2 };
+      const seen = {};
+      for (const l of lines) {
         const [name, desc, source, path] = l.split('\t');
-        const obj = { name, description: desc, source };
-        if (path && path !== '-') obj.path = path;
-        return obj;
-      });
-      console.log(JSON.stringify(skills, null, 2));
+        if (!seen[name] || priority[source] < priority[seen[name].source]) {
+          seen[name] = { name, description: desc, source };
+          if (path && path !== '-') seen[name].path = path;
+        }
+      }
+      console.log(JSON.stringify(Object.values(seen), null, 2));
     " "$TMPFILE"
   else
     python3 -c "
 import json, sys
-skills = []
+priority = {'local': 0, 'system': 1, 'platform': 2}
+seen = {}
 with open(sys.argv[1]) as f:
     for line in f:
         parts = line.strip().split('\t')
         if len(parts) < 3: continue
         name, desc, source = parts[0], parts[1], parts[2]
-        obj = {'name': name, 'description': desc, 'source': source}
-        if len(parts) > 3 and parts[3] != '-':
-            obj['path'] = parts[3]
-        skills.append(obj)
-print(json.dumps(skills, indent=2, ensure_ascii=False))
+        if name not in seen or priority.get(source, 99) < priority.get(seen[name]['source'], 99):
+            obj = {'name': name, 'description': desc, 'source': source}
+            if len(parts) > 3 and parts[3] != '-':
+                obj['path'] = parts[3]
+            seen[name] = obj
+print(json.dumps(list(seen.values()), indent=2, ensure_ascii=False))
     " "$TMPFILE"
   fi
 fi
@@ -110,29 +113,34 @@ if [[ -n "$OUTPUT" ]]; then
     node -e "
       const fs = require('fs');
       const lines = fs.readFileSync(process.argv[1], 'utf8').trim().split('\n').filter(l => l);
-      const skills = lines.map(l => {
+      const priority = { local: 0, system: 1, platform: 2 };
+      const seen = {};
+      for (const l of lines) {
         const [name, desc, source, path] = l.split('\t');
-        const obj = { name, description: desc, source };
-        if (path && path !== '-') obj.path = path;
-        return obj;
-      });
-      fs.writeFileSync(process.argv[2], JSON.stringify(skills, null, 2) + '\n');
+        if (!seen[name] || priority[source] < priority[seen[name].source]) {
+          seen[name] = { name, description: desc, source };
+          if (path && path !== '-') seen[name].path = path;
+        }
+      }
+      fs.writeFileSync(process.argv[2], JSON.stringify(Object.values(seen), null, 2) + '\n');
     " "$TMPFILE" "$OUTPUT"
   else
     python3 -c "
 import json, sys
-skills = []
+priority = {'local': 0, 'system': 1, 'platform': 2}
+seen = {}
 with open(sys.argv[1]) as f:
     for line in f:
         parts = line.strip().split('\t')
         if len(parts) < 3: continue
         name, desc, source = parts[0], parts[1], parts[2]
-        obj = {'name': name, 'description': desc, 'source': source}
-        if len(parts) > 3 and parts[3] != '-':
-            obj['path'] = parts[3]
-        skills.append(obj)
+        if name not in seen or priority.get(source, 99) < priority.get(seen[name]['source'], 99):
+            obj = {'name': name, 'description': desc, 'source': source}
+            if len(parts) > 3 and parts[3] != '-':
+                obj['path'] = parts[3]
+            seen[name] = obj
 with open(sys.argv[2], 'w') as f:
-    json.dump(skills, f, indent=2, ensure_ascii=False)
+    json.dump(list(seen.values()), f, indent=2, ensure_ascii=False)
     f.write('\n')
     " "$TMPFILE" "$OUTPUT"
   fi

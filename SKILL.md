@@ -39,7 +39,7 @@ You: "Add a dark mode toggle to the settings page"
 ### Scenario 3: Complex Project (ambiguous scope)
 ```
 You: "Build a notification system with email and push"
-→ Full flow: ROUTE → SCAN → CLARIFY → DESIGN → QA → DEPENDENCIES → SPEC → QA → HANDOFF → Execute → REVIEW → Done
+→ FULL flow: ROUTE → SCAN → CLARIFY → DESIGN → QA → DEPENDENCIES → SPEC → QA → HANDOFF → Execute → REVIEW → Done
 ```
 
 **First time?** Just describe what you want to build. vega-punk will pick the right mode automatically. Say "quick" for tiny tasks, or "let's think about this" for complex ones.
@@ -83,7 +83,10 @@ After SCAN:
   "task": "build todo app",
   "context": "...",
   "selected_skills": [],
-  "scope": "single"
+  "skill_selection": "why these skills were chosen",
+  "scope": "single",
+  "scan_depth": 1,
+  "transition_count": 2
 }
 ```
 
@@ -113,7 +116,9 @@ After HANDOFF:
   "design": {},
   "dependencies": {},
   "spec_path": "...",
-  "handoff_to": "plan-builder"
+  "handoff_to": "plan-builder",
+  "transition_count": 9,
+  "user_satisfaction": null
 }
 ```
 
@@ -143,7 +148,7 @@ The final file contains the complete design context for downstream skills to rea
 
 If user asks "where are we?" or "how much left?", print current state and remaining steps.
 
-| State        | Full Path     | Condensed Path | Quick Path |
+| State        | FULL Path     | CONDENSED Path | QUICK Path |
 |--------------|---------------|----------------|------------|
 | ROUTE        | 9 states left | 3 states left  | 1 step     |
 | SCAN         | 8             | —              | —          |
@@ -162,9 +167,9 @@ If user asks "where are we?" or "how much left?", print current state and remain
 
 | Mode | Steps | When | State File | Skill Check |
 |------|-------|------|------------|-------------|
-| **QUICK** | Confirm → Execute → Verify | Purely local changes, single file, unambiguous solution | Optional | 1% Rule still applies |
+| **QUICK** | Confirm → Execute → Verify | Purely local changes, single file, unambiguous solution | Optional | Lightweight (skip for text/config changes) |
 | **CONDENSED** | Minimal spec → Approval → Review | Medium tasks (single component, clear scope) | Required | Full SCAN |
-| **Full** | All 9 states | Large/multi-step tasks, ambiguous scope | Required | Full SCAN |
+| **FULL** | All 9 states | Large/multi-step tasks, ambiguous scope | Required | Full SCAN |
 
 CONDENSED mode: 3 steps (minimal spec → approval → review), skips DESIGN/DEPENDENCIES/SPEC states. From CONDENSED: 3 states left (CONDENSED → HANDOFF → REVIEW → DONE).
 
@@ -251,7 +256,7 @@ CONDENSED ──→ HANDOFF ↩ DESIGN                       ↩ SPEC
     ↓         ↘
   ↩ SCAN  (if user rejects)  (if user rejects)
 
-QUICK ──→ (Confirm → Execute → Verify → DONE)   [no state file, purely local change]
+QUICK ──→ (State → Confirm → Execute → Verify → Delete state → DONE)
   ↓
 CONDENSED (if task grows)
 ```
@@ -284,14 +289,14 @@ These are the only state reversals permitted. All other transitions are forward-
 **Action:**
 
 0. **Post-Completion Cleanup:** If state is "DONE" and `.vega-punk-state.json` exists, archive the previous spec file (rename `*.md` → `*.DONE.md`) and delete `.vega-punk-state.json`. This ensures a clean slate for the new task.
-1. **Apply the 1% Rule first.** Might any skill apply? Invoke it. Even a simple question is a task. Check for skills before responding.
+1. **Apply the 1% Rule (context-aware):** If the task is classified as **Informational** (simple Q&A, definitions, explanations), answer directly — no skill check needed. If classified as **Creative/Implementation** or **Ambiguous**, check for relevant skills before proceeding. Action = task; explanation ≠ task.
 2. **Bug detection:** If user message contains bug-related keywords (`bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception`), invoke root-cause skill first.
 3. Classify:
     - **Informational** (simple Q&A, definitions, explanations) → Answer directly. Set state: DONE. Stop.
     - **Creative/Implementation** (build, fix, modify, design, create) → Set state: SCAN. Proceed.
     - **Ambiguous** → Ask one question to classify.
 4. **If user says "just write code" / "skip design" / "just do it" / "don't overthink":** Set state: CONDENSED.
-5. **If task is a micro-task** (purely local change, single file, unambiguous solution, no new dependencies): Enter QUICK mode directly. No state file needed.
+5. **If task is a micro-task** (purely local change, single file, unambiguous solution, no new dependencies): Enter QUICK mode directly. QUICK mode creates a minimal state file for traceability.
 
 **State write:**
 
@@ -299,7 +304,8 @@ These are the only state reversals permitted. All other transitions are forward-
 {
   "state": "SCAN",
   "task": "<user request>",
-  "scan_depth": 0
+  "scan_depth": 0,
+  "transition_count": 1
 }
 ```
 
@@ -315,10 +321,10 @@ These are the only state reversals permitted. All other transitions are forward-
 
 1. **Check scope BEFORE asking questions.** If the request describes multiple independent subsystems (e.g., "build a platform with chat, file storage, billing, and analytics"), tell the user immediately that the project should be split. Don't spend time refining details of a project that needs to be decomposed first. Help the user identify independent pieces, how they relate, and what order to build them. Then proceed with the first sub-project.
 2. Check project context: files, docs, recent commits.
-3. **Skill Routing:** Read `scan_depth` from the state file. If it is 3 or greater, skip skill routing and proceed to step 4. Otherwise, run `bash scripts/discover-skills.sh` to get the full list of all registered skills (local sub-skills + platform skills + external system skills). The script outputs a JSON array with each skill's name, description, source, and path. Match task against this list. Select ALL relevant skills and note execution order. Process skills first (brainstorming, debugging), implementation skills second.
+3. **Skill Routing:** Read `scan_depth` from the state file. If it is 3 or greater, skip skill routing and proceed to step 4. Otherwise, run `bash scripts/discover-skills.sh` to get the full list of all registered skills (local sub-skills + platform skills from all known directories + external system skills). The script outputs a JSON array with each skill's name, description, source, and path. Match task against this list. Select ALL relevant skills and note execution order. Process skills first (brainstorming, debugging), implementation skills second.
 4. **Skill invocation purpose:** Invoking a skill loads its guidance into context — it tells you HOW to proceed. You do NOT execute the skill's implementation steps here. You use the skill's workflow to inform the CLARIFY → DESIGN → SPEC flow.
 
-**State write:** Read the current JSON, change `state` to "CLARIFY", add `context`, `selected_skills`, `scope`. Increment `scan_depth` (or set to 1 if not present). Keep all existing fields.
+**State write:** Read the current JSON, change `state` to "CLARIFY", add `context`, `selected_skills`, `scope`, `skill_selection`. Increment `scan_depth` (or set to 1 if not present). Increment `transition_count`. Keep all existing fields.
 
 ```json
 {
@@ -329,6 +335,7 @@ These are the only state reversals permitted. All other transitions are forward-
     "skill1",
     "skill2"
   ],
+  "skill_selection": "Why these skills were chosen and in what order",
   "scope": "<single|decomposed>",
   "scan_depth": 1,
   "transition_count": 1
@@ -350,7 +357,7 @@ These are the only state reversals permitted. All other transitions are forward-
 3. Prefer multiple choice. Focus on: purpose, constraints, success criteria.
 4. If user says "you decide", document assumption and proceed.
 
-**State write:** Read the current JSON, change `state` to "DESIGN", add `requirements`. Reset `scan_depth` to 0. Keep all existing fields.
+**State write:** Read the current JSON, change `state` to "DESIGN", add `requirements`. Reset `scan_depth` to 0. Increment `transition_count`. Keep all existing fields.
 
 ```json
 {
@@ -405,7 +412,7 @@ These are the only state reversals permitted. All other transitions are forward-
 
 **If user changes direction:** Apply the Allowed Rollbacks rules above.
 
-**State write:** Read the current JSON, change `state` to "DESIGN_QA", add `design`. Keep all existing fields.
+**State write:** Read the current JSON, change `state` to "DESIGN_QA", add `design`. Increment `transition_count`. Keep all existing fields.
 
 ```json
 {
@@ -463,7 +470,7 @@ Apply the **Reusable QA Pattern** (see below) with these design-specific checks:
 
 On PASS → Enter DEPENDENCIES. On FAIL → Return to DESIGN (retry count +1, max 3).
 
-**State write:** Read the current JSON, change `state` to "DEPENDENCIES" (PASS) or "DESIGN" (FAIL), update `qa` fields. Keep all existing fields.
+**State write:** Read the current JSON, change `state` to "DEPENDENCIES" (PASS) or "DESIGN" (FAIL), update `qa` fields. Increment `transition_count`. Keep all existing fields.
 
 ```json
 {
@@ -513,7 +520,7 @@ On PASS → Enter DEPENDENCIES. On FAIL → Return to DESIGN (retry count +1, ma
 - Independent UI components = parallel
 - Shared types first (serial), then implementations (parallel)
 
-**State write:** Read the current JSON, change `state` to "SPEC", add `dependencies`. Keep all existing fields.
+**State write:** Read the current JSON, change `state` to "SPEC", add `dependencies`. Increment `transition_count`. Keep all existing fields.
 
 ```json
 {
@@ -563,7 +570,7 @@ On PASS → Enter DEPENDENCIES. On FAIL → Return to DESIGN (retry count +1, ma
 4. Ask user: "Spec written to `<path>`. Review the spec. If it looks good, I'll hand off to planning."
 5. Wait for approval. If changes → Fix → Re-run self-review.
 
-**State write:** Read the current JSON, change `state` to "SPEC_QA", add `spec_path`, add `qa` field. Keep all existing fields.
+**State write:** Read the current JSON, change `state` to "SPEC_QA", add `spec_path`, add `qa` field. Increment `transition_count`. Keep all existing fields.
 
 ```json
 {
@@ -605,7 +612,7 @@ Apply the **Reusable QA Pattern** (see above) with these spec-specific checks:
 
 On PASS → Enter HANDOFF. On FAIL → Return to SPEC (retry count +1, max 3).
 
-**State write:** Read the current JSON, change `state` to "HANDOFF", update `qa` fields. Keep all existing fields.
+**State write:** Read the current JSON, change `state` to "HANDOFF", update `qa` fields. Increment `transition_count`. Keep all existing fields.
 
 ```json
 {
@@ -644,7 +651,7 @@ On PASS → Enter HANDOFF. On FAIL → Return to SPEC (retry count +1, max 3).
 6. **If rejected →** Set state: SCAN. User wants the full flow from the beginning.
 7. **After approval, before HANDOFF, do a quick self-review:** Are there any TBD, TODO, or ambiguous statements in the minimal spec? Fix them inline.
 
-**State write:** Read the current JSON, change `state` to "HANDOFF", add `mode`, `spec`. Keep all existing fields.
+**State write:** Read the current JSON, change `state` to "HANDOFF", add `mode`, `spec`, `dependencies`. Increment `transition_count`. Keep all existing fields.
 
 ```json
 {
@@ -655,7 +662,8 @@ On PASS → Enter HANDOFF. On FAIL → Return to SPEC (retry count +1, max 3).
   "scope": "...",
   "requirements": {},
   "mode": "condensed",
-  "spec": "<3-sentence summary>"
+  "spec": "<3-sentence summary>",
+  "dependencies": "all parallel / backend first, then frontend"
 }
 ```
 
@@ -674,21 +682,22 @@ On PASS → Enter HANDOFF. On FAIL → Return to SPEC (retry count +1, max 3).
 | **Architecture** | No interface or contract changes | Changes public API, types, or contracts |
 | **Dependencies** | No new packages or config | Introduces new dependency or config |
 
-If any criterion fails → do not enter QUICK. Use CONDENSED or Full.
+If any criterion fails → do not enter QUICK. Use CONDENSED or FULL.
 
 **Announce:** "Entering QUICK mode..."
 
 **Action:**
 
-1. **1% Rule (lightweight):** If the solution involves anything beyond a pure text/config change (e.g., new logic, new imports, new API calls), check for relevant skills. For pure text/config changes (typos, renames, label changes), skip skill check and proceed.
-2. **Confirm intent:** State what you'll do in one sentence: "I'll [action] by [method]. Proceed?"
+1. **Create a minimal state record:** Write `.vega-punk-state.json` with `state: "QUICK"`, `task`, and `transition_count`. This enables traceability if the task grows mid-execution.
+2. **1% Rule (lightweight):** If the solution involves anything beyond a pure text/config change (e.g., new logic, new imports, new API calls), check for relevant skills. For pure text/config changes (typos, renames, label changes), skip skill check and proceed.
+3. **Confirm intent:** State what you'll do in one sentence: "I'll [action] by [method]. Proceed?"
    - This single confirmation IS the design approval for micro-tasks — it satisfies HARD-GATE as a lightweight approval path.
-3. **If approved →** Execute directly. No state file required. No spec. Just do it.
-4. **Verify after execution:** Apply verify-gate mentally — evidence before claiming done.
-5. **If rejected →** User wants more deliberation. Set state: CONDENSED and proceed from there.
-6. **If task grows during execution** (touches more files than expected, introduces complexity): Stop. Tell user: "This is more complex than expected. Switch to CONDENSED or full flow?" Respect their choice.
+4. **If approved →** Execute directly. Set state: DONE on completion. Delete `.vega-punk-state.json`.
+5. **Verify after execution:** Apply verify-gate mentally — evidence before claiming done.
+6. **If rejected →** User wants more deliberation. Set state: CONDENSED and proceed from there.
+7. **If task grows during execution** (touches more files than expected, introduces complexity): Update state to CONDENSED. Tell user: "This is more complex than expected. Switch to CONDENSED or full flow?" Respect their choice. State is already present — just change the state field.
 
-**State write:** No state file required for QUICK mode. If switching to CONDENSED, create state file normally.
+**State write:** Write `.vega-punk-state.json` with `state: "QUICK"`, `task`, `transition_count`. On completion → set state: DONE and delete file. If switching to CONDENSED, just change the state field — file already exists.
 
 ---
 
@@ -703,7 +712,7 @@ If any criterion fails → do not enter QUICK. Use CONDENSED or Full.
 1. Read [references/plan-builder/SKILL.md](references/plan-builder/SKILL.md) and follow its workflow
 2. `.vega-punk-state.json` is the data contract — plan-builder reads it directly
 
-**State write:** Change `state` to "REVIEW", add `"handoff_to": "plan-builder"`. Keep all existing fields.
+**State write:** Change `state` to "REVIEW", add `"handoff_to": "plan-builder"`. Increment `transition_count`. Keep all existing fields.
 
 ```json
 {
@@ -711,7 +720,8 @@ If any criterion fails → do not enter QUICK. Use CONDENSED or Full.
   "task": "...",
   "...previous fields...": "...",
   "handoff_to": "plan-builder",
-  "user_satisfaction": null
+  "user_satisfaction": null,
+  "transition_count": 9
 }
 ```
 
@@ -759,7 +769,83 @@ When vega-punk is invoked for the first time in a project:
 
 ## Self-Recovery Guide
 
-See [references/self-recovery.md](references/self-recovery.md) for the full recovery procedures.
+When vega-punk's own state becomes corrupted or inconsistent, use these procedures.
+
+### Symptom: State file contains unknown state value
+```
+1. Read .vega-punk-state.json
+2. If state is not one of: ROUTE, SCAN, CLARIFY, DESIGN, DESIGN_QA,
+   DEPENDENCIES, SPEC, SPEC_QA, CONDENSED, QUICK, HANDOFF, REVIEW, DONE
+3. → This is a corrupted state. Recovery:
+   a. If task and context are present → Set state to CLARIFY (re-clarify with user)
+   b. If only task is present → Set state to ROUTE (start from scratch)
+   c. If file is empty or unreadable → Delete file, start fresh from ROUTE
+4. Tell user: "State file was corrupted. Recovered to [STATE]. Let me know if this doesn't match where we were."
+```
+
+### Symptom: State says DESIGN but no design field exists
+```
+1. State says DESIGN but design field is missing or empty
+2. → Design was lost (session interrupted before saving)
+3. Recovery: Set state to CLARIFY — re-clarify with user and re-enter DESIGN
+4. Tell user: "Design context was lost. Let me re-clarify the requirements."
+```
+
+### Symptom: State says HANDOFF but spec_path doesn't exist
+```
+1. State says HANDOFF or REVIEW but spec file is missing
+2. → Spec was never written or was deleted
+3. Recovery: Check if design and dependencies fields are present
+   a. If present → Re-generate spec from design + dependencies, set state to SPEC
+   b. If missing → Set state to CLARIFY, re-run the design flow
+4. Tell user: "Spec file was lost. I'll regenerate it from our design."
+```
+
+### Symptom: roadmap.json is missing or corrupted
+```
+1. State says REVIEW but roadmap.json doesn't exist or is invalid JSON
+2. → Execution was interrupted before/during planning
+3. Recovery:
+   a. If .vega-punk-state.json has spec_path and spec exists → Re-run HANDOFF
+   b. If no spec exists → Use Self-Recovery for missing spec above
+4. Tell user: "Execution plan was lost. I'll regenerate it from our spec."
+```
+
+### Symptom: Stuck in a QA loop (retries keep failing)
+```
+1. DESIGN_QA or SPEC_QA retries reaching 3
+2. → The design/spec has a fundamental issue, not a fixable one
+3. Recovery:
+   a. Stop the loop
+   b. Present the specific failing criteria to the user
+   c. Ask: "This has failed [N] times. The core issue is: [summary].
+           Should we (1) restart design, (2) change requirements, or (3) proceed despite the risk?"
+   d. Follow user's direction
+4. Do NOT silently increase retry limits
+```
+
+### Symptom: Session resumed but state feels wrong
+```
+1. State says a state but the context doesn't match the current conversation
+2. → Stale state from a previous unrelated task
+3. Recovery:
+   a. Ask user: "I'm seeing state from a previous task ([task summary]).
+                Should I continue that, or start fresh?"
+   b. If fresh → Apply Post-Completion Cleanup, start ROUTE
+   c. If continue → Proceed from the current state
+```
+
+### Nuclear Option: Full Reset
+If nothing else works, or if the user says "reset everything":
+```
+1. Archive any existing specs: vega-punk/specs/*.md → *.CANCELLED.md
+2. Delete .vega-punk-state.json
+3. Delete roadmap.json (if exists)
+4. Delete findings.json (if exists)
+5. Delete progress.json (if exists)
+6. Tell user: "[vega-punk] Full reset complete. Starting fresh. What shall we build?"
+7. Start from ROUTE
+```
 
 ---
 
@@ -801,6 +887,8 @@ See [references/self-recovery.md](references/self-recovery.md) for the full reco
 - **worktree-setup** — isolated workspace for feature work
 - **review-intake** — process code review feedback
 
+**Self-recovery:** Built-in — see "Self-Recovery Guide" section above. No external reference needed.
+
 ## Key Principles
 
 - **One state at a time** — Never skip states. Use CONDENSED for speed.
@@ -828,24 +916,4 @@ Centralized trigger conditions for all referenced skills:
 | **review-intake** | Processing review feedback | Code review comments received |
 | **branch-landing** | All tasks complete, tests passing | Merge/PR/keep/discard decision |
 
-## Common Skill Chains
-
-Tasks often require multiple skills in sequence. Recognize these patterns during SCAN:
-
-- **Web App Development**: `ui-ux-pro-max → frontend-design → test-first → verify-gate → review-request`
-- **Bug Fix**: `root-cause → test-first → verify-gate`
-- **Feature Development**: `plan-builder → task-dispatcher → review-request → branch-landing`
-- **Design to Code**: `flutter-lens → verify-gate → review-request`
-- **Skill Development**: `skill-creator → self-improving-agent`
-
-## Decision Rules
-
-During SCAN, apply these rules when selecting skills:
-
-1. **Always select verify-gate** for any implementation task
-2. **Always select test-first** for any feature/bugfix in codebases with tests
-3. **Always select root-cause** when something is broken or failing
-4. **Prefer ui-ux-pro-max over frontend-design** when design decisions come first
-5. **Prefer task-dispatcher over parallel-swarm** when there's a roadmap.json
-6. **CONDENSED mode** for purely local changes with clear, unambiguous solutions
-7. **Full flow** for anything spanning multiple files, components, or subsystems
+**How to choose skills:** During SCAN, you have access to the full list of registered skills (from `discover-skills.sh`). Match the task intent against each skill's description and trigger conditions. Select all relevant skills. You decide the execution order based on the specific task context — don't follow fixed chains. Trust your judgment about what's needed and in what order.
