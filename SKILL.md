@@ -22,124 +22,83 @@ For **OpenClaw**, the working directory is your current project. For **Claude Co
 
 ## Quick Start
 
-Three scenarios to get going immediately:
+Describe what you want to build. vega-punk auto-selects the mode:
 
-### Scenario 1: Quick Fix (purely local change)
-```
-You: "Fix the typo in the login button label"
-→ QUICK mode: "I'll change the label from 'Sign' to 'Sign In'. Proceed?" → Execute → Verify → Done
-```
+- **Small change** ("fix typo") → CONDENSED: brief spec → approve → execute
+- **Single feature** ("add dark mode") → CONDENSED: spec → plan → execute
+- **Complex project** ("build notification system") → FULL: design → QA → dependencies → spec → plan → execute
 
-### Scenario 2: Single Feature (clear scope)
-```
-You: "Add a dark mode toggle to the settings page"
-→ CONDENSED mode: Brief spec → "I'll implement [X] using [Y]. Proceed?" → Plan → Execute → Review → Done
-```
+Say "just do it" for condensed flow, or "let's think about this" for complex ones.
 
-### Scenario 3: Complex Project (ambiguous scope)
-```
-You: "Build a notification system with email and push"
-→ FULL flow: ROUTE → SCAN → CLARIFY → DESIGN → QA → DEPENDENCIES → SPEC → QA → HANDOFF → Execute → REVIEW → Done
-```
-
-**First time?** Just describe what you want to build. vega-punk will pick the right mode automatically. Say "quick" for tiny tasks, or "let's think about this" for complex ones.
+See [State Machine](#state-machine) for full flow details.
 
 ## How State Works
 
+**State file:** `.vega-punk-state.json` in the working directory.
+
 **On every user message:**
 
-1. Read `.vega-punk-state.json` if it exists.
-2. If the file exists and `state` is not "DONE", **do NOT start from ROUTE**. Execute the current state's actions directly.
-3. If the file is missing or `state` is "DONE", start from ROUTE.
+```
+BEGIN STATE_RESOLUTION
+    READ .vega-punk-state.json
 
-**Special: REVIEW state.** If state is "REVIEW" and `execution_result` exists, enter REVIEW immediately. If `execution_result` is missing, check `roadmap.json`: if it exists with incomplete steps, resume execution from its `current_step` (the execution layer handles this). Otherwise wait for user input — do not restart ROUTE.
+    IF user says "start over" / "new task" / "forget previous":
+        APPLY Post-Completion Cleanup
+        TELL: "[vega-punk] Starting fresh. What shall we build?"
+        GOTO ROUTE
 
-**Recovery:** If the state file exists and `state` is not "DONE", read `.vega-punk-state.json` and execute the actions for the current state. Do NOT go back to ROUTE. Continue from where you left off.
+    IF state == "DONE":
+        APPLY Post-Completion Cleanup
+        GOTO ROUTE
 
-**Reset:** User says "start over" / "new task" / "forget previous" → apply Post-Completion Cleanup → restart ROUTE.
+    IF file missing:
+        GOTO ROUTE
 
-- When this happens, tell the user: "[vega-punk] Starting fresh. What shall we build?"
+    IF state == "REVIEW":
+        IF execution_result exists:
+            ENTER REVIEW
+        ELSE IF roadmap.json exists AND has incomplete steps:
+            RESUME execution from roadmap.json current_step
+        ELSE:
+            WAIT for user input (do NOT restart ROUTE)
+        EXIT
 
-**Skill loop protection:** The `scan_depth` field in the state JSON tracks consecutive SCAN entries. If it reaches 3, skip skill routing and proceed directly to CLARIFY. This prevents skill → SCAN → skill loops. Increment on each SCAN entry, reset on each CLARIFY entry.
+    /* state is not DONE, file exists → recovery */
+    ENTER current state directly
+    DO NOT go back to ROUTE
 
-**State JSON format:** Read the current JSON file, change the `state` field, add new fields, and write back. **Do NOT delete existing fields.** Always preserve `task`. Increment `transition_count` on each state change (initialize to 1 if not present).
+    /* skill loop protection */
+    IF scan_depth >= 3:
+        SKIP skill routing
+        GOTO CLARIFY
+    ELSE:
+        INCREMENT scan_depth on SCAN entry
+        RESET scan_depth on CLARIFY entry
 
-**State JSON cleanup:** On transition to DONE, the state file is deleted (see Post-Completion Cleanup). On REVIEW → new task transition, the old state is archived via spec rename and state file deletion. This prevents indefinite growth.
+    /* state compaction (prevent unbounded growth) */
+    IF qa.retries > 2 OR transition_count > 5:
+        COMPACT:
+            PRESERVE: state, task, context, selected_skills, scope, requirements, design, dependencies, spec_path
+            COMPRESS qa → { "retries": N, "last_feedback": "<summary>", "status": "FAIL" }
+            DROP any field > 500 chars not in preserve list → replace with 1-sentence summary
 
-**State compaction:** When `qa.retries` for any QA state exceeds 2, or when the state file exceeds 5 transitions (track via `transition_count` field), compact the state file before the next iteration:
-1. Preserve: `state`, `task`, `context`, `selected_skills`, `scope`, `requirements`, `design`, `dependencies`, `spec_path`
-2. Compress `qa` to: `{ "retries": N, "last_feedback": "<summary>", "status": "FAIL" }` — drop intermediate feedback, keep only the latest and the count
-3. Drop any field whose value exceeds 500 characters and is not in the preserve list — replace with a 1-sentence summary
+    /* state transition rule */
+    ON each state change:
+        READ current JSON
+        CHANGE state field
+        ADD new fields (NEVER delete existing fields)
+        INCREMENT transition_count (initialize to 1 if absent)
+        WRITE back
+END
 
-This prevents the state file from growing unbounded through repeated QA cycles or long task flows.
-
-**Example state progression:**
-
-After SCAN:
-
-```json
-{
-  "state": "CLARIFY",
-  "task": "build todo app",
-  "context": "...",
-  "selected_skills": [],
-  "skill_selection": "why these skills were chosen",
-  "scope": "single",
-  "scan_depth": 1,
-  "transition_count": 2
-}
+BEGIN Post-Completion Cleanup
+    RENAME vega-punk/specs/*.md → *.DONE.md (completed) or *.CANCELLED.md (cancelled)
+    DELETE .vega-punk-state.json
+    /* On REVIEW → new task: archive specs + delete state, then restart ROUTE */
+END
 ```
 
-After CLARIFY:
-
-```json
-{
-  "state": "DESIGN",
-  "task": "build todo app",
-  "context": "...",
-  "selected_skills": [],
-  "scope": "single",
-  "requirements": {}
-}
-```
-
-After HANDOFF:
-
-```json
-{
-  "state": "REVIEW",
-  "task": "build todo app",
-  "context": "...",
-  "selected_skills": [],
-  "scope": "single",
-  "requirements": {},
-  "design": {},
-  "dependencies": {},
-  "spec_path": "...",
-  "handoff_to": "plan-builder",
-  "transition_count": 9,
-  "user_satisfaction": null
-}
-```
-
-After REVIEW (execution callback):
-
-```json
-{
-  "state": "DONE",
-  "task": "build todo app",
-  "...previous fields...": "...",
-  "user_satisfaction": "satisfied",
-  "execution_result": {
-    "status": "success",
-    "summary": "...",
-    "artifacts": [],
-    "verification": "passed"
-  }
-}
-```
-
-The final file contains the complete design context for downstream skills to read.
+**Key rule:** Always preserve `task` field across all state transitions.
 
 **Git:** Add `.vega-punk-state.json` to `.gitignore`. **Do NOT** gitignore `vega-punk/specs/` — spec history is project memory and should be committed.
 
@@ -148,28 +107,26 @@ The final file contains the complete design context for downstream skills to rea
 
 If user asks "where are we?" or "how much left?", print current state and remaining steps.
 
-| State        | FULL Path     | CONDENSED Path | QUICK Path |
-|--------------|---------------|----------------|------------|
-| ROUTE        | 9 states left | 3 states left  | 1 step     |
-| SCAN         | 8             | —              | —          |
-| CLARIFY      | 7             | —              | —          |
-| DESIGN       | 6             | —              | —          |
-| DESIGN_QA    | 5             | —              | —          |
-| DEPENDENCIES | 4             | —              | —          |
-| SPEC         | 3             | —              | —          |
-| SPEC_QA      | 2             | —              | —          |
-| CONDENSED    | 3             | 3              | —          |
-| HANDOFF      | 1             | 1              | —          |
-| QUICK        | —             | —              | 1 step     |
-| REVIEW       | 0             | 0              | —          |
+| State        | FULL Path     | CONDENSED Path |
+|--------------|---------------|----------------|
+| ROUTE        | 9 states left | 3 states left  |
+| SCAN         | 8             | —              |
+| CLARIFY      | 7             | —              |
+| DESIGN       | 6             | —              |
+| DESIGN_QA    | 5             | —              |
+| DEPENDENCIES | 4             | —              |
+| SPEC         | 3             | —              |
+| SPEC_QA      | 2             | —              |
+| CONDENSED    | 3             | 3              |
+| HANDOFF      | 1             | 1              |
+| REVIEW       | 0             | 0              |
 
 **Three execution modes:**
 
-| Mode | Steps | When | State File | Skill Check |
-|------|-------|------|------------|-------------|
-| **QUICK** | Confirm → Execute → Verify | Purely local changes, single file, unambiguous solution | Optional | Lightweight (skip for text/config changes) |
-| **CONDENSED** | Minimal spec → Approval → Review | Medium tasks (single component, clear scope) | Required | Full SCAN |
-| **FULL** | All 9 states | Large/multi-step tasks, ambiguous scope | Required | Full SCAN |
+| Mode          | Steps                            | When                                       | State File | Skill Check |
+|---------------|----------------------------------|--------------------------------------------|------------|-------------|
+| **CONDENSED** | Minimal spec → Approval → Review | All tasks (single component to multi-step) | Required   | Full SCAN   |
+| **FULL**      | All 9 states                     | Large/multi-step tasks, ambiguous scope    | Required   | Full SCAN   |
 
 CONDENSED mode: 3 steps (minimal spec → approval → review), skips DESIGN/DEPENDENCIES/SPEC states. From CONDENSED: 3 states left (CONDENSED → HANDOFF → REVIEW → DONE).
 
@@ -181,7 +138,7 @@ These are rules. Do not treat them as suggestions.
 
 ### 1. HARD-GATE: No Design, No Execute
 
-Do NOT execute anything — write code, scaffold projects, generate documents, create designs, produce content, modify configurations, invoke any implementation skill, or take any implementation action — until the design has been presented and the user has approved it. This applies to EVERY task regardless of perceived simplicity. A todo list, a single-function utility, a config change, a document, a presentation, a data analysis — all of them. The design can be short (a few sentences for truly simple projects via CONDENSED mode), or a single confirmation sentence for micro-tasks via QUICK mode, but you MUST present it and get approval.
+Do NOT execute anything — write code, scaffold projects, generate documents, create designs, produce content, modify configurations, invoke any implementation skill, or take any implementation action — until the design has been presented and the user has approved it. This applies to EVERY task regardless of perceived simplicity. A todo list, a single-function utility, a config change, a document, a presentation, a data analysis — all of them. The design can be short (a few sentences for truly simple projects via CONDENSED mode), but you MUST present it and get approval.
 
 ### 2. The 1% Rule: When in Doubt, Invoke
 
@@ -247,36 +204,64 @@ If the user says "stop", "cancel", "I don't want to do this anymore", or equival
 
 ## State Machine
 
+**FULL flow:**
+
 ```
-ROUTE → SCAN → CLARIFY → DESIGN ────→ DEPENDENCIES → SPEC ────→ HANDOFF ─→ REVIEW ─→ DONE
-  ↓                     ↓                              ↓
-  ↓                   DESIGN_QA                      SPEC_QA
-  ↓                     ↓                              ↓
-CONDENSED ──→ HANDOFF ↩ DESIGN                       ↩ SPEC
-    ↓         ↘
-  ↩ SCAN  (if user rejects)  (if user rejects)
+BEGIN FULL
+    ENTER ROUTE
+    IF user says "skip design" → GOTO CONDENSED
+    IF informational → state=DONE, EXIT
 
-QUICK ──→ (State → Confirm → Execute → Verify → Delete state → DONE)
-  ↓
-CONDENSED (if task grows)
+    ENTER SCAN
+    ENTER CLARIFY
+
+    LOOP design_retries ≤ 3:
+        ENTER DESIGN
+        IF user rejects → REPEAT
+        ENTER DESIGN_QA
+        IF PASS → BREAK
+        IF FAIL → REPEAT
+    IF retries exhausted → HALT, ask user
+
+    ENTER DEPENDENCIES
+    ENTER SPEC
+
+    LOOP spec_retries ≤ 3:
+        ENTER SPEC_QA
+        IF PASS → BREAK
+        IF FAIL → REPEAT (↩ SPEC, fix, re-submit)
+    IF retries exhausted → HALT, ask user
+    
+    ENTER HANDOFF
+    state = REVIEW, handoff_to = plan-builder
+    WAIT for execution_result
+
+    ENTER REVIEW
+    IF success + passed → state=DONE
+    IF failed → state=CLARIFY (requirements changed) or DESIGN (design wrong)
+    IF partial → state=DESIGN (implement remaining)
+END
 ```
 
-**Never skip or reverse states.** Exception: the rollback rules below.
+**CONDENSED flow:**
 
-## Allowed Rollbacks
+```
+BEGIN CONDENSED
+    ENTER CONDENSED
+    IF user rejects → state=SCAN (go FULL from beginning)
+    IF approved → ENTER HANDOFF
 
-These are the only state reversals permitted. All other transitions are forward-only.
+    state = REVIEW, handoff_to = plan-builder
+    WAIT for execution_result
 
-| Trigger                                    | Rollback                                                                             | Rationale                                                       |
-|--------------------------------------------|--------------------------------------------------------------------------------------|-----------------------------------------------------------------|
-| DESIGN_QA FAIL                             | → DESIGN (max 3 retries)                                                             | Design has a concrete flaw that must be fixed                   |
-| SPEC_QA FAIL                               | → SPEC (max 3 retries)                                                               | Spec has gaps or contradictions that must be resolved           |
-| User changes direction during DESIGN       | → CLARIFY (if fundamental goal change) or stay in DESIGN (if exploring alternatives) | User needs to redefine the problem                              |
-| User changes direction during DEPENDENCIES | → DESIGN (if architecture changes needed)                                            | Design needs adjustment before dependency analysis can continue |
-| CONDENSED rejected                         | → SCAN (user wants the full flow)                                                    | Condensed mode is a shortcut, not a commitment                  |
-| User rejects proposed design in DESIGN     | Stay in DESIGN, restart from Phase 1                                                 | Not a rollback — re-iteration within the same state             |
-| REVIEW: execution failed                   | → CLARIFY (if requirements changed) or → DESIGN (if design was wrong)                | Execution results don't match spec                              |
-| REVIEW: execution partial                  | → DESIGN (implement remaining) or → CLARIFY (if scope changed)                       | Some requirements not yet met                                   |
+    ENTER REVIEW
+    IF success + passed → state=DONE
+    IF failed → state=CLARIFY or DESIGN
+    IF partial → state=DESIGN
+END
+```
+
+**Never skip or reverse states.** Allowed rollbacks are embedded in each state's pseudocode.
 
 ---
 
@@ -286,27 +271,41 @@ These are the only state reversals permitted. All other transitions are forward-
 
 **Announce:** "Entering ROUTE..."
 
-**Action:**
+```
+BEGIN ROUTE
+    /* Step 0: clean slate */
+    IF state == "DONE" AND .vega-punk-state.json exists:
+        RENAME vega-punk/specs/*.md → *.DONE.md
+        DELETE .vega-punk-state.json
 
-0. **Post-Completion Cleanup:** If state is "DONE" and `.vega-punk-state.json` exists, archive the previous spec file (rename `*.md` → `*.DONE.md`) and delete `.vega-punk-state.json`. This ensures a clean slate for the new task.
-1. **Apply the 1% Rule (context-aware):** If the task is classified as **Informational** (simple Q&A, definitions, explanations), answer directly — no skill check needed. If classified as **Creative/Implementation** or **Ambiguous**, check for relevant skills before proceeding. Action = task; explanation ≠ task.
-2. **Bug detection:** If user message contains bug-related keywords (`bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception`), invoke root-cause skill first.
-3. Classify:
-    - **Informational** (simple Q&A, definitions, explanations) → Answer directly. Set state: DONE. Stop.
-    - **Creative/Implementation** (build, fix, modify, design, create) → Set state: SCAN. Proceed.
-    - **Ambiguous** → Ask one question to classify.
-4. **If user says "just write code" / "skip design" / "just do it" / "don't overthink":** Set state: CONDENSED.
-5. **If task is a micro-task** (purely local change, single file, unambiguous solution, no new dependencies): Enter QUICK mode directly. QUICK mode creates a minimal state file for traceability.
+    /* Step 1: bug detection first */
+    IF message contains bug keywords (`bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception`):
+        INVOKE root-cause skill
 
-**State write:**
+    /* Step 2: classify task type */
+    MATCH task type:
 
-```json
-{
-  "state": "SCAN",
-  "task": "<user request>",
-  "scan_depth": 0,
-  "transition_count": 1
-}
+    CASE user says "just write code" / "skip design" / "just do it" / "don't overthink":
+        state = CONDENSED
+
+    CASE Informational (simple Q&A, definitions, explanations):
+        ANSWER directly — no skill check needed
+        state = DONE
+        EXIT
+
+    CASE Creative/Implementation (build, fix, modify, design, create):
+        CHECK for relevant skills (1% Rule)
+        state = SCAN
+
+    CASE Ambiguous:
+        ASK one question to classify
+        IF classified as Informational → see above
+        IF classified as Creative/Implementation → see above
+
+    /* Step 3: write state */
+    WRITE .vega-punk-state.json:
+        { "state": "SCAN", "task": "<user request>", "scan_depth": 0, "transition_count": 1 }
+END
 ```
 
 ---
@@ -317,29 +316,36 @@ These are the only state reversals permitted. All other transitions are forward-
 
 **Announce:** "Entering SCAN..."
 
-**Action:**
+```
+BEGIN SCAN
+    /* 1. scope check before refinement */
+    IF request describes multiple independent subsystems:
+        TELL user to split project
+        HELP identify independent pieces and build order
+        PROCEED with first sub-project only
 
-1. **Check scope BEFORE asking questions.** If the request describes multiple independent subsystems (e.g., "build a platform with chat, file storage, billing, and analytics"), tell the user immediately that the project should be split. Don't spend time refining details of a project that needs to be decomposed first. Help the user identify independent pieces, how they relate, and what order to build them. Then proceed with the first sub-project.
-2. Check project context: files, docs, recent commits.
-3. **Skill Routing:** Read `scan_depth` from the state file. If it is 3 or greater, skip skill routing and proceed to step 4. Otherwise, run `bash scripts/discover-skills.sh` to get the full list of all registered skills (local sub-skills + platform skills from all known directories + external system skills). The script outputs a JSON array with each skill's name, description, source, and path. Match task against this list. Select ALL relevant skills and note execution order. Process skills first (brainstorming, debugging), implementation skills second.
-4. **Skill invocation purpose:** Invoking a skill loads its guidance into context — it tells you HOW to proceed. You do NOT execute the skill's implementation steps here. You use the skill's workflow to inform the CLARIFY → DESIGN → SPEC flow.
+    /* 2. check project context */
+    READ files, docs, recent commits
 
-**State write:** Read the current JSON, change `state` to "CLARIFY", add `context`, `selected_skills`, `scope`, `skill_selection`. Increment `scan_depth` (or set to 1 if not present). Increment `transition_count`. Keep all existing fields.
+    /* 3. skill routing */
+    IF scan_depth >= 3:
+        SKIP skill routing
+    ELSE:
+        RUN bash scripts/discover-skills.sh
+        MATCH task against skill descriptions
+        SELECT ALL relevant skills + note execution order
 
-```json
-{
-  "state": "CLARIFY",
-  "task": "...",
-  "context": "<summary>",
-  "selected_skills": [
-    "skill1",
-    "skill2"
-  ],
-  "skill_selection": "Why these skills were chosen and in what order",
-  "scope": "<single|decomposed>",
-  "scan_depth": 1,
-  "transition_count": 1
-}
+    /* 4. invoke skills for guidance (NOT implementation) */
+    FOR EACH selected skill:
+        LOAD skill guidance into context
+
+    /* state write */
+    WRITE .vega-punk-state.json:
+        state = "CLARIFY"
+        ADD: context, selected_skills, scope, skill_selection
+        INCREMENT: scan_depth (or set to 1)
+        INCREMENT: transition_count
+END
 ```
 
 ---
@@ -350,29 +356,28 @@ These are the only state reversals permitted. All other transitions are forward-
 
 **Announce:** "Entering CLARIFY..."
 
-**Action:**
+```
+BEGIN CLARIFY
+    IF purpose, constraints, and success criteria are clear:
+        TELL: "Requirements are clear. Moving to design."
+        EXTRACT purpose, constraints, success from request + SCAN context
+        GOTO DESIGN
 
-1. **If the user's request is already clear** (purpose, constraints, and success criteria are clear from the request and SCAN output), skip questions and proceed to DESIGN. Announce: "Requirements are clear. Moving to design." Extract purpose, constraints, and success criteria from the user's original request and SCAN context.
-2. Otherwise, ask clarifying questions one at a time. Only one question per message.
-3. Prefer multiple choice. Focus on: purpose, constraints, success criteria.
-4. If user says "you decide", document assumption and proceed.
+    /* ask questions one at a time */
+    ASK ONE clarifying question (prefer multiple choice)
+    FOCUS on: purpose, constraints, success criteria
 
-**State write:** Read the current JSON, change `state` to "DESIGN", add `requirements`. Reset `scan_depth` to 0. Increment `transition_count`. Keep all existing fields.
+    IF user says "you decide":
+        DOCUMENT assumption
+        PROCEED
 
-```json
-{
-  "state": "DESIGN",
-  "task": "...",
-  "context": "...",
-  "selected_skills": [],
-  "scope": "...",
-  "scan_depth": 0,
-  "requirements": {
-    "purpose": "...",
-    "constraints": "...",
-    "success": "..."
-  }
-}
+    /* state write */
+    WRITE .vega-punk-state.json:
+        state = "DESIGN"
+        ADD: requirements = { purpose, constraints, success }
+        RESET: scan_depth = 0
+        INCREMENT: transition_count
+END
 ```
 
 ---
@@ -383,71 +388,89 @@ These are the only state reversals permitted. All other transitions are forward-
 
 **Announce:** "Entering DESIGN... Let's brainstorm the best approach together."
 
-**Phase tracking:** Update the `design_phase` field in the state JSON as you progress: `"brainstorm"` → `"converge"` → `"present"`. This lets recovery know exactly where you left off.
+```
+BEGIN DESIGN
+    /* phase tracking: "brainstorm" → "converge" → "present" */
 
-**Phase 1 — Brainstorm (Collaborative):**
+    /* Phase 1: Brainstorm (collaborative) */
+    design_phase = "brainstorm"
+    PRESENT 2-3 approaches with trade-offs:
+        FOR EACH approach: strengths, costs, risks
+        LEAD with recommendation + explain why
+    ASK: "Which direction feels right? Or combine elements?"
 
-1. Present 2-3 approaches with trade-offs. Frame them as options to explore together, not decisions to approve.
-2. For each approach, show: what it does well, what it costs, what risks it carries.
-3. Lead with your recommendation but explain why — and why the others might also be valid.
-4. **Ask the user:** "Which direction feels right? Or would you like to combine elements from different approaches?"
+    IF user rejects:
+        TELL: "Revisiting approach..."
+        REPEAT Phase 1
 
-**Phase 2 — Converge (Co-create):**
+    /* Phase 2: Converge (co-create) */
+    design_phase = "converge"
+    REFINE chosen approach based on user feedback
+    COMBINE approaches if user wants
+    INTEGRATE user's own ideas
+    ITERATE until design feels right
 
-1. Based on user feedback, refine the chosen approach.
-2. If the user wants to combine approaches, show how that would look.
-3. If the user has their own idea, integrate it and show the merged design.
-4. This is a dialogue, not a presentation. Iterate until the design feels right to both of you.
+    /* Phase 3: Present (formalize) */
+    design_phase = "present"
+    PRESENT final design (brief if straightforward, 200-300 words if nuanced):
+        Architecture, Components, Data flow, Error handling, Testing
+    DESIGN FOR ISOLATION:
+        Each unit: one purpose, well-defined interface, independently testable
+    FOLLOW existing patterns in codebase:
+        Targeted improvements only, no unrelated refactoring
+    ASK: "Does this look right so far?"
 
-**Phase 3 — Present (Formalize):**
+    IF user changes direction:
+        IF fundamental goal change → GOTO CLARIFY
+        IF exploring alternatives → STAY in DESIGN, restart Phase 1
 
-1. Keep it brief if straightforward (a few sentences). Expand if nuanced (up to 200-300 words).
-2. **After each section, ask: "Does this look right so far?"** This is incremental validation, not a presentation.
-3. Cover: architecture, components, data flow, error handling, testing.
-4. **Design for isolation:** Break the system into smaller units that each have one clear purpose, communicate through well-defined interfaces, and can be understood and tested independently. For each unit: what does it do, how do you use it, what does it depend on? Can someone understand what it does without reading internals? Can you change internals without breaking consumers? If not, the boundaries need work.
-5. **Working in existing codebases:** Explore current structure first. Follow existing patterns. Where existing code has problems that affect the work (e.g., a file that's grown too large, unclear boundaries, tangled responsibilities), include targeted improvements as part of the design. Don't propose unrelated refactoring. Stay focused on what serves the current goal.
-6. Get explicit user approval.
-
-**If user rejects:** Announce "Revisiting approach..." and return to Phase 1. Stay in DESIGN.
-
-**If user changes direction:** Apply the Allowed Rollbacks rules above.
-
-**State write:** Read the current JSON, change `state` to "DESIGN_QA", add `design`. Increment `transition_count`. Keep all existing fields.
-
-```json
-{
-  "state": "DESIGN_QA",
-  "task": "...",
-  "context": "...",
-  "selected_skills": [],
-  "scope": "...",
-  "requirements": {},
-  "design": {},
-  "qa": {
-    "design_retries": 0,
-    "design_feedback": ""
-  }
-}
+    /* state write */
+    WRITE .vega-punk-state.json:
+        state = "DESIGN_QA"
+        ADD: design
+        INCREMENT: transition_count
+END
 ```
 
 ---
 
 ## Reusable QA Pattern
 
-Both DESIGN_QA and SPEC_QA use the same two-layer QA structure:
+Both DESIGN_QA and SPEC_QA share this structure:
 
-1. **Layer 1: Structured Self-Review** — Switch perspective, run domain-specific checklist, fix failures, re-run.
-2. **Layer 2: User Secondary Review** — Present findings (passed/fixed/risks), user makes final PASS/FAIL.
+```
+BEGIN QA(name, checks, pass_state, fail_state)
+    LOOP qa_retries ≤ 3:
+        /* Layer 1: Structured Self-Review */
+        RUN domain-specific checks from `checks`
+        IF any fail:
+            FIX failures inline
+            RE-RUN self-review
 
-**Decision Flow:**
-| Step | Action | Outcome |
-|------|--------|---------|
-| 1 | Self-review runs | Checklist findings collected |
-| 2 | Findings presented to user | User reviews and decides |
-| 3 | User passes | → Next state |
-| 3 (alt) | User fails | → Return to previous state (retry +1, max 3) |
+        /* Layer 2: User Secondary Review */
+        PRESENT findings: passed / fixed / remaining risks
+        WAIT for user decision
 
-**Retry limit:** Beyond 3 retries → "[vega-punk] I've hit the retry limit. Please review manually and tell me how to proceed." Stay in current QA state.
+        MATCH user response:
+        CASE PASS:
+            UPDATE qa = { "{name}_status": "PASS", "{name}_retries": N }
+            state = pass_state
+            WRITE state JSON
+            EXIT
+        CASE FAIL:
+            INCREMENT qa_retries
+            UPDATE qa = { "{name}_status": "FAIL", "{name}_retries": qa_retries, "{name}_feedback": "<summary>" }
+            state = fail_state
+            WRITE state JSON
+            EXIT (↩ to previous state for fix, then re-enter QA)
+
+    /* retries exhausted */
+    TELL: "[vega-punk] I've hit the retry limit. Please review manually and tell me how to proceed."
+    STAY in current QA state
+END
+```
+
+**Retry limit:** 3 retries max. Beyond that, halt and ask user.
 
 ---
 
@@ -457,37 +480,21 @@ Both DESIGN_QA and SPEC_QA use the same two-layer QA structure:
 
 **Announce:** "Entering DESIGN_QA... awaiting expert review + user secondary review"
 
-**Action:**
-
-Apply the **Reusable QA Pattern** (see below) with these design-specific checks:
-
-- **Architecture:** Does the design follow separation of concerns? Can units be understood and changed independently?
-- **Technology choices:** Are selected tools justified? Is there a simpler alternative?
-- **Data flow:** Are dependencies acyclic? Any circular references between components?
-- **Error handling:** What happens when each external call fails? Are error boundaries defined?
-- **Edge cases:** What are the top 3 ways this design could break in production?
-- **Scope creep:** Does the design include unrequested features? Remove them.
-
-On PASS → Enter DEPENDENCIES. On FAIL → Return to DESIGN (retry count +1, max 3).
-
-**State write:** Read the current JSON, change `state` to "DEPENDENCIES" (PASS) or "DESIGN" (FAIL), update `qa` fields. Increment `transition_count`. Keep all existing fields.
-
-```json
-{
-  "state": "DEPENDENCIES",
-  "task": "...",
-  "context": "...",
-  "selected_skills": [],
-  "scope": "...",
-  "scan_depth": 0,
-  "requirements": {},
-  "design": {},
-  "qa": {
-    "design_retries": 0,
-    "design_feedback": "",
-    "design_status": "PASS"
-  }
-}
+```
+BEGIN DESIGN_QA
+    INVOKE QA("design",
+        checks = [
+            "Architecture: separation of concerns? units independent?",
+            "Technology choices: tools justified? simpler alternative?",
+            "Data flow: dependencies acyclic? circular references?",
+            "Error handling: what happens when each external call fails?",
+            "Edge cases: top 3 ways this could break in production?",
+            "Scope creep: unrequested features? remove them."
+        ],
+        pass_state = DEPENDENCIES,
+        fail_state = DESIGN
+    )
+END
 ```
 
 ---
@@ -498,55 +505,38 @@ On PASS → Enter DEPENDENCIES. On FAIL → Return to DESIGN (retry count +1, ma
 
 **Announce:** "Entering DEPENDENCIES..."
 
-**Purpose:** Analyze causal relationships. Output is INPUT for the plan-builder sub-skill — NOT a plan.
-
-**Action:**
-
-1. List all components from the approved design.
-2. For each pair, determine:
-
-   | Relationship | Meaning |
-   |--------------|---------|
-   | **A → B (serial)** | B cannot start until A is complete |
-   | **A ∥ B (parallel)** | A and B independent, can run simultaneously |
-   | **A ↔ B (bidirectional)** | Warning sign — this usually means the two components should be merged or separated by an abstraction |
-
-3. Identify critical path (longest serial chain).
-4. Identify parallel groups.
-
-**Rules:**
-
-- Schema → API → Frontend = serial
-- Independent UI components = parallel
-- Shared types first (serial), then implementations (parallel)
-
-**State write:** Read the current JSON, change `state` to "SPEC", add `dependencies`. Increment `transition_count`. Keep all existing fields.
-
-```json
-{
-  "state": "SPEC",
-  "task": "...",
-  "...previous fields...": "...",
-  "dependencies": {
-    "components": [],
-    "serial": [
-      {
-        "from": "A",
-        "to": "B"
-      }
-    ],
-    "parallel": [
-      [
-        "A",
-        "B"
-      ]
-    ],
-    "critical_path": []
-  }
-}
 ```
+BEGIN DEPENDENCIES
+    /* Output is INPUT for plan-builder — NOT a plan */
 
-**If user changes direction:** Apply the Allowed Rollbacks rules above.
+    LIST all components from approved design
+
+    FOR EACH pair of components:
+        IF B cannot start until A complete:
+            MARK A → B (serial)
+        IF A and B independent:
+            MARK A ∥ B (parallel)
+        IF A ↔ B (bidirectional):
+            WARN: merge or separate by abstraction
+
+    IDENTIFY critical path (longest serial chain)
+    IDENTIFY parallel groups
+
+    /* Rules:
+       Schema → API → Frontend = serial
+       Independent UI components = parallel
+       Shared types first (serial), then implementations (parallel) */
+
+    IF user changes direction:
+        GOTO DESIGN
+
+    /* state write */
+    WRITE .vega-punk-state.json:
+        state = "SPEC"
+        ADD: dependencies = { components, serial, parallel, critical_path }
+        INCREMENT: transition_count
+END
+```
 
 ---
 
@@ -556,39 +546,34 @@ On PASS → Enter DEPENDENCIES. On FAIL → Return to DESIGN (retry count +1, ma
 
 **Announce:** "Entering SPEC..."
 
-**Action:**
+```
+BEGIN SPEC
+    /* 1. write spec file */
+    WRITE vega-punk/specs/YYYY-MM-DD-<topic>-design.md
+    REQUIRED sections:
+        Goal, Architecture, Components, Interfaces,
+        Data Flow, Error Handling, Testing Plan, Dependency Graph
 
-1. Write spec to `vega-punk/specs/YYYY-MM-DD-<topic>-design.md`. Create directory if not exists.
-    - Required sections: Goal, Architecture, Components, Interfaces, Data Flow, Error Handling, Testing Plan, Dependency Graph.
-2. **Spec Self-Review** — look at the spec with fresh eyes:
-    - **Placeholder scan:** Any "TBD", "TODO", incomplete sections, or vague requirements? Fix them.
-    - **Internal consistency:** Do any sections contradict each other? Does the architecture match the feature descriptions?
-    - **Scope check:** Is this focused enough for a single implementation plan, or does it need decomposition?
-    - **Ambiguity check:** Could any requirement be interpreted two different ways? If so, pick one and make it explicit.
-    - **Dependency check:** Are serial dependencies justified?
-3. Fix any issues inline. No need to re-review — just fix and move on.
-4. Ask user: "Spec written to `<path>`. Review the spec. If it looks good, I'll hand off to planning."
-5. Wait for approval. If changes → Fix → Re-run self-review.
+    /* 2. spec self-review */
+    CHECK:
+        Placeholder scan: any "TBD", "TODO", vague statements?
+        Internal consistency: contradictions between sections?
+        Scope check: focused enough for single implementation plan?
+        Ambiguity check: any requirement interpretable two ways?
+        Dependency check: serial dependencies justified?
+    FIX issues inline
 
-**State write:** Read the current JSON, change `state` to "SPEC_QA", add `spec_path`, add `qa` field. Increment `transition_count`. Keep all existing fields.
+    /* 3. user review */
+    ASK: "Spec written to <path>. Review it. If it looks good, I'll hand off to planning."
+    IF user wants changes:
+        FIX → RE-RUN self-review
 
-```json
-{
-  "state": "SPEC_QA",
-  "task": "...",
-  "context": "...",
-  "selected_skills": [],
-  "scope": "...",
-  "scan_depth": 0,
-  "requirements": {},
-  "design": {},
-  "dependencies": {},
-  "spec_path": "vega-punk/specs/YYYY-MM-DD-<topic>-design.md",
-  "qa": {
-    "spec_retries": 0,
-    "spec_feedback": ""
-  }
-}
+    /* state write */
+    WRITE .vega-punk-state.json:
+        state = "SPEC_QA"
+        ADD: spec_path, qa = { spec_retries: 0, spec_feedback: "" }
+        INCREMENT: transition_count
+END
 ```
 
 ---
@@ -599,38 +584,21 @@ On PASS → Enter DEPENDENCIES. On FAIL → Return to DESIGN (retry count +1, ma
 
 **Announce:** "Entering SPEC_QA... awaiting expert review + user secondary review"
 
-**Action:**
-
-Apply the **Reusable QA Pattern** (see above) with these spec-specific checks:
-
-- **Completeness:** Can every section be implemented without guessing? No TBD, TODO, or vague statements.
-- **Consistency:** Do any sections contradict each other? Does the dependency graph match the architecture?
-- **Interface contracts:** Are all inputs, outputs, and data shapes explicitly defined?
-- **Testability:** Can every requirement be tested? Is there a clear pass/fail criterion for each?
-- **Dependency accuracy:** Are serial dependencies justified? Could anything be parallelized that is marked serial?
-- **Scope discipline:** Does the spec include unrequested features? Remove them.
-
-On PASS → Enter HANDOFF. On FAIL → Return to SPEC (retry count +1, max 3).
-
-**State write:** Read the current JSON, change `state` to "HANDOFF", update `qa` fields. Increment `transition_count`. Keep all existing fields.
-
-```json
-{
-  "state": "HANDOFF",
-  "task": "...",
-  "context": "...",
-  "selected_skills": [],
-  "scope": "...",
-  "requirements": {},
-  "design": {},
-  "dependencies": {},
-  "spec_path": "...",
-  "qa": {
-    "spec_retries": 0,
-    "spec_feedback": "",
-    "spec_status": "PASS"
-  }
-}
+```
+BEGIN SPEC_QA
+    INVOKE QA("spec",
+        checks = [
+            "Completeness: every section implementable? No TBD, TODO, vague statements?",
+            "Consistency: any contradictions? dependency graph matches architecture?",
+            "Interface contracts: inputs, outputs, data shapes explicitly defined?",
+            "Testability: every requirement testable? clear pass/fail criterion?",
+            "Dependency accuracy: serial justified? anything parallelizable marked serial?",
+            "Scope discipline: unrequested features? remove them."
+        ],
+        pass_state = HANDOFF,
+        fail_state = SPEC
+    )
+END
 ```
 
 ---
@@ -641,63 +609,34 @@ On PASS → Enter HANDOFF. On FAIL → Return to SPEC (retry count +1, max 3).
 
 **Announce:** "Entering CONDENSED mode..."
 
-**Action:**
-
-1. Write a minimal spec: What, Why, How (3 sentences max).
-2. Define at least one key interface or entry point: input → output, or function signature, or API shape. This gives the planning layer something concrete to structure phases around.
-3. **Lightweight dependency check:** In one sentence, identify if any part of this work blocks or is blocked by other components. If nothing depends on ordering, note "all parallel". If there's a serial chain, note it briefly (e.g., "backend first, then frontend").
-4. **Approval:** Ask: "I'll implement [X] using [Y]. Proceed?" Wait for user response.
-5. **If approved →** Set state: HANDOFF.
-6. **If rejected →** Set state: SCAN. User wants the full flow from the beginning.
-7. **After approval, before HANDOFF, do a quick self-review:** Are there any TBD, TODO, or ambiguous statements in the minimal spec? Fix them inline.
-
-**State write:** Read the current JSON, change `state` to "HANDOFF", add `mode`, `spec`, `dependencies`. Increment `transition_count`. Keep all existing fields.
-
-```json
-{
-  "state": "HANDOFF",
-  "task": "...",
-  "context": "...",
-  "selected_skills": [],
-  "scope": "...",
-  "requirements": {},
-  "mode": "condensed",
-  "spec": "<3-sentence summary>",
-  "dependencies": "all parallel / backend first, then frontend"
-}
 ```
+BEGIN CONDENSED
+    /* 1. minimal spec */
+    WRITE: What, Why, How (3 sentences max)
 
----
+    /* 2. define key interface */
+    DEFINE at least one: input → output, or function signature, or API shape
 
-## QUICK
+    /* 3. lightweight dependency check */
+    NOTE in one sentence: "all parallel" or serial chain (e.g. "backend first, then frontend")
 
-**Trigger:** ROUTE classifies task as a micro-task, or user says "quick fix" / "just do it" / "tiny change" / "one-liner".
+    /* 4. self-review */
+    CHECK: any TBD, TODO, ambiguous statements? FIX inline
 
-**QUICK eligibility — all four must be true:**
+    /* 5. approval */
+    ASK: "I'll implement [X] using [Y]. Proceed?"
+    WAIT for user response
 
-| Criterion | Pass | Fail → Upgrade |
-|-----------|------|----------------|
-| **Scope** | 1 file, local change | Cross-file or cross-module |
-| **Solution** | Unambiguous, only one way | Requires trade-off decisions |
-| **Architecture** | No interface or contract changes | Changes public API, types, or contracts |
-| **Dependencies** | No new packages or config | Introduces new dependency or config |
-
-If any criterion fails → do not enter QUICK. Use CONDENSED or FULL.
-
-**Announce:** "Entering QUICK mode..."
-
-**Action:**
-
-1. **Create a minimal state record:** Write `.vega-punk-state.json` with `state: "QUICK"`, `task`, and `transition_count`. This enables traceability if the task grows mid-execution.
-2. **1% Rule (lightweight):** If the solution involves anything beyond a pure text/config change (e.g., new logic, new imports, new API calls), check for relevant skills. For pure text/config changes (typos, renames, label changes), skip skill check and proceed.
-3. **Confirm intent:** State what you'll do in one sentence: "I'll [action] by [method]. Proceed?"
-   - This single confirmation IS the design approval for micro-tasks — it satisfies HARD-GATE as a lightweight approval path.
-4. **If approved →** Execute directly. Set state: DONE on completion. Delete `.vega-punk-state.json`.
-5. **Verify after execution:** Apply verify-gate mentally — evidence before claiming done.
-6. **If rejected →** User wants more deliberation. Set state: CONDENSED and proceed from there.
-7. **If task grows during execution** (touches more files than expected, introduces complexity): Update state to CONDENSED. Tell user: "This is more complex than expected. Switch to CONDENSED or full flow?" Respect their choice. State is already present — just change the state field.
-
-**State write:** Write `.vega-punk-state.json` with `state: "QUICK"`, `task`, `transition_count`. On completion → set state: DONE and delete file. If switching to CONDENSED, just change the state field — file already exists.
+    IF user rejects:
+        state = SCAN /* go FULL from beginning */
+    IF approved:
+        /* state write */
+        WRITE .vega-punk-state.json:
+            state = "HANDOFF"
+            ADD: mode = "condensed", spec, dependencies
+            INCREMENT: transition_count
+END
+```
 
 ---
 
@@ -707,25 +646,20 @@ If any criterion fails → do not enter QUICK. Use CONDENSED or FULL.
 
 **Announce:** "Design complete, handing off to planning."
 
-**Action:**
-
-1. Read [references/plan-builder/SKILL.md](references/plan-builder/SKILL.md) and follow its workflow
-2. `.vega-punk-state.json` is the data contract — plan-builder reads it directly
-
-**State write:** Change `state` to "REVIEW", add `"handoff_to": "plan-builder"`. Increment `transition_count`. Keep all existing fields.
-
-```json
-{
-  "state": "REVIEW",
-  "task": "...",
-  "...previous fields...": "...",
-  "handoff_to": "plan-builder",
-  "user_satisfaction": null,
-  "transition_count": 9
-}
 ```
+BEGIN HANDOFF
+    READ references/plan-builder/SKILL.md
+    FOLLOW its workflow
 
-Planning and execution are handled by downstream skills.
+    /* .vega-punk-state.json is the data contract — plan-builder reads it directly */
+
+    /* state write */
+    WRITE .vega-punk-state.json:
+        state = "REVIEW"
+        ADD: handoff_to = "plan-builder", user_satisfaction = null
+        INCREMENT: transition_count
+END
+```
 
 ---
 
@@ -733,118 +667,127 @@ Planning and execution are handled by downstream skills.
 
 **Trigger:** State is REVIEW with `execution_result` present.
 
-**Action:**
+```
+BEGIN REVIEW
+    READ execution_result from state file
+    COMPARE against requirements.success
 
-1. Read `execution_result` from the state file
-2. Compare against `requirements.success`
-3. Present summary to user and ask next step:
-   - **success + passed** → "All criteria met. Start a new task?"
-   - **success + failed** → "Verification failed. Iterate or redesign?"
-   - **partial** → "Partially done. Continue or redesign?"
-   - **failed** → "Execution failed. Redesign needed?"
+    PRESENT summary to user
+    MATCH execution_result.status:
 
-4. **Capture user satisfaction:** Based on user response, record `user_satisfaction` in the state file: `"satisfied"`, `"neutral"`, or `"dissatisfied"`. This informs future mode selection — repeated dissatisfaction should bias toward more thorough flows.
+    CASE success AND verification passed:
+        TELL: "All criteria met. Start a new task?"
+    CASE success AND verification failed:
+        TELL: "Verification failed. Iterate or redesign?"
+    CASE partial:
+        TELL: "Partially done. Continue or redesign?"
+    CASE failed:
+        TELL: "Execution failed. Redesign needed?"
 
-Based on user response → DESIGN (iterate), CLARIFY (redesign), or Post-Completion Cleanup → ROUTE (new task).
+    /* capture satisfaction */
+    RECORD user_satisfaction: "satisfied" / "neutral" / "dissatisfied"
 
----
-
-## Post-Completion Cleanup
-
-**Trigger:** ROUTE step 0 (when state is "DONE" and a new task starts), or user says "new task" / "start over" / "forget previous", or user cancels the flow.
-
-1. **Archive spec files:** Rename `vega-punk/specs/*.md` → `*.DONE.md` for completed tasks, or rename to `*.CANCELLED.md` for cancelled tasks. Never delete specs — archive them so history is always recoverable.
-2. **Delete `.vega-punk-state.json`.** The task is done or cancelled, the state is no longer needed for recovery.
-
-**REVIEW → new task transition:** If the user starts a new task while in REVIEW state, apply Post-Completion Cleanup then restart ROUTE.
+    MATCH user response:
+    CASE new task:
+        APPLY Post-Completion Cleanup
+        GOTO ROUTE
+    CASE iterate:
+        GOTO DESIGN
+    CASE redesign:
+        GOTO CLARIFY
+END
+```
 
 ## Bootstrap (First Run)
 
-When vega-punk is invoked for the first time in a project:
-
-1. **Create spec directory:** `mkdir -p vega-punk/specs`
-2. **Verify gitignore:** Add `.vega-punk-state.json` to `.gitignore`. **Do NOT** gitignore `vega-punk/` — spec history should be committed.
-3. **Verify scripts exist:** `ls scripts/` should contain `session-hook.sh`, etc. If missing, inform the user.
-4. Proceed to ROUTE state. No state file needed for first run.
+```
+BEGIN BOOTSTRAP
+    MKDIR vega-punk/specs
+    ADD .vega-punk-state.json to .gitignore
+    DO NOT gitignore vega-punk/ (spec history is project memory)
+    VERIFY scripts/ exists (session-hook.sh, etc.)
+    IF missing → inform user
+    GOTO ROUTE
+END
+```
 
 ## Self-Recovery Guide
 
-When vega-punk's own state becomes corrupted or inconsistent, use these procedures.
+When vega-punk's state becomes corrupted or inconsistent:
 
-### Symptom: State file contains unknown state value
 ```
-1. Read .vega-punk-state.json
-2. If state is not one of: ROUTE, SCAN, CLARIFY, DESIGN, DESIGN_QA,
-   DEPENDENCIES, SPEC, SPEC_QA, CONDENSED, QUICK, HANDOFF, REVIEW, DONE
-3. → This is a corrupted state. Recovery:
-   a. If task and context are present → Set state to CLARIFY (re-clarify with user)
-   b. If only task is present → Set state to ROUTE (start from scratch)
-   c. If file is empty or unreadable → Delete file, start fresh from ROUTE
-4. Tell user: "State file was corrupted. Recovered to [STATE]. Let me know if this doesn't match where we were."
-```
+BEGIN RECOVERY
+    READ .vega-punk-state.json
+    VALID_STATES = [ROUTE, SCAN, CLARIFY, DESIGN, DESIGN_QA,
+                    DEPENDENCIES, SPEC, SPEC_QA, CONDENSED, HANDOFF, REVIEW, DONE]
 
-### Symptom: State says DESIGN but no design field exists
-```
-1. State says DESIGN but design field is missing or empty
-2. → Design was lost (session interrupted before saving)
-3. Recovery: Set state to CLARIFY — re-clarify with user and re-enter DESIGN
-4. Tell user: "Design context was lost. Let me re-clarify the requirements."
-```
+    MATCH symptom:
 
-### Symptom: State says HANDOFF but spec_path doesn't exist
-```
-1. State says HANDOFF or REVIEW but spec file is missing
-2. → Spec was never written or was deleted
-3. Recovery: Check if design and dependencies fields are present
-   a. If present → Re-generate spec from design + dependencies, set state to SPEC
-   b. If missing → Set state to CLARIFY, re-run the design flow
-4. Tell user: "Spec file was lost. I'll regenerate it from our design."
-```
+    CASE state NOT IN VALID_STATES:
+        /* corrupted state value */
+        IF task AND context present:
+            state = CLARIFY
+            TELL: "State file was corrupted. Recovered to CLARIFY."
+        ELSE IF only task present:
+            state = ROUTE
+            TELL: "State file was corrupted. Recovered to ROUTE."
+        ELSE:
+            DELETE .vega-punk-state.json
+            GOTO ROUTE
+            TELL: "State file was corrupted. Starting fresh."
 
-### Symptom: roadmap.json is missing or corrupted
-```
-1. State says REVIEW but roadmap.json doesn't exist or is invalid JSON
-2. → Execution was interrupted before/during planning
-3. Recovery:
-   a. If .vega-punk-state.json has spec_path and spec exists → Re-run HANDOFF
-   b. If no spec exists → Use Self-Recovery for missing spec above
-4. Tell user: "Execution plan was lost. I'll regenerate it from our spec."
-```
+    CASE state == DESIGN AND design field missing or empty:
+        /* design lost (session interrupted) */
+        state = CLARIFY
+        TELL: "Design context was lost. Let me re-clarify the requirements."
 
-### Symptom: Stuck in a QA loop (retries keep failing)
-```
-1. DESIGN_QA or SPEC_QA retries reaching 3
-2. → The design/spec has a fundamental issue, not a fixable one
-3. Recovery:
-   a. Stop the loop
-   b. Present the specific failing criteria to the user
-   c. Ask: "This has failed [N] times. The core issue is: [summary].
-           Should we (1) restart design, (2) change requirements, or (3) proceed despite the risk?"
-   d. Follow user's direction
-4. Do NOT silently increase retry limits
-```
+    CASE state == HANDOFF OR state == REVIEW AND spec_path file missing:
+        /* spec was never written or deleted */
+        IF design AND dependencies fields present:
+            REGENERATE spec from design + dependencies
+            state = SPEC
+            TELL: "Spec file was lost. I'll regenerate it from our design."
+        ELSE:
+            state = CLARIFY
+            TELL: "Spec file was lost. Let me re-run the design flow."
 
-### Symptom: Session resumed but state feels wrong
-```
-1. State says a state but the context doesn't match the current conversation
-2. → Stale state from a previous unrelated task
-3. Recovery:
-   a. Ask user: "I'm seeing state from a previous task ([task summary]).
-                Should I continue that, or start fresh?"
-   b. If fresh → Apply Post-Completion Cleanup, start ROUTE
-   c. If continue → Proceed from the current state
-```
+    CASE state == REVIEW AND (roadmap.json missing OR invalid JSON):
+        /* execution interrupted during planning */
+        IF spec_path exists AND spec file readable:
+            RE-RUN HANDOFF
+            TELL: "Execution plan was lost. Regenerating from spec."
+        ELSE:
+            RECOVER using missing spec case above
 
-### Nuclear Option: Full Reset
-If nothing else works, or if the user says "reset everything":
-```
-1. Archive any existing specs: vega-punk/specs/*.md → *.CANCELLED.md
-2. Delete .vega-punk-state.json
-3. Delete roadmap.json (if exists)
-4. Delete findings.json (if exists)
-5. Delete progress.json (if exists)
-6. Tell user: "[vega-punk] Full reset complete. Starting fresh. What shall we build?"
-7. Start from ROUTE
+    CASE qa.retries == 3:
+        /* fundamental design/spec issue, not fixable */
+        STOP the loop
+        PRESENT failing criteria to user
+        ASK: "Failed [N] times. Core issue: [summary].
+              (1) restart design, (2) change requirements, (3) proceed despite risk?"
+        FOLLOW user direction
+        /* DO NOT silently increase retry limits */
+
+    CASE state valid BUT context doesn't match conversation:
+        /* stale state from previous unrelated task */
+        ASK: "I see state from a previous task: [summary].
+              Continue that, or start fresh?"
+        IF fresh:
+            APPLY Post-Completion Cleanup
+            GOTO ROUTE
+        IF continue:
+            PROCEED from current state
+
+    CASE user says "reset everything":
+        /* nuclear option */
+        RENAME vega-punk/specs/*.md → *.CANCELLED.md
+        DELETE .vega-punk-state.json
+        DELETE roadmap.json (if exists)
+        DELETE findings.json (if exists)
+        DELETE progress.json (if exists)
+        TELL: "[vega-punk] Full reset complete. Starting fresh. What shall we build?"
+        GOTO ROUTE
+END
 ```
 
 ---
@@ -872,20 +815,17 @@ If nothing else works, or if the user says "reset everything":
 
 **Sub-skills (referenced):**
 
-- **plan-builder** — [references/plan-builder/SKILL.md](references/plan-builder/SKILL.md) (called from HANDOFF)
-- **plan-executor** — [references/plan-executor/SKILL.md](references/plan-executor/SKILL.md) (called from plan-builder's Execution Handoff)
-
-**External dependencies (called during execution):**
-
-- **task-dispatcher** — parallel execution
-- **root-cause** — on bugs
-- **test-first** — per task
-- **verify-gate** — before claiming done
-- **review-request** — before merge
-- **branch-landing** — after all tasks complete
-- **parallel-swarm** — independent concurrent tasks
-- **worktree-setup** — isolated workspace for feature work
-- **review-intake** — process code review feedback
+- **plan-builder** — [references/plan-builder/SKILL.md](references/plan-builder/SKILL.md) - called from HANDOFF
+- **plan-executor** — [references/plan-executor/SKILL.md](references/plan-executor/SKILL.md)  - called from plan-builder's Execution HANDOFF
+- **task-dispatcher** — [references/task-dispatcher/SKILL.md](references/task-dispatcher/SKILL.md) — parallel execution
+- **root-cause** — [references/root-cause/SKILL.md](references/root-cause/SKILL.md) — on bugs
+- **test-first** — [references/test-first/SKILL.md](references/test-first/SKILL.md) — per task
+- **verify-gate** — [references/verify-gate/SKILL.md](references/verify-gate/SKILL.md) — before claiming done
+- **review-request** — [references/review-request/SKILL.md](references/review-request/SKILL.md) — before merge
+- **branch-landing** — [references/branch-landing/SKILL.md](references/branch-landing/SKILL.md) — after all tasks complete
+- **parallel-swarm** — [references/parallel-swarm/SKILL.md](references/parallel-swarm/SKILL.md) — independent concurrent tasks
+- **worktree-setup** — [references/worktree-setup/SKILL.md](references/worktree-setup/SKILL.md) — isolated workspace for feature work
+- **review-intake** — [references/review-intake/SKILL.md](references/review-intake/SKILL.md) — process code review feedback
 
 **Self-recovery:** Built-in — see "Self-Recovery Guide" section above. No external reference needed.
 
@@ -896,24 +836,14 @@ If nothing else works, or if the user says "reset everything":
 - **One question at a time** — Don't overwhelm.
 - **YAGNI ruthlessly** — Remove unrequested features.
 - **Working in existing codebases** — Follow existing patterns. Targeted improvements only. No unrelated refactoring.
-- **Sub-skill architecture** — planning in `plan-builder/SKILL.md`, execution in `plan-executor/SKILL.md`. HANDOFF reads and follows them.
 
 ## Skill Trigger Reference
 
-Centralized trigger conditions for all referenced skills:
+Skills vega-punk directly invokes:
 
-| Skill | When to Invoke | Trigger Keywords / Conditions |
-|-------|---------------|------------------------------|
-| **root-cause** | ROUTE detects bug keywords | `bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception` |
-| **plan-builder** | HANDOFF → create roadmap.json | `.vega-punk-state.json` has spec_path or spec |
-| **plan-executor** | Inline execution chosen | `roadmap.json` exists, user chose inline |
-| **test-first** | Any code implementation step | Every feature, bugfix, refactor |
-| **verify-gate** | Before claiming any step/task done | Every verification gate |
-| **worktree-setup** | Before starting feature work | Required by task-dispatcher and plan-executor |
-| **task-dispatcher** | After planning, parallel tasks preferred | `roadmap.json` exists, tasks mostly independent |
-| **parallel-swarm** | 2+ independent tasks with no shared state | Different test files, different subsystems, no shared dependencies |
-| **review-request** | After each task or before merge | Mandatory in task-dispatcher |
-| **review-intake** | Processing review feedback | Code review comments received |
-| **branch-landing** | All tasks complete, tests passing | Merge/PR/keep/discard decision |
+| Skill            | When    | Trigger                                                                               |
+|------------------|---------|---------------------------------------------------------------------------------------|
+| **root-cause**   | ROUTE   | message contains `bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception` |
+| **plan-builder** | HANDOFF | `.vega-punk-state.json` has `spec_path` or `spec`                                     |
 
-**How to choose skills:** During SCAN, you have access to the full list of registered skills (from `discover-skills.sh`). Match the task intent against each skill's description and trigger conditions. Select all relevant skills. You decide the execution order based on the specific task context — don't follow fixed chains. Trust your judgment about what's needed and in what order.
+-**How to choose skills:** During SCAN, you have access to the full list of registered skills (from `discover-skills.sh`). Match the task intent against each skill's description and trigger conditions. Select all relevant skills. You decide the execution order based on the specific task context — don't follow fixed chains. Trust your judgment about what's needed and in what order. 
