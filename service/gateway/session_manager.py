@@ -70,6 +70,13 @@ class SessionManager:
                     session.touch()
                     break
 
+    def getBySessionKey(self, sessionKey: str) -> Optional[Session]:
+        with self._lock:
+            for session in self._sessions.values():
+                if session.sessionKey == sessionKey:
+                    return session
+            return None
+
     async def get(self, userId: str, botId: str = 'vega-punk') -> Optional[Session]:
         with self._lock:
             session = self._sessions.get(f"{userId}-{botId}")

@@ -107,12 +107,8 @@ class OpenClawGatewayClient:
                     "auth": {"token": self.token}
                 }
             }
-
             await self.ws.send(json.dumps(connectMsg))
-            result = await asyncio.wait_for(future, timeout=15)
-
-            logger.info(f"[OpenClaw] connect ok")
-
+            await asyncio.wait_for(future, timeout=15)
             self._startHeartbeat()
 
         finally:
@@ -131,8 +127,7 @@ class OpenClawGatewayClient:
             self._heartbeatInterval = None
 
         for future in self._pending.values():
-            if not future.done():
-                future.set_exception(Exception("连接已关闭"))
+            if not future.done(): future.set_exception(Exception("连接已关闭"))
         self._pending.clear()
         self._connected.clear()
 

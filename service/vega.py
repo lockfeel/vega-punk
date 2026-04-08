@@ -120,8 +120,12 @@ async def chatClaw(websocket: WebSocket):
         phase = payload.get('data', {}).get('phase')
         eventSession = payload.get('sessionKey', '')
 
+        botId = None
         try:
-            sessionManager.activeBySession(eventSession)
+            session = sessionManager.getBySessionKey(eventSession)
+            if session:
+                botId = session.botId
+                sessionManager.activeBySession(eventSession)
         except Exception:
             pass
 
@@ -133,6 +137,7 @@ async def chatClaw(websocket: WebSocket):
                     "type": "delta",
                     "runId": runId,
                     "sessionKey": payload.get('sessionKey'),
+                    "botId": botId,
                     "text": accumulatedText,
                     "delta": data.get('delta', '')
                 })
@@ -150,6 +155,7 @@ async def chatClaw(websocket: WebSocket):
                     "type": "final",
                     "runId": runId,
                     "sessionKey": payload.get('sessionKey'),
+                    "botId": botId,
                     "content": accumulatedText,
                     "state": "completed"
                 }
