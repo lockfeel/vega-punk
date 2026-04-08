@@ -44,7 +44,7 @@ class SessionManager:
             session = self._sessions.get(f'{userId}-{botId}')
 
             if session is None:
-                sessionKey = f"agent:main:user-{userId}-{botId}"
+                sessionKey = f"agent:main:main" if botId == 'openclaw' else f"agent:main:user-{userId}-{botId}"
                 try:
                     await self.gateway.sendRequest("sessions.create", {
                         "key": sessionKey
@@ -72,6 +72,8 @@ class SessionManager:
 
     def getBySessionKey(self, sessionKey: str) -> Optional[Session]:
         with self._lock:
+            if sessionKey == 'agent:main:main':
+                return Session(userId='openclaw', sessionKey=sessionKey, botId='openclaw')
             for session in self._sessions.values():
                 if session.sessionKey == sessionKey:
                     return session

@@ -102,6 +102,25 @@ async def listBots():
     return JSONResponse({"bots": bots})
 
 
+@app.post("/active")
+async def activeChats():
+    if not db:
+        return JSONResponse({"error": "数据库未就绪"}, status_code=503)
+    result = db.getActiveChats()
+    return JSONResponse({"active": result})
+
+
+@app.post("/messages")
+async def getMessages(request: Request):
+    if not db:
+        return JSONResponse({"error": "数据库未就绪"}, status_code=503)
+    body = await request.json()
+    botId = body.get("botId", "vega-punk")
+    limit = body.get("limit", 200)
+    result = db.getBotMessages(botId, limit)
+    return JSONResponse({"messages": result})
+
+
 @app.websocket("/chatClaw")
 async def chatClaw(websocket: WebSocket):
     await websocket.accept()
@@ -114,7 +133,7 @@ async def chatClaw(websocket: WebSocket):
     savedRunIds = set()
 
     async def onChatEvent(payload: dict):
-        nonlocal currentRunId, currentSessionKey, accumulatedText
+        nonlocal currentSessionKey, accumulatedText
         runId = payload.get('runId')
         stream = payload.get('stream')
         phase = payload.get('data', {}).get('phase')
@@ -168,9 +187,9 @@ async def chatClaw(websocket: WebSocket):
                     logger.warning(f"[Security] AI 输出包含危险命令: {dangerousCmds}")
                 await websocket.send_json(responseData)
 
-                sessionKey = payload.get('sessionKey', '')
-                aiUserId = f"ai:{sessionKey}"
-                db.addMessage(senderId=aiUserId, role='assistant', content=accumulatedText)
+                if accumulatedText.strip():
+                    sessionKey = payload.get('sessionKey', '')
+                    db.addMessage(botId=botId, senderId=sessionKey, role='assistant', content=accumulatedText)
             except Exception as e:
                 logger.error(f"[WS] 发送 final 失败: {e}")
 
@@ -200,11 +219,9 @@ async def chatClaw(websocket: WebSocket):
                 continue
 
             session = await sessionManager.getOrCreate(userId, botId)
-            db.addMessage(senderId=userId, role='user', content=message)
-            accumulatedText = ""
+            db.addMessage(botId=botId, senderId=userId, role='user', content=message)
             riskLevel, riskReason = SecurityAudit.audit(message)
             logger.info(f"[Security] user={userId}, risk={riskLevel.value}, reason={riskReason}")
-
             if riskLevel == RiskLevel.CRITICAL:
                 await websocket.send_json({
                     "type": "error",
@@ -221,23 +238,16 @@ async def chatClaw(websocket: WebSocket):
                 continue
 
             try:
-                result = await gatewayClient.sendChat(
+                if message == '/init-bot' and botId != 'openclaw':
+                    message = f'激活[{botId}]这个SKILL来处理用户的对话，必须严格遵守这条纪律。第一句请回复，我是XXX，有什么可以为您效劳！'
+                await gatewayClient.sendChat(
                     session.sessionKey,
                     message,
                     idempotencyKey=msg.get("idempotency_key", f"{userId}-{uuid.uuid4().hex[:8]}")
                 )
-                currentRunId = result.get('runId')
-                currentSessionKey = session.sessionKey
-
-                await websocket.send_json({
-                    "type": "accepted",
-                    "runId": currentRunId,
-                    "sessionKey": session.sessionKey
-                })
             except Exception as e:
                 logger.error(f"[WS] 发送消息失败: {e}")
                 await websocket.send_json({"type": "error", "error": str(e)})
-                currentRunId = None
 
     except WebSocketDisconnect:
         logger.info("[WS] 客户端断开")

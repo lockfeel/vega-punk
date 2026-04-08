@@ -795,20 +795,7 @@
     </div>
 
     <div class="list-items">
-        <div class="session-panel" id="sessionPanel">
-            <div class="list-item active">
-                <div class="item-avatar" id="sessionBotAvatar">
-                    <img src="https://res.amemo.cn/vega-punk.png" alt="User" style="width:100%; border-radius:12px;">
-                </div>
-                <div class="item-content">
-                    <div class="item-header">
-                        <span class="item-name" id="sessionBotName">VegaPunk</span>
-                        <span class="item-time">昨天 14:26</span>
-                    </div>
-                    <div class="item-preview">AI大脑</div>
-                </div>
-            </div>
-        </div>
+        <div class="session-panel" id="sessionPanel"></div>
         <div class="bot-list" id="botList"></div>
     </div>
 </aside>
@@ -894,6 +881,58 @@
         }
     }
 
+    function formatLastTime(timestamp) {
+        if (!timestamp) return '';
+        const now = new Date();
+        const d = new Date(timestamp * 1000);
+        const diffMs = now - d;
+        const diffMin = Math.floor(diffMs / 60000);
+        if (diffMin < 1) return '刚刚';
+        if (diffMin < 60) return `${diffMin}分钟前`;
+        const diffHr = Math.floor(diffMin / 60);
+        if (diffHr < 24) return `${diffHr}小时前`;
+        if (diffHr < 48) return `昨天 ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+        return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+    }
+
+    function renderSessionPanel(activeChats) {
+        const sessionPanel = document.getElementById('sessionPanel');
+        sessionPanel.innerHTML = activeChats.map((chat, idx) => `
+            <div class="list-item ${chat.botId === currentBot.botId ? 'active' : ''}" data-bot-id="${chat.botId}">
+                <div class="item-avatar">
+                    <img src="${chat.avatar}" alt="${chat.name}" style="width:100%; border-radius:12px;">
+                </div>
+                <div class="item-content">
+                    <div class="item-header">
+                        <span class="item-name">${chat.name}</span>
+                        <span class="item-time">${formatLastTime(chat.lastTime)}</span>
+                    </div>
+                    <div class="item-preview">${chat.lastContent || '暂无消息'}</div>
+                </div>
+            </div>
+        `).join('');
+        sessionPanel.querySelectorAll('.list-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const botId = item.dataset.botId;
+                const bot = botsCache[botId];
+                if (bot) switchBot(bot);
+            });
+        });
+    }
+
+    async function loadActiveChats() {
+        try {
+            const response = await fetch('/active', { method: 'POST' });
+            const result = await response.json();
+            console.log('[API] /active 响应:', result);
+            if (result.active && result.active.length > 0) {
+                renderSessionPanel(result.active);
+            }
+        } catch (error) {
+            console.error('[API] /active 请求失败:', error);
+        }
+    }
+
     async function loadBots() {
         try {
             const response = await fetch('/bots',{method: 'POST'});
@@ -905,6 +944,7 @@
                 });
                 console.log('[API] botsCache 已加载:', Object.keys(botsCache).length, '个 bot');
                 renderBotList();
+                loadActiveChats();
             }
         } catch (error) {
             console.error('[API] /bots 请求失败:', error);
@@ -943,13 +983,12 @@
         avatar: 'https://res.amemo.cn/vega-punk.png'
     };
 
-    function switchBot(bot) {
+    async function switchBot(bot) {
         currentBot = bot;
-        document.getElementById('sessionBotName').textContent = bot.name;
         document.getElementById('headerBotName').textContent = bot.name;
-        const avatarEl = document.getElementById('sessionBotAvatar');
-        avatarEl.innerHTML = `<img src="${bot.avatar || 'https://res.amemo.cn/vega-punk.png'}" alt="${bot.name}" style="width:100%; border-radius:12px;">`;
         showPanel('sessions');
+        await loadActiveChats();
+        await loadMessages();
     }
 
     function showPanel(type) {
@@ -1031,7 +1070,7 @@
                 return;
             }
             const userData = JSON.parse(localStorage.getItem('userInfo') || '{}');
-            const systemText = '启用vega-punk这个SKILL来处理用户的对话，必须严格遵守这条纪律。';
+            const systemText = '/init-bot';
             console.log('[WS] 发送系统指令, botId:', currentBot.botId);
             ws.send(JSON.stringify({ user: userData.userId || '', text: systemText, botId: currentBot.botId }));
         };
@@ -1040,19 +1079,28 @@
             try {
                 const data = JSON.parse(event.data);
                 console.log('[WS] 收到消息:', data.type, data);
+                const msgBotId = data.botId;
+                if (msgBotId && msgBotId !== currentBot.botId) {
+                    const bot = botsCache[msgBotId];
+                    if (bot) {
+                        switchBot(bot);
+                    }
+                    return;
+                }
                 if (data.type === 'delta') {
                     let msgRow = document.querySelector(`[data-runid="${data.runId}"]`);
                     if (!msgRow) {
                         checkAndInsertTimestamp();
+                        const bot = botsCache[msgBotId] || currentBot;
                         msgRow = document.createElement('div');
                         msgRow.className = 'message-row bot';
                         msgRow.setAttribute('data-runid', data.runId);
                         msgRow.innerHTML = `
                             <div class="msg-avatar">
-                                <img src="https://res.amemo.cn/vega-punk.png" style="width:100%;height:100%;border-radius:12px;object-fit:cover;">
+                                <img src="${bot.avatar || 'https://res.amemo.cn/vega-punk.png'}" style="width:100%;height:100%;border-radius:12px;object-fit:cover;">
                             </div>
                             <div class="msg-content">
-                                <span class="msg-author">VegaPunk</span>
+                                <span class="msg-author">${bot.name}</span>
                                 <div class="bubble"><button class="copy-btn" onclick="copyContent(this)"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button><div class="msg-text"></div></div>
                             </div>
                         `;
@@ -1081,6 +1129,76 @@
             stopHeartbeat();
             setTimeout(connectWebSocket, 3000);
         };
+    }
+
+    async function loadMessages() {
+        try {
+            const response = await fetch('/messages', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ botId: currentBot.botId, limit: 200 })
+            });
+            const result = await response.json();
+            console.log('[API] /messages 响应:', result);
+            if (result.messages) {
+                const chatHistory = document.getElementById('chatHistory');
+                chatHistory.innerHTML = '<div style="height: 20px;"></div>';
+                const msgs = result.messages.reverse();
+                let lastTs = null;
+                msgs.forEach(msg => {
+                    const msgTime = msg.createTime * 1000;
+                    if (!lastTs || msgTime - lastTs > 5 * 60 * 1000) {
+                        const d = new Date(msgTime);
+                        const timeStr = `${d.getMonth() + 1}-${d.getDate().toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+                        const ts = document.createElement('div');
+                        ts.className = 'timestamp';
+                        ts.innerHTML = `<span>${timeStr}</span>`;
+                        chatHistory.appendChild(ts);
+                    }
+                    lastTs = msgTime;
+                    if (msg.role === 'user') {
+                        appendUserMessageSilent(msg.content);
+                    } else if (msg.role === 'assistant') {
+                        appendBotMessageSilent(msg.content, currentBot.name, currentBot.avatar);
+                    }
+                });
+                lastReplyTime = lastTs;
+                scrollToBottom();
+            }
+        } catch (error) {
+            console.error('[API] /messages 请求失败:', error);
+        }
+    }
+
+    function appendUserMessageSilent(text) {
+        const msgRow = document.createElement('div');
+        msgRow.className = 'message-row user';
+        const userHeadUrl = (JSON.parse(localStorage.getItem('userInfo') || '{}')).userHeadurl || '';
+        msgRow.innerHTML = `
+            <div class="msg-avatar user-head">
+                ${userHeadUrl ? `<img src="${userHeadUrl}" style="width:100%;height:100%;border-radius:12px;object-fit:cover;">` : ''}
+            </div>
+            <div class="msg-content">
+                <span class="msg-author">You</span>
+                <div class="bubble">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</div>
+            </div>
+        `;
+        document.getElementById('chatHistory').appendChild(msgRow);
+    }
+
+    function appendBotMessageSilent(text, authorName, authorAvatar) {
+        const msgRow = document.createElement('div');
+        msgRow.className = 'message-row bot';
+        msgRow.innerHTML = `
+            <div class="msg-avatar">
+                <img src="${authorAvatar || 'https://res.amemo.cn/vega-punk.png'}" style="width:100%;height:100%;border-radius:12px;object-fit:cover;">
+            </div>
+            <div class="msg-content">
+                <span class="msg-author">${authorName || 'VegaPunk'}</span>
+                <div class="bubble"><button class="copy-btn" onclick="copyContent(this)"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button><div class="msg-text">${marked.parse(text)}</div></div>
+            </div>
+        `;
+        document.getElementById('chatHistory').appendChild(msgRow);
     }
 
     function scrollToBottom() {
@@ -1160,6 +1278,7 @@
 
         loadBots();
         loadUserInfo();
+        loadMessages();
 
         document.getElementById('navSessions').addEventListener('click', () => showPanel('sessions'));
         document.getElementById('navBots').addEventListener('click', () => showPanel('bots'));

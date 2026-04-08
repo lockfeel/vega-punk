@@ -80,6 +80,7 @@ class DBase:
                 CREATE TABLE IF NOT EXISTS messages (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     planId INTEGER,
+                    botId TEXT,
                     senderId TEXT NOT NULL,
                     role TEXT NOT NULL,
                     content TEXT,
@@ -94,6 +95,7 @@ class DBase:
                 CREATE INDEX IF NOT EXISTS idx_task_logs_bot ON task_logs(botId, createTime);
                 CREATE INDEX IF NOT EXISTS idx_messages_plan ON messages(planId, createTime);
                 CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(senderId, createTime);
+                CREATE INDEX IF NOT EXISTS idx_messages_bot ON messages(botId, createTime);
                 CREATE INDEX IF NOT EXISTS idx_bots_manager ON bots(managerId);
                 CREATE TABLE IF NOT EXISTS sessions (
                     userId TEXT NOT NULL,
@@ -115,6 +117,7 @@ class DBase:
 
     def _initBots(self):
         bots = [
+            ("openclaw", "ClawBot", "https://res.amemo.cn/openclaw.png", "main"),
             ("plan-executor", "执行星使", "https://res.amemo.cn/executing-plans.png", "vega-punk"),
             ("branch-landing", "分支卫士", "https://res.amemo.cn/finishing-a-development-branch.png", "vega-punk"),
             ("plan-builder", "规划谋士", "https://res.amemo.cn/planning-with-json.png", "vega-punk"),
@@ -310,10 +313,10 @@ class DBase:
             )
         return []
 
-    def addMessage(self, planId: int = None, senderId: str = '', role: str = 'user', content: str = ''):
+    def addMessage(self, planId: int = None, botId: str = None, senderId: str = '', role: str = 'user', content: str = ''):
         self.execute(
-            "INSERT INTO messages (planId, senderId, role, content) VALUES (?, ?, ?, ?)",
-            (planId, senderId, role, content)
+            "INSERT INTO messages (planId, botId, senderId, role, content) VALUES (?, ?, ?, ?, ?)",
+            (planId, botId, senderId, role, content)
         )
 
     def getMessages(self, planId: int = None, limit: int = 100) -> List[Dict[str, Any]]:
@@ -327,11 +330,17 @@ class DBase:
             (limit,)
         )
 
-    def getBotMessages(self, senderId: str, limit: int = 50) -> List[Dict[str, Any]]:
-        return self.fetchAll(
-            "SELECT * FROM messages WHERE senderId = ? AND deleted = 0 ORDER BY createTime DESC LIMIT ?",
-            (senderId, limit)
+    def getBotMessages(self, botId: str, limit: int = 50) -> List[Dict[str, Any]]:
+        messages = self.fetchAll(
+            "SELECT * FROM messages WHERE botId = ? AND deleted = 0 ORDER BY createTime DESC LIMIT ?",
+            (botId, limit)
         )
+        bot = self.getBot(botId)
+        if bot:
+            for msg in messages:
+                msg['botName'] = bot['name']
+                msg['botAvatar'] = bot['avatar']
+        return messages
 
     def deleteMessages(self, planId: int = None):
         if planId:
@@ -386,3 +395,30 @@ class DBase:
         return self.fetchAll(
             "SELECT * FROM sessions WHERE status = 'active' AND deleted = 0 ORDER BY lastActive DESC"
         )
+
+    def getActiveChats(self, limit: int = 1000) -> List[Dict[str, Any]]:
+        bots = self.fetchAll("""
+        SELECT   b.botId, 
+                 b.name, 
+                 b.avatar, 
+                 b.role,                                                                                                                                                                                                                                                                                        
+                 t.lastTime,                                                                                                                                                                                                                                                                                                               
+                 t.lastContent                                                                                                                                                                                                                                                                                                             
+          FROM (                                                                                                                                                                                                                                                                                                                           
+              SELECT m.botId,                                                                                                                                                                                                                                                                                                              
+                     m.createTime AS lastTime,                                                                                                                                                                                                                                                                                             
+                     SUBSTR(m.content, 1, 20) AS lastContent                                                                                                                                                                                                                                                                               
+              FROM messages m                                                                                                                                                                                                                                                                                                              
+              WHERE m.rowid IN (                                                                                                                                                                                                                                                                                                           
+                  SELECT MAX(rowid)                                                                                                                                                                                                                                                                                                        
+                  FROM messages                                                                                                                                                                                                                                                                                                            
+                  WHERE deleted = 0                                                                                                                                                                                                                                                                                                        
+                  GROUP BY botId                                                                                                                                                                                                                                                                                                           
+              )                                                                                                                                                                                                                                                                                                                            
+              ORDER BY m.createTime DESC                                                                                                                                                                                                                                                                                                   
+              LIMIT ?                                                                                                                                                                                                                                                                                                                      
+          ) AS t                                                                                                                                                                                                                                                                                                                           
+          INNER JOIN bots b ON b.botId = t.botId                                                                                                                                                                                                                                                                                           
+          ORDER BY t.lastTime DESC
+        """, (limit,))
+        return bots
