@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-Session Catchup Script for planning-with-json
+Session Catchup Script for plan-builder
 
 Analyzes the previous session to find unsynced context after the last
 planning file update. Designed to run on SessionStart.
 
 Usage: python3 session-catchup.py [project-path]
 
-Supported platforms: Claude Code
-Other platforms (OpenCode, Codex, OpenClaw) will skip catchup gracefully.
+Supported platforms: Claude Code, OpenClaw
 """
 
 import json
@@ -19,37 +18,41 @@ from typing import List, Dict, Optional, Tuple
 
 PLANNING_FILES = ['roadmap.json', 'progress.json', 'findings.json']
 
+PLATFORM_SESSION_DIRS = {
+    'Claude Code': Path.home() / '.claude' / 'projects',
+    'OpenClaw': Path.home() / '.openclaw' / 'sessions',
+}
+
 
 def get_project_dir(project_path: str) -> Tuple[Optional[Path], Optional[str]]:
     """Resolve session storage path for the current runtime variant."""
     normalized = str(Path(project_path).resolve())
 
-    # Sanitize path: replace separators with dashes (matches Claude Code behavior)
-    sanitized = normalized.replace(os.sep, '-')
-    if os.name == 'nt':
-        sanitized = sanitized.replace(':', '-')
-    if sanitized.startswith('-'):
-        sanitized = sanitized[1:]
+    for platform_name, base_dir in PLATFORM_SESSION_DIRS.items():
+        if not base_dir.exists():
+            continue
 
-    # Claude Code session directory
-    claude_path = Path.home() / '.claude' / 'projects' / sanitized
+        if platform_name == 'Claude Code':
+            # Claude Code: ~/.claude/projects/<sanitized-path>/
+            sanitized = normalized.replace(os.sep, '-')
+            if os.name == 'nt':
+                sanitized = sanitized.replace(':', '-')
+            if sanitized.startswith('-'):
+                sanitized = sanitized[1:]
+            session_dir = base_dir / sanitized
+            if session_dir.exists():
+                return session_dir, None
 
-    if claude_path.exists():
-        return claude_path, None
-
-    # Check for other platforms — report gracefully instead of silent skip
-    codex_sessions_dir = Path.home() / '.codex' / 'sessions'
-    opencode_sessions_dir = Path.home() / '.opencode' / 'sessions'
-
-    for platform_name, platform_dir in [
-        ('Codex', codex_sessions_dir),
-        ('OpenCode', opencode_sessions_dir),
-    ]:
-        if platform_dir.exists():
-            return None, (
-                f"[planning-with-json] Session catchup: {platform_name} detected "
-                f"but session parsing not yet implemented for this platform."
-            )
+        elif platform_name == 'OpenClaw':
+            # OpenClaw: ~/.openclaw/sessions/<sanitized-path>/
+            sanitized = normalized.replace(os.sep, '-')
+            if os.name == 'nt':
+                sanitized = sanitized.replace(':', '-')
+            if sanitized.startswith('-'):
+                sanitized = sanitized[1:]
+            session_dir = base_dir / sanitized
+            if session_dir.exists():
+                return session_dir, None
 
     return None, None
 
@@ -211,7 +214,7 @@ def main():
         return
 
     # Output catchup report
-    print("\n[planning-with-json] SESSION CATCHUP DETECTED")
+    print("\n[plan-builder] SESSION CATCHUP DETECTED")
     print(f"Previous session: {target_session.stem}")
     print(f"Last planning update: {last_update_file} at message #{last_update_line}")
     print(f"Unsynced messages: {len(messages_after)}")

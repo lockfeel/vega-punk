@@ -446,7 +446,7 @@
         loginBtn.style.color = 'var(--bg-dark)';
 
         setTimeout(() => {
-          window.location.href = 'http://127.0.0.1:8893/chats';
+          window.location.href = `http://127.0.0.1:8893/chats?token=${data.data.userToken}`;
         }, 500);
       } catch (err) {
 

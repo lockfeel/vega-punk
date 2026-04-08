@@ -77,12 +77,16 @@ async def root():
 
 
 @app.get("/chats", response_class=HTMLResponse)
-async def chats_page(request: Request):
-    token = request.cookies.get("userToken")
-    print("token:", token)
+async def chatsPage(request: Request):
+    queryToken = request.query_params.get("token")
+    cookieToken = request.cookies.get("userToken")
+    token = queryToken or cookieToken
     if not token or not verifyToken(token):
         return RedirectResponse(url="/login", status_code=302)
-    return _render("chats.html")
+    response = HTMLResponse(_render("chats.html"))
+    if queryToken:
+        response.set_cookie(key="userToken", value=queryToken, httponly=True, samesite="lax")
+    return response
 
 
 @app.get("/favicon.ico")
