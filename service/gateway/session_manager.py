@@ -9,9 +9,10 @@ logger = logging.getLogger(__name__)
 
 class Session:
 
-    def __init__(self, userId: str, sessionKey: str):
+    def __init__(self, userId: str, sessionKey: str, botId: str = 'vega-punk'):
         self.userId = userId
         self.sessionKey = sessionKey
+        self.botId = botId
         self.createdAt = datetime.now()
         self.lastActive = datetime.now()
 
@@ -38,12 +39,12 @@ class SessionManager:
     async def stop(self):
         if self._gcTask: self._gcTask.cancel()
 
-    async def getOrCreate(self, userId: str) -> Session:
+    async def getOrCreate(self, userId: str, botId: str = 'vega-punk') -> Session:
         with self._lock:
-            session = self._sessions.get(userId)
+            session = self._sessions.get(f'{userId}-{botId}')
 
             if session is None:
-                sessionKey = f"agent:main:user-{userId}"
+                sessionKey = f"agent:main:user-{userId}-{botId}"
                 try:
                     await self.gateway.sendRequest("sessions.create", {
                         "key": sessionKey
@@ -51,15 +52,14 @@ class SessionManager:
                 except Exception as e:
                     logger.warning(f"[Session] 创建失败: {e}")
 
-                session = Session(userId, sessionKey)
-                self._sessions[userId] = session
-
+                session = Session(userId, sessionKey, botId)
+                self._sessions[f'{userId}-{botId}'] = session
             session.touch()
             return session
 
-    def active(self, userId: str):
+    def active(self, userId: str, botId: str = 'vega-punk'):
         with self._lock:
-            session = self._sessions.get(userId)
+            session = self._sessions.get(f'{userId}-{botId}')
             if session:
                 session.touch()
 
@@ -70,15 +70,15 @@ class SessionManager:
                     session.touch()
                     break
 
-    async def get(self, userId: str) -> Optional[Session]:
+    async def get(self, userId: str, botId: str = 'vega-punk') -> Optional[Session]:
         with self._lock:
-            session = self._sessions.get(userId)
+            session = self._sessions.get(f"{userId}-{botId}")
             if session: session.touch()
             return session
 
-    async def close(self, userId: str):
+    async def close(self, userId: str, botId: str = 'vega-punk'):
         with self._lock:
-            session = self._sessions.pop(userId, None)
+            session = self._sessions.pop(f"{userId}-{botId}", None)
             if session:
                 try:
                     await self.gateway.sendRequest("sessions.delete", {"key": session.sessionKey})
@@ -97,7 +97,7 @@ class SessionManager:
 
                 for userId, session in idleSessions:
                     logger.info(f"[Session] GC: 清理闲置会话 {userId}")
-                    await self.close(userId)
+                    await self.close(session.userId, session.botId)
 
             except asyncio.CancelledError:
                 break

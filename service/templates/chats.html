@@ -882,8 +882,8 @@
             return;
         }
         const userData = JSON.parse(localStorage.getItem('userInfo') || '{}');
-        console.log('[WS] 发送消息, userId:', userData.userId);
-        ws.send(JSON.stringify({ user: userData.userId || '', text }));
+        console.log('[WS] 发送消息, userId:', userData.userId, ', botId:', currentBot.botId);
+        ws.send(JSON.stringify({ user: userData.userId || '', text, botId: currentBot.botId }));
     }
 
     function applyUserInfo(userData) {
@@ -937,7 +937,11 @@
         });
     }
 
-    let currentBot = { botId: 'vega-punk', name: 'VegaPunk', avatar: 'https://res.amemo.cn/vega-punk.png' };
+    let currentBot = {
+        botId: 'vega-punk',
+        name: '慎思者',
+        avatar: 'https://res.amemo.cn/vega-punk.png'
+    };
 
     function switchBot(bot) {
         currentBot = bot;
@@ -1028,8 +1032,8 @@
             }
             const userData = JSON.parse(localStorage.getItem('userInfo') || '{}');
             const systemText = '启用vega-punk这个SKILL来处理用户的对话，必须严格遵守这条纪律。';
-            console.log('[WS] 发送系统指令');
-            ws.send(JSON.stringify({ user: userData.userId || '', text: `${systemText}` }));
+            console.log('[WS] 发送系统指令, botId:', currentBot.botId);
+            ws.send(JSON.stringify({ user: userData.userId || '', text: systemText, botId: currentBot.botId }));
         };
 
         ws.onmessage = (event) => {

@@ -173,14 +173,14 @@ class DBase:
             rows = conn.execute(sql, params).fetchall()
             return _rowsToDicts(rows)
 
-    def upsertBot(self, botId: str, name: str, role: str = 'pm', avatar: str = None,
-                  managerId: str = None):
+    def upsertBot(self, botId: str, name: str, role: str = 'pm', avatar: str = None, managerId: str = None):
         self.execute(
             "INSERT INTO bots (botId, name, role, avatar, managerId, status) "
             "VALUES (?, ?, ?, ?, ?, 'idle') "
             "ON CONFLICT(botId) DO UPDATE SET "
-            "name=excluded.name, role=excluded.role, avatar=COALESCE(excluded.avatar, bots.avatar), "
-            "managerId=COALESCE(excluded.managerId, bots.managerId)",
+            "name=excluded.name, role=excluded.role, "
+            "avatar=COALESCE(excluded.avatar, bots.avatar), "
+            "managerId=excluded.managerId",
             (botId, name, role, avatar, managerId)
         )
 

@@ -185,6 +185,7 @@ async def chatClaw(websocket: WebSocket):
 
             userId = msg.get('user')
             message = msg.get('text')
+            botId = msg.get('botId', 'vega-punk')
             if not userId or not message:
                 await websocket.send_json({"error": "缺少 user 或 message"})
                 continue
@@ -192,7 +193,7 @@ async def chatClaw(websocket: WebSocket):
                 await websocket.send_json({"error": "OpenClaw未连接"})
                 continue
 
-            session = await sessionManager.getOrCreate(userId)
+            session = await sessionManager.getOrCreate(userId, botId)
             db.addMessage(senderId=userId, role='user', content=message)
             accumulatedText = ""
             riskLevel, riskReason = SecurityAudit.audit(message)
