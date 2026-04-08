@@ -42,22 +42,14 @@ for md in references/*/SKILL.md; do
   done < <(grep -oP '\]\(\K[^)]+\.md' "$md" 2>/dev/null || true)
 done
 
-# ── 3. Routing table sync ───────────────────────────────────
-say "Checking routing table..."
-routing_file="references/skill-routing.md"
-[[ -f "$routing_file" ]] || { err "routing table missing: $routing_file"; exit 1; }
-
-for f in references/*/SKILL.md; do
-  name=$(grep '^name:' "$f" | head -1 | sed 's/name: *//' || true)
-  [[ -z "$name" ]] && continue
-  if ! grep -q "\*\*${name}\*\*" "$routing_file"; then
-    warn "$name not in routing table"
-  fi
-done
+# ── 3. Skill discovery script exists ─────────────────────────
+say "Checking discovery..."
+[[ -f "scripts/discover-skills.sh" ]] || err "missing discovery script: scripts/discover-skills.sh"
+bash scripts/discover-skills.sh >/dev/null 2>&1 || err "discover-skills.sh failed to run"
 
 # ── 4. Script existence ─────────────────────────────────────
 say "Checking scripts..."
-for s in sync-routing.sh validate-skills.sh planning-resume.sh session-hook.sh; do
+for s in discover-skills.sh validate-skills.sh planning-resume.sh session-hook.sh; do
   [[ -f "scripts/$s" ]] || warn "missing script: scripts/$s"
 done
 

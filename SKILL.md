@@ -24,10 +24,10 @@ For **OpenClaw**, the working directory is your current project. For **Claude Co
 
 Three scenarios to get going immediately:
 
-### Scenario 1: Quick Fix (< 5 min)
+### Scenario 1: Quick Fix (purely local change)
 ```
 You: "Fix the typo in the login button label"
-→ QUICK mode: "I'll change the label from 'SigIn' to 'SignIn'. Proceed?" → Execute → Verify → Done
+→ QUICK mode: "I'll change the label from 'Sign' to 'Sign In'. Proceed?" → Execute → Verify → Done
 ```
 
 ### Scenario 2: Single Feature (clear scope)
@@ -62,16 +62,16 @@ You: "Build a notification system with email and push"
 
 **Skill loop protection:** The `scan_depth` field in the state JSON tracks consecutive SCAN entries. If it reaches 3, skip skill routing and proceed directly to CLARIFY. This prevents skill → SCAN → skill loops. Increment on each SCAN entry, reset on each CLARIFY entry.
 
-**State JSON format:** Read the current JSON file, change the `state` field, add new fields, and write back. **Do NOT delete existing fields.** Always preserve `task`.
+**State JSON format:** Read the current JSON file, change the `state` field, add new fields, and write back. **Do NOT delete existing fields.** Always preserve `task`. Increment `transition_count` on each state change (initialize to 1 if not present).
 
 **State JSON cleanup:** On transition to DONE, the state file is deleted (see Post-Completion Cleanup). On REVIEW → new task transition, the old state is archived via spec rename and state file deletion. This prevents indefinite growth.
 
-**State compaction:** When `qa.retries` for any QA state exceeds 2, compact the state file before the next iteration:
+**State compaction:** When `qa.retries` for any QA state exceeds 2, or when the state file exceeds 5 transitions (track via `transition_count` field), compact the state file before the next iteration:
 1. Preserve: `state`, `task`, `context`, `selected_skills`, `scope`, `requirements`, `design`, `dependencies`, `spec_path`
 2. Compress `qa` to: `{ "retries": N, "last_feedback": "<summary>", "status": "FAIL" }` — drop intermediate feedback, keep only the latest and the count
 3. Drop any field whose value exceeds 500 characters and is not in the preserve list — replace with a 1-sentence summary
 
-This prevents the state file from growing unbounded through repeated QA cycles.
+This prevents the state file from growing unbounded through repeated QA cycles or long task flows.
 
 **Example state progression:**
 
@@ -124,6 +124,7 @@ After REVIEW (execution callback):
   "state": "DONE",
   "task": "build todo app",
   "...previous fields...": "...",
+  "user_satisfaction": "satisfied",
   "execution_result": {
     "status": "success",
     "summary": "...",
@@ -154,13 +155,14 @@ If user asks "where are we?" or "how much left?", print current state and remain
 | SPEC_QA      | 2             | —              | —          |
 | CONDENSED    | 3             | 3              | —          |
 | HANDOFF      | 1             | 1              | —          |
+| QUICK        | —             | —              | 1 step     |
 | REVIEW       | 0             | 0              | —          |
 
 **Three execution modes:**
 
 | Mode | Steps | When | State File | Skill Check |
 |------|-------|------|------------|-------------|
-| **QUICK** | Confirm → Execute → Verify | < 5 min micro-tasks (fix typo, add config, one-line change) | Optional | 1% Rule still applies |
+| **QUICK** | Confirm → Execute → Verify | Purely local changes, single file, unambiguous solution | Optional | 1% Rule still applies |
 | **CONDENSED** | Minimal spec → Approval → Review | Medium tasks (single component, clear scope) | Required | Full SCAN |
 | **Full** | All 9 states | Large/multi-step tasks, ambiguous scope | Required | Full SCAN |
 
@@ -249,7 +251,7 @@ CONDENSED ──→ HANDOFF ↩ DESIGN                       ↩ SPEC
     ↓         ↘
   ↩ SCAN  (if user rejects)  (if user rejects)
 
-QUICK ──→ (Confirm → Execute → Verify → DONE)   [no state file, < 5 min]
+QUICK ──→ (Confirm → Execute → Verify → DONE)   [no state file, purely local change]
   ↓
 CONDENSED (if task grows)
 ```
@@ -289,7 +291,7 @@ These are the only state reversals permitted. All other transitions are forward-
     - **Creative/Implementation** (build, fix, modify, design, create) → Set state: SCAN. Proceed.
     - **Ambiguous** → Ask one question to classify.
 4. **If user says "just write code" / "skip design" / "just do it" / "don't overthink":** Set state: CONDENSED.
-5. **If task is a micro-task (< 5 min, single file, no ambiguity):** Enter QUICK mode directly. No state file needed.
+5. **If task is a micro-task** (purely local change, single file, unambiguous solution, no new dependencies): Enter QUICK mode directly. No state file needed.
 
 **State write:**
 
@@ -313,7 +315,7 @@ These are the only state reversals permitted. All other transitions are forward-
 
 1. **Check scope BEFORE asking questions.** If the request describes multiple independent subsystems (e.g., "build a platform with chat, file storage, billing, and analytics"), tell the user immediately that the project should be split. Don't spend time refining details of a project that needs to be decomposed first. Help the user identify independent pieces, how they relate, and what order to build them. Then proceed with the first sub-project.
 2. Check project context: files, docs, recent commits.
-3. **Skill Routing:** Read `scan_depth` from the state file. If it is 3 or greater, skip skill routing and proceed to step 4. Otherwise, try to read [references/skill-routing.md](references/skill-routing.md). If the file doesn't exist, skip skill routing and proceed to step 4. If it exists, match task against the routing table. Select ALL relevant skills and note execution order. Process skills first (brainstorming, debugging), implementation skills second. **Also check for any newly installed skills not yet in the routing table — if a skill might apply, invoke it (1% Rule).**
+3. **Skill Routing:** Read `scan_depth` from the state file. If it is 3 or greater, skip skill routing and proceed to step 4. Otherwise, run `bash scripts/discover-skills.sh` to get the full list of all registered skills (local sub-skills + platform skills + external system skills). The script outputs a JSON array with each skill's name, description, source, and path. Match task against this list. Select ALL relevant skills and note execution order. Process skills first (brainstorming, debugging), implementation skills second.
 4. **Skill invocation purpose:** Invoking a skill loads its guidance into context — it tells you HOW to proceed. You do NOT execute the skill's implementation steps here. You use the skill's workflow to inform the CLARIFY → DESIGN → SPEC flow.
 
 **State write:** Read the current JSON, change `state` to "CLARIFY", add `context`, `selected_skills`, `scope`. Increment `scan_depth` (or set to 1 if not present). Keep all existing fields.
@@ -328,7 +330,8 @@ These are the only state reversals permitted. All other transitions are forward-
     "skill2"
   ],
   "scope": "<single|decomposed>",
-  "scan_depth": 1
+  "scan_depth": 1,
+  "transition_count": 1
 }
 ```
 
@@ -635,10 +638,11 @@ On PASS → Enter HANDOFF. On FAIL → Return to SPEC (retry count +1, max 3).
 
 1. Write a minimal spec: What, Why, How (3 sentences max).
 2. Define at least one key interface or entry point: input → output, or function signature, or API shape. This gives the planning layer something concrete to structure phases around.
-3. **Approval:** Ask: "I'll implement [X] using [Y]. Proceed?" Wait for user response.
-4. **If approved →** Set state: HANDOFF.
-5. **If rejected →** Set state: SCAN. User wants the full flow from the beginning.
-6. **After approval, before HANDOFF, do a quick self-review:** Are there any TBD, TODO, or ambiguous statements in the minimal spec? Fix them inline.
+3. **Lightweight dependency check:** In one sentence, identify if any part of this work blocks or is blocked by other components. If nothing depends on ordering, note "all parallel". If there's a serial chain, note it briefly (e.g., "backend first, then frontend").
+4. **Approval:** Ask: "I'll implement [X] using [Y]. Proceed?" Wait for user response.
+5. **If approved →** Set state: HANDOFF.
+6. **If rejected →** Set state: SCAN. User wants the full flow from the beginning.
+7. **After approval, before HANDOFF, do a quick self-review:** Are there any TBD, TODO, or ambiguous statements in the minimal spec? Fix them inline.
 
 **State write:** Read the current JSON, change `state` to "HANDOFF", add `mode`, `spec`. Keep all existing fields.
 
@@ -659,27 +663,30 @@ On PASS → Enter HANDOFF. On FAIL → Return to SPEC (retry count +1, max 3).
 
 ## QUICK
 
-**Trigger:** User says "quick fix" / "just do it" / "tiny change" / "one-liner", OR ROUTE classifies task as estimated < 5 minutes.
+**Trigger:** ROUTE classifies task as a micro-task, or user says "quick fix" / "just do it" / "tiny change" / "one-liner".
+
+**QUICK eligibility — all four must be true:**
+
+| Criterion | Pass | Fail → Upgrade |
+|-----------|------|----------------|
+| **Scope** | 1 file, local change | Cross-file or cross-module |
+| **Solution** | Unambiguous, only one way | Requires trade-off decisions |
+| **Architecture** | No interface or contract changes | Changes public API, types, or contracts |
+| **Dependencies** | No new packages or config | Introduces new dependency or config |
+
+If any criterion fails → do not enter QUICK. Use CONDENSED or Full.
 
 **Announce:** "Entering QUICK mode..."
 
 **Action:**
 
-1. **1% Rule still applies.** Check for relevant skills before proceeding. If a skill matches, invoke it — even quick tasks deserve discipline.
+1. **1% Rule (lightweight):** If the solution involves anything beyond a pure text/config change (e.g., new logic, new imports, new API calls), check for relevant skills. For pure text/config changes (typos, renames, label changes), skip skill check and proceed.
 2. **Confirm intent:** State what you'll do in one sentence: "I'll [action] by [method]. Proceed?"
    - This single confirmation IS the design approval for micro-tasks — it satisfies HARD-GATE as a lightweight approval path.
 3. **If approved →** Execute directly. No state file required. No spec. Just do it.
 4. **Verify after execution:** Apply verify-gate mentally — evidence before claiming done.
 5. **If rejected →** User wants more deliberation. Set state: CONDENSED and proceed from there.
-
-**When NOT to use QUICK:**
-- Task touches > 1 file
-- Task involves architectural decisions
-- Task has unclear scope or dependencies
-- You're not confident it's < 5 minutes
-- User explicitly says "let's think about this" / "what's the plan"
-
-**If task grows beyond 5 minutes during QUICK:** Stop. Tell user: "This is bigger than expected. Switch to CONDENSED or full flow?" Respect their choice.
+6. **If task grows during execution** (touches more files than expected, introduces complexity): Stop. Tell user: "This is more complex than expected. Switch to CONDENSED or full flow?" Respect their choice.
 
 **State write:** No state file required for QUICK mode. If switching to CONDENSED, create state file normally.
 
@@ -703,7 +710,8 @@ On PASS → Enter HANDOFF. On FAIL → Return to SPEC (retry count +1, max 3).
   "state": "REVIEW",
   "task": "...",
   "...previous fields...": "...",
-  "handoff_to": "plan-builder"
+  "handoff_to": "plan-builder",
+  "user_satisfaction": null
 }
 ```
 
@@ -724,6 +732,8 @@ Planning and execution are handled by downstream skills.
    - **success + failed** → "Verification failed. Iterate or redesign?"
    - **partial** → "Partially done. Continue or redesign?"
    - **failed** → "Execution failed. Redesign needed?"
+
+4. **Capture user satisfaction:** Based on user response, record `user_satisfaction` in the state file: `"satisfied"`, `"neutral"`, or `"dissatisfied"`. This informs future mode selection — repeated dissatisfaction should bias toward more thorough flows.
 
 Based on user response → DESIGN (iterate), CLARIFY (redesign), or Post-Completion Cleanup → ROUTE (new task).
 
@@ -817,3 +827,25 @@ Centralized trigger conditions for all referenced skills:
 | **review-request** | After each task or before merge | Mandatory in task-dispatcher |
 | **review-intake** | Processing review feedback | Code review comments received |
 | **branch-landing** | All tasks complete, tests passing | Merge/PR/keep/discard decision |
+
+## Common Skill Chains
+
+Tasks often require multiple skills in sequence. Recognize these patterns during SCAN:
+
+- **Web App Development**: `ui-ux-pro-max → frontend-design → test-first → verify-gate → review-request`
+- **Bug Fix**: `root-cause → test-first → verify-gate`
+- **Feature Development**: `plan-builder → task-dispatcher → review-request → branch-landing`
+- **Design to Code**: `flutter-lens → verify-gate → review-request`
+- **Skill Development**: `skill-creator → self-improving-agent`
+
+## Decision Rules
+
+During SCAN, apply these rules when selecting skills:
+
+1. **Always select verify-gate** for any implementation task
+2. **Always select test-first** for any feature/bugfix in codebases with tests
+3. **Always select root-cause** when something is broken or failing
+4. **Prefer ui-ux-pro-max over frontend-design** when design decisions come first
+5. **Prefer task-dispatcher over parallel-swarm** when there's a roadmap.json
+6. **CONDENSED mode** for purely local changes with clear, unambiguous solutions
+7. **Full flow** for anything spanning multiple files, components, or subsystems
