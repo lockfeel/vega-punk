@@ -16,7 +16,7 @@ hooks:
 **Boundary:** vega-punk owns design and routing. After HANDOFF, plan-builder takes execution — reads the state file, generates the roadmap, manages implementation. vega-punk stays in REVIEW to validate results against requirements.
 
 **State file:** `.vega-punk-state.json` in the working directory.
-**Spec directory:** `vega-punk/specs/` in the working directory.
+**Spec directory:** `specs/` in the working directory.
 
 For **OpenClaw**, the working directory is your current project. For **Claude Code**, it's the directory where you started the session.
 
@@ -105,7 +105,7 @@ BEGIN Post-Completion Cleanup
             { "consecutive_dissatisfied_count": value }
 
     /* Step 2: archive + delete state */
-    RENAME vega-punk/specs/*.md → *.DONE.md (completed) or *.CANCELLED.md (cancelled)
+    RENAME specs/*.md → *.DONE.md (completed) or *.CANCELLED.md (cancelled)
     DELETE .vega-punk-state.json
 
     /* On REVIEW → new task: archive specs + preserve counters, then restart ROUTE */
@@ -123,7 +123,7 @@ END
 3. If a field was written by another skill (e.g. `worktree_path` by worktree-setup), preserve it
 4. When in doubt, read the current JSON, add your fields, and write back — never assume you own the entire file
 
-**Git:** Add `.vega-punk-state.json` and `.vega-punk-counters.json` to `.gitignore`. **Do NOT** gitignore `vega-punk/specs/` — spec history is project memory and should be committed.
+**Git:** Add `.vega-punk-state.json` and `.vega-punk-counters.json` to `.gitignore`. **Do NOT** gitignore `specs/` — spec history is project memory and should be committed.
 
 **Progress reporting:** At each transition:
 > "Entering [STATE]..."
@@ -306,7 +306,7 @@ BEGIN ROUTE
 
     /* Step 0: clean slate */
     IF state == "DONE" AND .vega-punk-state.json exists:
-        RENAME vega-punk/specs/*.md → *.DONE.md
+        RENAME specs/*.md → *.DONE.md
         DELETE .vega-punk-state.json
 
     /* Step 1: bug detection first */
@@ -620,7 +620,7 @@ END
 ```
 BEGIN SPEC
     /* 1. write spec file */
-    WRITE vega-punk/specs/YYYY-MM-DD-<topic>-design.md
+    WRITE specs/YYYY-MM-DD-<topic>-design.md
     REQUIRED sections:
         Goal, Architecture, Components, Interfaces,
         Data Flow, Error Handling, Testing Plan, Dependency Graph
@@ -845,7 +845,7 @@ END
 
 ```
 BEGIN BOOTSTRAP
-    MKDIR vega-punk/specs
+    MKDIR specs
     ADD .vega-punk-state.json and .vega-punk-counters.json to .gitignore
     DO NOT gitignore vega-punk/ (spec history is project memory, commit it)
     VERIFY scripts/ exists (session-hook.sh, etc.)
@@ -923,7 +923,7 @@ BEGIN RECOVERY
 
     CASE user says "reset everything":
         /* nuclear option */
-        RENAME vega-punk/specs/*.md → *.CANCELLED.md
+        RENAME specs/*.md → *.CANCELLED.md
         DELETE .vega-punk-state.json
         DELETE roadmap.json (if exists)
         DELETE findings.json (if exists)

@@ -46,7 +46,7 @@ BEGIN STATE_VALIDATION_GATE
         IF spec_path file does NOT exist:
             /* Spec file lost — regenerate from state fields */
             IF design AND dependencies fields present:
-                REGENERATE spec from design + dependencies → write to vega-punk/specs/
+                REGENERATE spec from design + dependencies → write to specs/
                 UPDATE spec_path in state
                 TELL: "[plan-builder] Spec file was lost. Regenerated from design context."
             ELSE:
