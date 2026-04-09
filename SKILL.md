@@ -11,9 +11,9 @@ hooks:
 
 # Vega-Punk: Session State Machine
 
-**Purpose:** Ensure every creative/implementation task follows a disciplined design flow before execution. Analyzes causal dependencies so the execution plan can maximize parallelism.
+**Purpose:** Enforce design-before-execution for every implementation task. Map causal dependencies so the execution plan maximizes parallelism.
 
-**Boundary:** vega-punk handles design and routing. After HANDOFF, the plan-builder sub-skill takes over — it reads the state file, generates the roadmap, and manages execution. vega-punk remains available to review execution results in the REVIEW state.
+**Boundary:** vega-punk owns design and routing. After HANDOFF, plan-builder takes execution — reads the state file, generates the roadmap, manages implementation. vega-punk stays in REVIEW to validate results against requirements.
 
 **State file:** `.vega-punk-state.json` in the working directory.
 **Spec directory:** `vega-punk/specs/` in the working directory.
@@ -133,14 +133,14 @@ If user asks "where are we?" or "how much left?", print current state and remain
 | HANDOFF      | 1             | 1              |
 | REVIEW       | 0             | 1              |
 
-**Three execution modes:**
+**Two execution modes:**
 
 | Mode          | Steps                             | When                                      | State File | Skill Check |
 |---------------|-----------------------------------|-------------------------------------------|------------|-------------|
 | **CONDENSED** | Minimal spec → Approval → Handoff | Small changes, single features, emergency | Required   | Full SCAN   |
 | **FULL**      | All 9 states                      | Large/multi-step tasks, ambiguous scope   | Required   | Full SCAN   |
 
-CONDENSED mode: 3 steps (minimal spec → approval → handoff), skips DESIGN/DEPENDENCIES/SPEC states. From CONDENSED: 3 states left (CONDENSED → HANDOFF → REVIEW → DONE).
+CONDENSED: 3 steps (spec → approve → handoff). Skips DESIGN, DEPENDENCIES, SPEC. 3 states remain (CONDENSED → HANDOFF → REVIEW → DONE).
 
 ---
 
@@ -172,7 +172,7 @@ These govern ALL behavior, regardless of current state:
 
 ### Skill Check Comes Before Everything
 
-Skills tell you HOW to explore. Check for skills BEFORE gathering information, BEFORE asking clarifying questions, BEFORE doing anything. Do NOT say "I need more context first." Check skills first — they tell you how to gather context.
+Skills tell you HOW to explore. Check skills BEFORE gathering context, BEFORE asking questions, BEFORE acting. Never say "I need more context first" — skills tell you how to get it.
 
 **When you invoke a skill, announce it:** "Using [skill] to [purpose]."
 
@@ -192,17 +192,17 @@ The skill itself tells you which. Read the current version — skills evolve.
 
 ### Output Is Production
 
-- Every deliverable — spec, design doc, diagram, config, code, presentation, image — must be aesthetically crafted and production-ready. No exceptions.
-- No rough drafts. No "this is just a working version, we'll polish later." The first output IS the final output.
-- If it wouldn't look right being shown to a client, shipped to users, or published publicly, it doesn't leave vega-punk.
+- Every deliverable — spec, design, diagram, config, code, presentation, image — must be production-ready. No exceptions.
+- No rough drafts. The first output IS the final output.
+- If it wouldn't survive client review, user delivery, or public release, it doesn't leave vega-punk.
 
 ### Handle Off-Topic Input
 
-If the user sends a message unrelated to the current state's purpose:
+If the user sends input unrelated to the current state's purpose:
 
-1. Briefly acknowledge or answer if it's a simple question
-2. Guide back: "Back to [STATE] — [reminder of where we are]"
-3. Continue from the current state. Do NOT change state or restart the flow.
+1. Briefly answer if it's a simple question
+2. Return: "Back to [STATE] — [reminder of where we are]"
+3. Resume the current state. Do NOT change state or restart.
 
 ### Handle Cancel / Abort
 
@@ -283,6 +283,8 @@ END
 
 **Announce:** "Entering ROUTE..."
 
+**Purpose:** Classify the task and route to the correct entry point.
+
 ```
 BEGIN ROUTE
     /* load preserved counters from previous task */
@@ -346,6 +348,8 @@ END
 
 **Announce:** "Entering SCAN..."
 
+**Purpose:** Discover project context and select relevant skills.
+
 ```
 BEGIN SCAN
     /* 1. scope check before refinement */
@@ -390,6 +394,8 @@ END
 
 **Announce:** "Entering CLARIFY..."
 
+**Purpose:** Extract requirements — purpose, constraints, success criteria — one question at a time.
+
 ```
 BEGIN CLARIFY
     IF purpose, constraints, and success criteria are clear:
@@ -429,6 +435,8 @@ END
 **Trigger:** State is DESIGN.
 
 **Announce:** "Entering DESIGN... Let's brainstorm the best approach together."
+
+**Purpose:** Co-create the solution architecture with the user — explore, converge, formalize.
 
 ```
 BEGIN DESIGN
@@ -522,6 +530,8 @@ END
 
 **Announce:** "Entering DESIGN_QA... awaiting expert review + user secondary review"
 
+**Purpose:** Validate design quality through structured self-review and user confirmation.
+
 ```
 BEGIN DESIGN_QA
     INVOKE QA("design",
@@ -546,6 +556,8 @@ END
 **Trigger:** State is DEPENDENCIES.
 
 **Announce:** "Entering DEPENDENCIES..."
+
+**Purpose:** Map serial and parallel dependencies between design components for optimal execution ordering.
 
 ```
 BEGIN DEPENDENCIES
@@ -588,6 +600,8 @@ END
 
 **Announce:** "Entering SPEC..."
 
+**Purpose:** Write an unambiguous, testable, implementation-ready specification.
+
 ```
 BEGIN SPEC
     /* 1. write spec file */
@@ -626,6 +640,8 @@ END
 
 **Announce:** "Entering SPEC_QA... awaiting expert review + user secondary review"
 
+**Purpose:** Validate spec completeness, consistency, and implementability.
+
 ```
 BEGIN SPEC_QA
     INVOKE QA("spec",
@@ -650,6 +666,8 @@ END
 **Trigger:** State is CONDENSED.
 
 **Announce:** "Entering CONDENSED mode..."
+
+**Purpose:** Fast-path design for simple tasks — minimal spec, single approval, handoff.
 
 ```
 BEGIN CONDENSED
@@ -688,6 +706,8 @@ END
 
 **Announce:** "Design complete, handing off to planning."
 
+**Purpose:** Transfer approved design to plan-builder for execution planning.
+
 ```
 BEGIN HANDOFF
     READ references/plan-builder/SKILL.md
@@ -708,6 +728,10 @@ END
 ## REVIEW
 
 **Trigger:** State is REVIEW with `execution_result` present.
+
+**Announce:** "Entering REVIEW..."
+
+**Purpose:** Validate execution against requirements. Decide: done, iterate, or redesign.
 
 ```
 BEGIN REVIEW
@@ -856,22 +880,22 @@ END
 
 | If you think...                            | The reality is...                                                           |
 |--------------------------------------------|-----------------------------------------------------------------------------|
-| "This is too simple to need a design"      | Use CONDENSED mode, don't skip entirely                                     |
-| "I'll just do this one thing first"        | Check the state machine BEFORE doing anything                               |
-| "Let me explore the codebase first"        | SCAN state handles context. Check first                                     |
-| "This doesn't need a formal skill"         | If a skill exists, use it                                                   |
-| "The skill is overkill"                    | Simple things become complex. Use CONDENSED, not nothing                    |
-| "Dependencies are obvious"                 | Write them down. "Obvious" dependencies cause merge conflicts               |
-| "This is just a simple question"           | Questions are tasks. Check for skills.                                      |
-| "I need more context first"                | Skill check comes BEFORE clarifying questions.                              |
-| "Let me gather information first"          | Skills tell you HOW to gather information.                                  |
+| "This is too simple to need a design"      | Use CONDENSED, don't skip                                                   |
+| "I'll just do this one thing first"        | Check the state machine BEFORE acting                                       |
+| "Let me explore the codebase first"        | SCAN handles context gathering                                              |
+| "This doesn't need a formal skill"         | If a skill exists, invoke it                                                |
+| "The skill is overkill"                    | Use CONDENSED, not nothing                                                  |
+| "Dependencies are obvious"                 | Write them down. "Obvious" causes merge conflicts                           |
+| "This is just a simple question"           | Questions are tasks. Check skills.                                          |
+| "I need more context first"                | Skill check comes BEFORE clarification                                      |
+| "Let me gather information first"          | Skills tell you HOW to gather information                                   |
 | "I remember this skill"                    | Skills evolve. Read the current version.                                    |
-| "This doesn't count as a task"             | Action = task. Check for skills.                                            |
-| "I know what that means"                   | Knowing the concept ≠ using the skill. Invoke it.                           |
+| "This doesn't count as a task"             | Action = task. Check skills.                                                |
+| "I know what that means"                   | Knowing the concept ≠ invoking the skill                                    |
 | "This feels productive"                    | Undisciplined action wastes time. Skills prevent this.                      |
-| "This is just a draft, we'll polish later" | There are no drafts. Output must be aesthetically first-class — every time. |
+| "This is just a draft, we'll polish later" | No drafts. First output IS the final output.                                |
 | "I'll ask all my questions at once"        | CLARIFY enforces one question at a time. Batch questions = batch confusion  |
-| "This bug needs the full flow"             | Emergency mode exists — prod down → CONDENSED, diagnose → FULL              |
+| "This bug needs the full flow"             | Emergency exists — prod down → CONDENSED, diagnose → FULL                   |
 
 ## Skill Dependencies
 
@@ -893,11 +917,12 @@ END
 
 ## Key Principles
 
-- **One state at a time** — Never skip states. Use CONDENSED for speed.
+- **One state at a time** — Never skip states. CONDENSED for speed.
 - **Dependencies drive execution** — Serial blocks, parallel unblocks.
 - **One question at a time** — Don't overwhelm.
 - **YAGNI ruthlessly** — Remove unrequested features.
-- **Working in existing codebases** — Follow existing patterns. Targeted improvements only. No unrelated refactoring.
+- **Follow existing patterns** — Targeted improvements only. No unrelated refactoring.
+- **Skill orchestration** — Match each phase to the right professional skill: SCAN → domain experts, ROUTE → root-cause, HANDOFF → plan-builder. Find all relevant skills per phase, decide execution order from context — don't follow fixed chains.
 
 ## Skill Trigger Reference
 
@@ -909,7 +934,7 @@ Skills vega-punk directly invokes:
 | **plan-builder** | HANDOFF | `.vega-punk-state.json` has `spec_path` or `spec`                                     |
 
 > ### ⚠ How to choose skills — CRITICAL
-> 1. Run `discover-skills.sh` to get the full list of registered skills
+> 1. Run `discover-skills.sh` — get the full registry
 > 2. Match task intent against each skill's description and trigger conditions
-> 3. Select all relevant skills (1% Rule) and decide execution order from task context — don't follow fixed chains
-> 4. Trust your judgment about what's needed and in what order 
+> 3. Select all relevant skills (1% Rule). Decide execution order from context — no fixed chains
+> 4. Trust your judgment
