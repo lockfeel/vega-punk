@@ -15,6 +15,35 @@ Git worktrees create isolated workspaces sharing the same repository, allowing w
 
 **Announce at start:** "I'm using the worktree-setup skill to set up an isolated workspace."
 
+## Pre-Execution Gate
+
+```
+BEGIN STATE_VALIDATION_GATE
+    /* Required: git repository */
+    IF not inside a git repository (git rev-parse --git-dir fails):
+        FAIL: "[worktree-setup] Not in a git repository. Cannot create worktree."
+        EXIT
+
+    /* Check for pending uncommitted changes on current branch */
+    IF git status --porcelain has output:
+        TELL: "[worktree-setup] Uncommitted changes on current branch. Stashing before worktree creation."
+        git stash push -m "vega-punk: auto-stash before worktree"
+        stash_created = true
+
+    /* Check if a worktree for target branch already exists */
+    IF .vega-punk-state.json exists AND worktree_path field exists:
+        IF worktree_path directory exists:
+            TELL: "[worktree-setup] Worktree already exists at {worktree_path}. Reusing."
+            SKIP creation, proceed to setup
+        /* else: stale path — recreate below */
+
+    /* Validate branch name availability */
+    IF target branch already checked out in another worktree:
+        TELL: "[worktree-setup] Branch {branch_name} is already in use at another worktree."
+        ASK: "Reuse existing or create a new branch?"
+END
+```
+
 ## Directory Selection Process
 
 Follow this priority order — **no user interaction required unless explicitly requested**:

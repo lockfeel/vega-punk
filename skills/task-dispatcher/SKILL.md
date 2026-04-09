@@ -13,6 +13,59 @@ Execute plan by dispatching fresh subagent per task, with two-stage review after
 
 **Two-stage review order:** Spec compliance review first, then code quality review. Rationale: verify we built the right thing before verifying we built it well. A beautifully coded wrong feature is still wrong.
 
+## Pre-Execution Gate
+
+```
+BEGIN STATE_VALIDATION_GATE
+    /* Required: roadmap.json */
+    IF roadmap.json does NOT exist:
+        IF .vega-punk-state.json exists:
+            state_dir = directory of .vega-punk-state.json
+            IF state_dir/roadmap.json exists:
+                USE state_dir/roadmap.json
+            ELSE:
+                FAIL: "[task-dispatcher] roadmap.json not found. Run plan-builder first."
+                EXIT
+        ELSE:
+            FAIL: "[task-dispatcher] No roadmap.json and no state file. Nothing to execute."
+            EXIT
+
+    READ roadmap.json
+
+    /* Validate roadmap has executable tasks */
+    IF phases field missing OR phases is empty:
+        FAIL: "[task-dispatcher] roadmap.json has no phases. Invalid plan."
+        EXIT
+
+    /* Count total tasks and check dependency graph */
+    total_tasks = count of all steps across all phases
+    IF total_tasks == 0:
+        FAIL: "[task-dispatcher] roadmap.json has no tasks. Nothing to dispatch."
+        EXIT
+
+    /* Check if worktree is needed */
+    IF .vega-punk-state.json exists:
+        IF worktree_path field missing:
+            TELL: "[task-dispatcher] No worktree found. Invoking worktree-setup."
+            INVOKE worktree-setup via Skill tool
+        ELSE IF worktree_path directory does NOT exist:
+            TELL: "[task-dispatcher] Worktree at {worktree_path} missing. Recreating."
+            INVOKE worktree-setup via Skill tool
+
+    /* Validate no stale .task-status-*.json files from previous run */
+    /* IMPORTANT: status files are written to worktree root, NOT current directory */
+    IF worktree_path exists:
+        IF worktree_path/.task-status-*.json files exist:
+            DELETE all worktree_path/.task-status-*.json files
+            TELL: "[task-dispatcher] Cleaned up stale task status files from previous run."
+    ELSE:
+        /* Fallback: check current directory */
+        IF .task-status-*.json files exist:
+            DELETE all .task-status-*.json files
+            TELL: "[task-dispatcher] Cleaned up stale task status files from previous run."
+END
+```
+
 ## When to Use
 
 **Use this skill when:**
@@ -28,7 +81,10 @@ Execute plan by dispatching fresh subagent per task, with two-stage review after
 
 ### Step 0: Setup Workspace
 
-Invoke `worktree-setup` by saying: "I'm using the worktree-setup skill to set up an isolated workspace."
+Invoke `worktree-setup` via Skill tool.
+
+- If worktree-setup reports failing baseline tests → stop and ask user before proceeding (same as plan-executor Step 1.6)
+- Record the baseline failure count so downstream verify-gate can distinguish new vs pre-existing failures
 
 ### Step 1: Read Plan
 
@@ -43,20 +99,30 @@ Create a TodoWrite entry per phase/task from the plan. Track status: `pending` �
 For each batch of tasks that have all dependencies satisfied:
 
 1. **Check dependencies:** Only dispatch tasks whose `depends_on` steps are all `"complete"`.
-2. **Dispatch implementer subagents in parallel** for all tasks in this batch (use `run_in_background: true` or your platform's equivalent). Each subagent gets its own task-specific prompt (see Prompt Templates below).
-3. **Collect implementer results** — wait for all implementers to finish. **Handle implementer status** (see Handling Implementer Status) — fix or re-dispatch as needed.
-4. **Dispatch spec reviewer subagents in parallel** — fix issues → re-review until ✅ (max 3 cycles).
-5. **Dispatch code quality reviewer subagents in parallel** — fix issues → re-review until ✅ (max 2 cycles).
-6. **Mark all tasks in batch complete**
-7. **Invoke `verify-gate`** by saying: "I'm using the verify-gate skill to verify this batch of tasks." — confirm all tasks passed their reviews and verification checks before proceeding to the next batch.
+2. **Classify each task type** before dispatching:
+   - If task involves **bug fix, crash, error, or unexpected behavior** → include `root-cause` skill instructions in the implementer prompt
+   - If task involves **new feature, behavior change, or refactoring** → include `test-first` skill instructions (RED-GREEN-REFACTOR) in the implementer prompt
+3. **Evaluate parallelism strategy:**
+   - IF current batch has ≥ 2 tasks AND all tasks have ZERO mutual depends_on AND tasks target disjoint file sets → invoke `parallel-swarm` via Skill tool for this batch
+   - ELSE → dispatch implementer subagents directly in parallel (normal path)
+4. **Dispatch implementer subagents in parallel** for all tasks in this batch (use `run_in_background: true` or your platform's equivalent). Each subagent gets its own task-specific prompt (see Prompt Templates below).
+5. **Collect implementer results** — wait for all implementers to finish. Read each `.task-status-<task_id>.json` from the **worktree root** (use `worktree_path` from `.vega-punk-state.json`). **Handle implementer status** (see Handling Implementer Status) — fix or re-dispatch as needed.
+6. **Dispatch spec reviewer subagents in parallel** — fix issues → re-review until ✅ (max 3 cycles).
+7. **Dispatch code quality reviewer subagents in parallel** — fix issues → re-review until ✅ (max 2 cycles).
+8. **Mark all tasks in batch complete**
+9. **Invoke `verify-gate` via Skill tool** — confirm all tasks passed their reviews and verification checks before proceeding to the next batch.
 
 ### Step 4: Final Code Review
 
-Invoke the `review-request` skill by saying: "I'm using the review-request skill to run a final code review." Pass the full git range from first to last commit.
+Invoke the `review-request` skill via Skill tool. Pass the full git range from first to last commit.
 
-### Step 5: Complete Development
+### Step 5: Verify Before Landing
 
-Invoke `branch-landing` by saying: "I'm using the branch-landing skill to complete this work."
+Invoke `verify-gate` via Skill tool one final time after review-request passes — ensures the full implementation is mechanically sound (tests pass, build clean, lint ok) before branch completion.
+
+### Step 6: Complete Development
+
+Invoke `branch-landing` via Skill tool.
 
 ## Handling Implementer Status
 
@@ -108,9 +174,26 @@ Build each prompt inline. Do NOT reference external template files — construct
 
 ## Constraints
 - Write ONLY the files specified below. Do NOT modify other files.
-- Follow TDD: write tests first, then implementation.
 - Verify your work by running the relevant tests before reporting done.
 - If the code field is empty or unclear, report BLOCKED with what's missing.
+
+## Discipline (applies based on task type)
+CASE task is bug fix / crash / error:
+    1. Read error messages carefully before changing anything
+    2. Reproduce the issue consistently
+    3. Check recent changes (git diff) for what might have caused this
+    4. Form a single hypothesis, test minimally
+    5. Write a failing test that reproduces the bug
+    6. Fix the root cause, not the symptom
+    7. Verify test passes
+
+CASE task is new feature / behavior change / refactoring:
+    1. Write the failing test first (RED)
+    2. Verify it fails for the expected reason
+    3. Write minimal code to pass (GREEN)
+    4. Verify all tests pass
+    5. Refactor only if needed, keep tests green
+    6. Never add features no test requires
 
 ## Files to create/modify
 <list target files from the step>
@@ -183,24 +266,26 @@ Mark severity: Critical / Important / Minor.
 ## Example Workflow
 
 ```
-You: I'm using the worktree-setup skill to set up an isolated workspace.
+You: [Invoke worktree-setup via Skill tool]
 [worktree created, baseline tests pass]
 
-You: I'm using Subagent-Driven Development to execute this plan.
+You: [Invoke task-dispatcher flow — subagent-driven development]
 [Extract all tasks from roadmap.json → Create TodoWrite entries]
 [Build dependency graph from depends_on fields]
 
 For each batch of tasks with all dependencies satisfied:
-  1. Dispatch implementers in parallel (haiku/sonnet, full task text + context)
-  2. Wait for all, handle status (DONE → review, NEEDS_CONTEXT → re-dispatch, BLOCKED → assess)
-  3. Dispatch spec reviewers in parallel (sonnet) → fix → re-review until ✅
-  4. Dispatch code quality reviewers in parallel (sonnet) → fix → re-review until ✅
-  5. You: I'm using the verify-gate skill to verify this batch.
-  6. Mark batch complete → next batch
+  1. Classify each task: bug fix → root-cause discipline, feature/refactor → test-first (RED-GREEN-REFACTOR)
+  2. Dispatch implementers in parallel (haiku/sonnet, full task text + context + discipline)
+  3. Wait for all, handle status (DONE → review, NEEDS_CONTEXT → re-dispatch, BLOCKED → assess)
+  4. Dispatch spec reviewers in parallel (sonnet) → fix → re-review until ✅
+  5. Dispatch code quality reviewers in parallel (sonnet) → fix → re-review until ✅
+  6. Invoke verify-gate via Skill tool.
+  7. Mark batch complete → next batch
 
 After all tasks:
-  You: I'm using the review-request skill to run a final code review.
-  You: I'm using the branch-landing skill to complete this work.
+  You: [Invoke review-request via Skill tool]
+  You: [Invoke verify-gate via Skill tool — final mechanical check]
+  You: [Invoke branch-landing via Skill tool]
 ```
 
 ## Advantages
@@ -265,12 +350,17 @@ After all tasks:
 
 ## Integration
 
-**Required skills — auto-invoked by trigger phrase:**
+**Required skills — auto-invoked via Skill tool:**
 - `worktree-setup` — invoke at Step 0 before dispatching any tasks
-- `verify-gate` — invoke at Step 3.7 after each batch passes reviews
+- `root-cause` — inject discipline into implementer prompts for bug fix tasks
+- `test-first` — inject discipline into implementer prompts for feature/refactor tasks
+- `parallel-swarm` — invoke at Step 3 when batch has ≥ 2 fully independent tasks with disjoint file targets
+- `verify-gate` — invoke at Step 3.9 after each batch passes reviews, and at Step 5 before landing
 - `review-request` — invoke at Step 4 for final code review
-- `branch-landing` — invoke at Step 5 after all tasks complete
+- `branch-landing` — invoke at Step 6 after all tasks complete
 - `plan-builder` — upstream; creates the `roadmap.json` this skill executes
+
+**Auto-invocation rule:** All skills are invoked via the `Skill` tool — trigger phrases are deprecated and should not be used.
 
 **Subagents should use:**
 - test-first approach for each task

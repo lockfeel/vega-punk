@@ -13,6 +13,36 @@ Code review requires technical evaluation, not emotional performance.
 
 **Core principle:** Verify before implementing. Ask before assuming. Technical correctness over social comfort.
 
+## Pre-Execution Gate
+
+```
+BEGIN STATE_VALIDATION_GATE
+    /* Required: review feedback items */
+    IF no review feedback items provided:
+        FAIL: "[review-intake] No review feedback to process. Request a review first."
+        EXIT
+
+    /* Validate feedback has actionable items */
+    PARSE feedback items:
+        IF no specific issues identified:
+            TELL: "[review-intake] Review found no issues. No action needed."
+            EXIT
+
+    /* Check if feedback references valid file:line locations */
+    FOR EACH feedback item:
+        IF item references file:line:
+            IF file does NOT exist OR line out of range:
+                TELL: "[review-intake] Feedback references stale location {file:line}. Skipping."
+                MARK item as unactionable
+
+    /* Clarify ambiguous items before implementing */
+    IF any item unclear:
+        STOP — do not implement anything yet
+        ASK for clarification on unclear items
+        /* Items may be related. Partial understanding = wrong implementation. */
+END
+```
+
 ## The Response Pattern
 
 ```
@@ -213,3 +243,43 @@ When replying to inline review comments on GitHub, reply in the comment thread (
 Verify. Question. Then implement.
 
 No performative agreement. Technical rigor always.
+
+## Completion Contract
+
+After processing all review feedback items:
+
+```
+BEGIN COMPLETION_CONTRACT
+    COUNT total_items = number of feedback items received
+    COUNT implemented = items with code changes made
+    COUNT pushed_back = items rejected with technical reasoning
+    COUNT unactionable = items with stale locations or unclear feedback
+
+    IF pushed_back > 0:
+        PRESENT: list of pushed-back items with reasoning
+
+    IF unactionable > 0:
+        PRESENT: list of unactionable items with reason
+
+    WRITE structured result for caller:
+        {
+            "status": "complete",
+            "total_items": total_items,
+            "implemented": implemented,
+            "pushed_back": pushed_back,
+            "unactionable": unactionable,
+            "changes": ["<list of modified files>"],
+            "regression_check": "<tests pass/fail + method>"
+        }
+END
+```
+
+Callers use this result to decide whether to proceed to the next task/batch or re-review.
+
+## Integration
+
+**Called by:**
+- **review-request** (Step 3) — after reviewer subagent returns feedback. review-request dispatches the reviewer; review-intake evaluates and acts on the feedback.
+- Any workflow receiving code review comments from external reviewers
+
+**Does NOT call other skills** — review-intake is a terminal processing step. It returns control to the caller (review-request) after all feedback items are processed.

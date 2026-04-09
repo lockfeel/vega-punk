@@ -15,12 +15,58 @@ hooks:
 
 **Core Feature:** Never lose context. Bite-sized TDD tasks with complete code in every step.
 
+## Pre-Execution Gate
+
+```
+BEGIN STATE_VALIDATION_GATE
+    /* Required: user request OR .vega-punk-state.json */
+    IF .vega-punk-state.json does NOT exist:
+        IF user provided a direct request:
+            /* Standalone mode — proceed with user request as spec */
+            mode = "standalone"
+            GOTO ENTRY_PROTOCOL
+        ELSE:
+            FAIL: "[plan-builder] No state file and no user request. Cannot plan."
+            EXIT
+
+    READ .vega-punk-state.json
+
+    /* Validate required fields */
+    IF state field missing OR state != "HANDOFF" AND state != "SCAN" AND state != "CONDENSED":
+        /* State is wrong — try to recover */
+        IF task field exists:
+            TELL: "[plan-builder] State is '{state}', expected HANDOFF. Recovering from task context."
+            /* Proceed but flag potential inconsistency */
+        ELSE:
+            FAIL: "[plan-builder] State file corrupted (no task field). Cannot plan."
+            EXIT
+
+    /* Validate spec availability */
+    IF mode != "condensed" AND spec_path field exists:
+        IF spec_path file does NOT exist:
+            /* Spec file lost — regenerate from state fields */
+            IF design AND dependencies fields present:
+                REGENERATE spec from design + dependencies → write to vega-punk/specs/
+                UPDATE spec_path in state
+                TELL: "[plan-builder] Spec file was lost. Regenerated from design context."
+            ELSE:
+                FAIL: "[plan-builder] Spec file missing and no design context to regenerate. Redesign needed."
+                EXIT
+
+    IF mode == "condensed" AND spec field does NOT exist:
+        FAIL: "[plan-builder] Condensed mode but no spec field. Cannot plan."
+        EXIT
+END
+```
+
 ## Entry Protocol — Data Contract
 
 **From vega-punk HANDOFF:** The `.vega-punk-state.json` file in the working directory is the **single source of truth** for all design context. Read it first before doing anything else.
 
 ```
 BEGIN ENTRY_PROTOCOL
+    RUN STATE_VALIDATION_GATE (see above)
+
     IF .vega-punk-state.json does NOT exist:
         /* Standalone mode — direct invocation */
         TELL: "[plan-builder] Standalone mode — creating plan from your request."
@@ -255,6 +301,20 @@ After writing the plan and passing self-review, decide which execution path to u
 
 ```
 BEGIN ROUTING_DECISION
+    /* If vega-punk SCAN already selected skills, respect that selection */
+    IF .vega-punk-state.json has selected_skills:
+        IF "task-dispatcher" IN selected_skills:
+            executor = "task-dispatcher"
+        ELSE IF "plan-executor" IN selected_skills:
+            executor = "plan-executor"
+        ELSE:
+            /* No explicit executor — use default heuristics below */
+            GOTO DEFAULT_ROUTING
+    ELSE:
+        /* Standalone mode — no vega-punk context — use default heuristics */
+        GOTO DEFAULT_ROUTING
+
+BEGIN DEFAULT_ROUTING
     COUNT total_steps = sum of all steps across all phases
     COUNT parallel_groups = count of steps/tasks with NO depends_on between them (can run simultaneously)
     COUNT critical_path_length = longest serial dependency chain
@@ -272,6 +332,8 @@ END
 ```
 
 ### Routing Table
+
+**Priority:** If vega-punk SCAN already selected an executor skill, that takes priority. The heuristics below only apply when no explicit selection was made.
 
 | Condition | Executor | Why |
 |-----------|----------|-----|
@@ -291,17 +353,19 @@ BEGIN COMPLETION_CONTRACT
         WRITE .vega-punk-state.json:
             state = "HANDOFF"
             ADD: handoff_to = executor
+        /* Use Skill tool directly — NOT trigger phrases */
         IF executor == "plan-executor":
-            INVOKE plan-executor skill by saying: "I'm using the plan-executor skill to execute this plan."
+            INVOKE plan-executor via Skill tool
         ELSE:
-            INVOKE task-dispatcher skill by saying: "I'm using the task-dispatcher skill to execute this plan with subagents."
+            INVOKE task-dispatcher via Skill tool
         WAIT for execution_result
     ELSE:
         /* Standalone mode — no state write-back */
+        /* Use Skill tool directly — NOT trigger phrases */
         IF executor == "plan-executor":
-            INVOKE plan-executor skill by saying: "I'm using the plan-executor skill to execute this plan."
+            INVOKE plan-executor via Skill tool
         ELSE:
-            INVOKE task-dispatcher skill by saying: "I'm using the task-dispatcher skill to execute this plan with subagents."
+            INVOKE task-dispatcher via Skill tool
         WAIT for execution_result
 END
 ```

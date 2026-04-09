@@ -3,6 +3,7 @@ name: verify-gate
 description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
 categories: ["code-quality"]
 triggers: ["verify gate", "verify this batch", "verify completion", "check verification"]
+user-invocable: true
 ---
 
 # Verification Before Completion
@@ -14,6 +15,34 @@ Claiming work is complete without verification is unreliable — evidence before
 **Core principle:** Evidence before claims, always.
 
 **Violating the letter of this rule is violating the spirit of this rule.**
+
+## Pre-Execution Gate
+
+```
+BEGIN STATE_VALIDATION_GATE
+    /* Identify verification commands from project context */
+    IF roadmap.json exists:
+        /* Check if there are verification targets in current step/phase */
+        current_step = roadmap.json current_step
+        IF current_step has verify field:
+            verification_target = current_step.verify
+            /* Use verify.type to determine command */
+
+    /* Auto-detect project test/build/lint commands */
+    CHECK package.json scripts (test, build, lint)
+    CHECK pyproject.toml, Cargo.toml, go.mod, Makefile
+    IF no verification commands found:
+        TELL: "[verify-gate] No verification commands detected in project config."
+        ASK: "What should I verify? (1) tests, (2) build, (3) lint, (4) specific check"
+
+    /* Check for previous verification results */
+    IF verify-result.json exists:
+        last_result = read verify-result.json
+        IF last_result.passed == true AND last_result.timestamp < 5 minutes ago:
+            TELL: "[verify-gate] Previous verification passed {time} ago. Re-verifying for freshness."
+            /* Still re-run — iron law requires fresh evidence */
+END
+```
 
 ## The Iron Law
 
@@ -72,10 +101,18 @@ IF verification failed:
         DO NOT advance to next batch
         Mark current batch as "verification_failed"
         Return control to caller for fix-and-retry
+        /* Caller (task-dispatcher) must fix failures and re-invoke verify-gate.
+           Max 3 verify-gate invocations per batch. If still failing:
+           → Mark task as failed per task-dispatcher retry rules
+           → Log to progress.json
+           → Escalate if critical */
 
     IF caller is plan-executor (step mode):
         DO NOT mark step as complete
         Return control to caller (STEP_MACHINE handles retry logic)
+        /* plan-executor's STEP_MACHINE already retries up to 3 attempts.
+           verify-gate is invoked at each attempt. On 3rd failure:
+           → STEP_MACHINE marks step as "failed" and asks user */
 
     IF caller is standalone (direct invocation):
         ASK: "Verification failed. What would you like to do?
@@ -84,6 +121,19 @@ IF verification failed:
                (3) Proceed anyway (not recommended)"
         FOLLOW user direction
 ```
+
+## Failure Retry Loop
+
+verify-gate itself does not fix — it only reports. The **caller** is responsible for fixing and re-invoking:
+
+| Caller | Who fixes | Max retries | On exhaustion |
+|--------|-----------|-------------|---------------|
+| task-dispatcher | Implementer subagent (same task) | 3 verify-gate invocations | Mark task failed, log to progress.json, escalate if critical |
+| plan-executor | Current session (STEP_MACHINE) | 3 step attempts | Mark step failed, ask user |
+| review-request | Implementer fixes flagged issues | 2 review cycles | Escalate disagreement to user |
+| standalone | Current session or user | User-directed | Follow user choice |
+
+**Retry flow:** verify-gate fails → caller fixes → caller re-invokes verify-gate → pass or retry again. Never auto-escalate retries — the caller controls the loop.
 
 ## Common Failures
 
@@ -171,6 +221,13 @@ verify-gate is a **command-level verifier**. It runs test/lint/build commands an
 - Check individual file content (that's plan-executor's inline `content_contains` checks)
 - Re-run branch-landing's test verification (branch-landing does its own final check)
 - Make architectural judgments (it only checks pass/fail of commands)
+- Review code quality, naming, architecture, or design patterns (that's `review-request`)
+- Check spec compliance (that's the task-dispatcher's spec compliance review)
+
+**Boundary with review-request:**
+- verify-gate: "Do the tests pass? Does the build succeed?" (binary, command-level)
+- review-request: "Is the code well-structured? Does it follow best practices?" (qualitative, architectural)
+- verify-gate runs AFTER reviews pass — it's the final mechanical gate before proceeding
 
 ## When To Apply
 

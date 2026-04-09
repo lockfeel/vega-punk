@@ -15,6 +15,34 @@ When you have multiple unrelated failures (different test files, different subsy
 
 **Core principle:** Dispatch one agent per independent problem domain. Let them work concurrently.
 
+## Pre-Execution Gate
+
+```
+BEGIN STATE_VALIDATION_GATE
+    /* Required: 2+ independent tasks */
+    IF fewer than 2 independent tasks identified:
+        FAIL: "[parallel-swarm] Only 1 task identified. Use sequential dispatch instead."
+        EXIT
+
+    /* Validate tasks are truly independent */
+    FOR EACH pair of tasks (A, B):
+        IF A and B modify same files:
+            FAIL: "[parallel-swarm] Tasks {A} and {B} target same files. Not independent — use sequential."
+            EXIT
+        IF A depends on B's output:
+            FAIL: "[parallel-swarm] Task {A} depends on {B}. Use sequential dispatch."
+            EXIT
+
+    /* Validate each task has enough context */
+    FOR EACH task:
+        IF task has no specific target (file, function, test):
+            FAIL: "[parallel-swarm] Task {task} has no specific target. Cannot dispatch."
+            EXIT
+        IF task has no expected output:
+            ADD expected output: "Make these tests pass / Fix this behavior"
+END
+```
+
 ## When to Use
 
 ```dot
@@ -182,3 +210,13 @@ From debugging session (2025-10-03):
 - All investigations completed concurrently
 - All fixes integrated successfully
 - Zero conflicts between agent changes
+
+## Integration
+
+**Called by:**
+- **task-dispatcher** (Step 3) — when a batch has ≥ 2 fully independent tasks with disjoint file targets
+- Any workflow with multiple independent debugging tasks across different subsystems
+
+**Calls next:**
+- Each dispatched agent follows root-cause + test-first discipline for their assigned domain
+- Results are collected and integrated by the caller (task-dispatcher)

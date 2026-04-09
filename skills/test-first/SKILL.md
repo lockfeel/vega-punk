@@ -15,6 +15,37 @@ Write the test first. Watch it fail. Write minimal code to pass.
 
 **Violating the letter of the rules is violating the spirit of the rules.**
 
+## Pre-Execution Gate
+
+```
+BEGIN STATE_VALIDATION_GATE
+    /* Required: a feature, behavior, or bug to address */
+    IF no target behavior described:
+        FAIL: "[test-first] No behavior specified. Cannot write tests without a target."
+        EXIT
+
+    /* Check if test framework is available */
+    CHECK project for test framework:
+        Node.js: jest/vitest/mocha in package.json devDependencies
+        Python: pytest/unittest in pyproject.toml or requirements
+        Rust: cargo test (built-in)
+        Go: go test (built-in)
+    IF no test framework found:
+        TELL: "[test-first] No test framework detected in project."
+        ASK: "Install test framework or skip TDD for this task?"
+
+    /* Check for pre-existing implementation code (violates TDD) */
+    IF target files already contain implementation for the feature:
+        FAIL: "[test-first] Implementation code already exists for {target}. Delete it and start with TDD."
+        EXIT
+
+    /* Check for existing tests that already pass (means feature may exist) */
+    IF existing tests cover the target behavior AND pass:
+        TELL: "[test-first] Tests for this behavior already exist and pass."
+        ASK: "Is this a new behavior (add more tests) or refactoring (existing tests should still pass)?"
+END
+```
+
 ## When to Use
 
 **Always:**

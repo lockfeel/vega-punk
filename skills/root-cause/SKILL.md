@@ -15,6 +15,37 @@ Random fixes waste time and create new bugs. Quick patches mask underlying issue
 
 **Violating the letter of this process is violating the spirit of debugging.**
 
+## Pre-Execution Gate
+
+```
+BEGIN STATE_VALIDATION_GATE
+    /* Required: a problem to debug */
+    IF no error message, test failure, or symptom described:
+        FAIL: "[root-cause] No problem identified. Cannot debug without a symptom."
+        EXIT
+
+    /* Validate reproducibility */
+    IF issue is not reproducible:
+        TELL: "[root-cause] Issue not reproducible. Gathering more data before investigation."
+        ADD diagnostic instrumentation
+        COLLECT evidence
+        IF evidence still insufficient:
+            TELL: "[root-cause] Cannot reproduce after instrumentation. Need more context."
+            ASK user for reproduction steps
+
+    /* Check recent changes for clues */
+    IF git repository:
+        recent_changes = git diff HEAD~5..HEAD --stat
+        IF no recent changes:
+            TELL: "[root-cause] No recent code changes. Issue may be environmental."
+            CHECK environment variables, config files, dependencies
+
+    /* Check for existing findings */
+    IF .vega-punk-state.json exists AND findings field exists:
+        LOAD existing findings into context
+END
+```
+
 ## The Iron Law
 
 ```

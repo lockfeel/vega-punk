@@ -15,6 +15,50 @@ hooks:
 
 Inline execution of roadmap.json — each step runs in this session. For subagent-driven execution, use `task-dispatcher` instead.
 
+## Pre-Execution Gate
+
+```
+BEGIN STATE_VALIDATION_GATE
+    /* Required: roadmap.json */
+    IF roadmap.json does NOT exist:
+        IF .vega-punk-state.json exists:
+            /* Try to find roadmap in same directory as state file */
+            state_dir = directory of .vega-punk-state.json
+            IF state_dir/roadmap.json exists:
+                USE state_dir/roadmap.json
+            ELSE:
+                FAIL: "[plan-executor] roadmap.json not found. Planning phase may not have completed."
+                EXIT
+        ELSE:
+            FAIL: "[plan-executor] No roadmap.json and no state file. Nothing to execute."
+            EXIT
+
+    READ roadmap.json
+
+    /* Validate roadmap structure */
+    IF phases field missing OR phases is empty:
+        FAIL: "[plan-executor] roadmap.json has no phases. Invalid plan."
+        EXIT
+
+    IF current_step field missing:
+        /* Auto-initialize to first step */
+        current_step = phases[0].steps[0].id
+        current_phase = phases[0].id
+        WRITE roadmap.json
+        TELL: "[plan-executor] current_step was missing. Auto-set to {current_step}."
+
+    /* Check if worktree is needed */
+    IF .vega-punk-state.json exists:
+        IF worktree_path field missing:
+            TELL: "[plan-executor] No worktree found. Invoking worktree-setup to create one."
+            INVOKE worktree-setup via Skill tool
+        ELSE IF worktree_path directory does NOT exist:
+            TELL: "[plan-executor] Worktree at {worktree_path} no longer exists. Recreating."
+            INVOKE worktree-setup via Skill tool
+    /* else: standalone mode — no worktree needed */
+END
+```
+
 ## Entry Protocol
 
 ```
@@ -55,7 +99,7 @@ D. On Completion: Invoke branch-landing — it handles test re-verify, options, 
    - If already passing → mark complete, advance current_step
    - If failing → keep status `in_progress`, re-execute from scratch
 6. ELSE (fresh start):
-   - Invoke the `worktree-setup` skill by saying: "I'm using the worktree-setup skill to set up an isolated workspace."
+   - Invoke the `worktree-setup` skill via Skill tool — it handles baseline tests internally
    - worktree-setup will auto-detect project setup, create the worktree, install dependencies, and run baseline tests
    - If worktree-setup reports failing baseline tests → stop and ask user before proceeding
 
@@ -63,11 +107,15 @@ D. On Completion: Invoke branch-landing — it handles test re-verify, options, 
 
 For each step (respecting `depends_on` — skip steps whose dependencies are not `"complete"`):
 1. Mark status `"in_progress"`
-2. Execute using the specified `tool` and `target` (use `code` field content if present)
-3. Verify per **verify-gate** rules (see Step 2a)
-4. On pass → set `"complete"` with outcome summary; on fail → increment `attempts` and set status to `"retrying"` (max 3, then mark `"failed"` and ask user)
-5. Update `current_step`, `metadata`, and `updated` timestamp
-6. Write `roadmap.json` back
+2. **Classify step type** before executing:
+   - If step involves **bug fix, crash, error, or unexpected behavior** → invoke `root-cause` skill first, follow its Phase 1-3 before writing any code
+   - If step involves **new feature, behavior change, or refactoring** → invoke `test-first` skill, follow RED-GREEN-REFACTOR cycle
+   - If step is **context gathering** (Glob, Grep, WebSearch) → execute directly
+3. Execute using the specified `tool` and `target` (use `code` field content if present)
+4. **Explicitly invoke `verify-gate` via Skill tool** — pass the step's verification target. verify-gate will run the command, check output, and return pass/fail.
+5. On pass → set `"complete"` with outcome summary; on fail → increment `attempts` and set status to `"retrying"` (max 3, then mark `"failed"` and ask user)
+6. Update `current_step`, `metadata`, and `updated` timestamp
+7. Write `roadmap.json` back
 
 Use the `Write` tool to rewrite roadmap.json after each step.
 
@@ -124,7 +172,7 @@ BEGIN STEP_MACHINE
 END
 ```
 
-### Step 2a: Step Type Handling & Verification Rules (verify-gate)
+### Step 2a: Step Type Handling
 
 | Step type | How to execute | Verify with |
 |-----------|---------------|-------------|
@@ -134,13 +182,7 @@ END
 | `Glob`/`Grep` | Search for context before Write/Edit | Non-empty results |
 | `WebSearch`/`WebFetch` | Fetch content, write to `findings.json` in the plan directory (not roadmap.json) | `content_contains` on findings |
 
-**verify-gate rules:**
-- Every step MUST be verified before marking complete
-- `Bash` steps: verify exit code is 0 and/or expected output appears
-- `Write`/`Edit` steps: re-read the file, confirm `code` content is present and correct
-- `tests_pass`: run the test command specified in the step or the project's default test suite
-- `build_pass`: run the project's build command (e.g., `npm run build`, `cargo build`)
-- `command_success`: the Bash command exited 0 and produced expected output
+**verify-gate rules** — invoke the `verify-gate` skill via the `Skill` tool at each verification point. See verify-gate's SKILL.md for the full rule set: evidence before claims, no success claims without fresh verification output, etc.
 
 ### Step 2b: Checkpoint Handling
 
@@ -152,10 +194,16 @@ Dependencies are checked before each step in the main Step 2 loop. Steps with `d
 
 ### Step 3: Complete Development
 
-After all steps complete and verified:
-1. Invoke the `branch-landing` skill by saying: "I'm using the branch-landing skill to complete this work."
-2. branch-landing will re-verify tests, present merge/PR/keep/discard options, and execute the user's choice
-3. If branch-landing asks for user input, present the options clearly to the user
+After all steps reach a terminal state (`"complete"` or non-critical `"failed"`):
+
+1. **Check completion eligibility:**
+   - All `critical: true` steps must be `"complete"`
+   - `critical: false` steps may be `"complete"` or `"failed"`
+   - If any `critical: true` step is not `"complete"` → do NOT proceed to review, report status and wait for user direction
+2. **Invoke the `review-request` skill via Skill tool** — pass the full git range from first to last commit for final pre-merge code quality review
+3. **Invoke `verify-gate` via Skill tool** — final mechanical check (tests pass, build clean, lint ok) after review-request passes
+4. **Invoke the `branch-landing` skill via Skill tool** — branch-landing will re-verify tests, present merge/PR/keep/discard options, and execute the user's choice
+5. If branch-landing asks for user input, present the options clearly to the user
 
 ## Execution Recovery
 
@@ -235,9 +283,13 @@ END
 
 ## Integration
 
-**Required skills — auto-invoked by saying the trigger phrase:**
-- `worktree-setup` — at Step 1.6 (fresh start only). Say: "I'm using the worktree-setup skill to set up an isolated workspace." The skill handles directory selection, worktree creation, dependency install, and baseline tests automatically.
-- `branch-landing` — at Step 3. Say: "I'm using the branch-landing skill to complete this work." The skill handles test re-verification, user options (merge/PR/keep/discard), and worktree cleanup automatically.
+**Required skills — auto-invoked via Skill tool:**
+- `worktree-setup` — at Step 1.6 (fresh start only) via Skill tool
+- `root-cause` — at Step 2 when step involves bug fix, crash, error, or unexpected behavior
+- `test-first` — at Step 2 when step involves new feature, behavior change, or refactoring
+- `verify-gate` — invoked via Skill tool at each step verification point (Step 2.4); and at Step 3.3 before landing
+- `review-request` — at Step 3.2 for final pre-merge code quality review
+- `branch-landing` — at Step 3.4 via Skill tool
 - `plan-builder` — upstream; creates roadmap.json schema and step structure
 
 **Delegation:**

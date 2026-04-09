@@ -63,6 +63,11 @@ BEGIN STATE_RESOLUTION
             WAIT for user input (do NOT restart ROUTE)
         EXIT
 
+    IF state == "REVIEW" AND user requests iterate/redesign:
+        /* Archive stale roadmap before re-entering design flow */
+        IF roadmap.json exists:
+            RENAME roadmap.json → roadmap.ARCHIVED.json
+
     /* state is not DONE, file exists → recovery */
     ENTER current state directly
     DO NOT go back to ROUTE
@@ -111,6 +116,12 @@ END
 ```
 
 **Key rule:** Always preserve `task` field across all state transitions.
+
+**State file write rules — ALL skills must follow:**
+1. **NEVER** use full `Write` on `.vega-punk-state.json` — always read first, merge in memory, then `Write` back
+2. **NEVER delete existing fields** — only ADD new fields or UPDATE existing values
+3. If a field was written by another skill (e.g. `worktree_path` by worktree-setup), preserve it
+4. When in doubt, read the current JSON, add your fields, and write back — never assume you own the entire file
 
 **Git:** Add `.vega-punk-state.json` and `.vega-punk-counters.json` to `.gitignore`. **Do NOT** gitignore `vega-punk/specs/` — spec history is project memory and should be committed.
 
@@ -261,9 +272,9 @@ END
 BEGIN CONDENSED
     ENTER CONDENSED
     IF user rejects → state=SCAN (go FULL from beginning)
-    IF approved → ENTER HANDOFF
+    IF approved → ENTER HANDOFF (state set by CONDENSED block)
 
-    state = REVIEW, handoff_to = plan-builder
+    /* HANDOFF invokes plan-builder, which writes execution_result */
     WAIT for execution_result
 
     ENTER REVIEW
@@ -318,6 +329,10 @@ BEGIN ROUTE
     MATCH task type:
 
     CASE user says "just write code" / "skip design" / "just do it" / "don't overthink":
+        /* CONDENSED still routes essential quality skills */
+        INVOKE root-cause IF bug keywords present
+        INVOKE test-first IF implementation involves code
+        INVOKE verify-gate BEFORE any success claim
         state = CONDENSED
 
     CASE Informational (simple Q&A, definitions, explanations):
@@ -694,6 +709,7 @@ BEGIN CONDENSED
         WRITE .vega-punk-state.json:
             state = "HANDOFF"
             ADD: mode = "condensed", spec, dependencies
+            ADD: requirements = { purpose, constraints, success } /* from CLARIFY — preserve for plan-builder verification */
             INCREMENT: transition_count
 END
 ```
@@ -710,7 +726,8 @@ END
 
 ```
 BEGIN HANDOFF
-    INVOKE plan-builder skill via Skill tool
+    /* Use Skill tool directly — do NOT rely on trigger phrase matching */
+    INVOKE plan-builder via Skill tool
     FOLLOW its workflow
 
     /* .vega-punk-state.json is the data contract — plan-builder reads it directly */
@@ -743,12 +760,45 @@ BEGIN REVIEW
 
     CASE success AND verification passed:
         TELL: "All criteria met. Start a new task?"
+        state = DONE
+        EXIT
+
     CASE success AND verification failed:
-        TELL: "Verification failed. Iterate or redesign?"
+        /* verification command failed but implementer thought it passed */
+        TELL: "Implementer reported success but verification failed."
+        GOTO DESIGN /* likely a testing or spec mismatch issue */
+
     CASE partial:
-        TELL: "Partially done. Continue or redesign?"
+        /* Identify what's missing and auto-route */
+        missing = execution_result.missing_items OR execution_result.notes
+        IF missing indicates unclear requirements (e.g. "ambiguous spec", "unclear requirement"):
+            TELL: "Partially done — requirements were unclear. Re-clarifying."
+            GOTO CLARIFY
+        ELSE IF missing indicates design gap (e.g. "architecture issue", "wrong pattern", "component missing"):
+            TELL: "Partially done — design gap detected. Revisiting design."
+            GOTO DESIGN
+        ELSE:
+            /* Default: user decides */
+            TELL: "Partially done. Continue or redesign?"
+            WAIT for user response
+            IF user says "continue" or "iterate":
+                GOTO DESIGN
+            ELSE:
+                GOTO CLARIFY
+
     CASE failed:
-        TELL: "Execution failed. Redesign needed?"
+        /* Auto-route based on failure type */
+        notes = execution_result.notes OR ""
+        IF notes indicates requirement ambiguity (contains "ambiguous", "unclear requirement", "spec contradiction", "missing spec"):
+            TELL: "Execution failed due to unclear requirements. Re-clarifying."
+            GOTO CLARIFY
+        ELSE IF notes indicates architectural issue (contains "architecture", "wrong pattern", "fundamental", "wrong approach", "redesign"):
+            TELL: "Execution failed due to design problem. Revisiting design."
+            GOTO DESIGN
+        ELSE:
+            /* Generic failure — default to DESIGN for targeted fix */
+            TELL: "Execution failed. Retrying implementation."
+            GOTO DESIGN
 
     /* capture satisfaction and act on it */
     RECORD user_satisfaction: "satisfied" / "neutral" / "dissatisfied"
@@ -763,21 +813,30 @@ BEGIN REVIEW
     WRITE .vega-punk-counters.json:
         { "consecutive_dissatisfied_count": value }
 
-    IF user_satisfaction == "dissatisfied" AND execution_result.status == success:
+    IF user_satisfaction == "dissatisfied" AND execution_result.status == "success":
         TELL: "Criteria met but you're not happy — what's missing?"
+        /* Archive old roadmap */
+        IF roadmap.json exists:
+            RENAME roadmap.json → roadmap.ARCHIVED.json
         GOTO CLARIFY /* realign requirements */
 
     IF consecutive_dissatisfied_count >= 3:
         TELL: "[vega-punk] Last 3 tasks dissatisfied. Let's pause and align on process."
-        ASK: "Should I change approach? (1) more clarification upfront, (2) tighter QA, (3) different workflow)"
+        ASK: "Should I change approach? (1) more clarification upfront, (2) tighter QA, (3) different workflow"
 
     MATCH user response:
     CASE new task:
         APPLY Post-Completion Cleanup
         GOTO ROUTE
     CASE iterate:
+        /* Archive old roadmap before re-entering design to prevent version confusion */
+        IF roadmap.json exists:
+            RENAME roadmap.json → roadmap.ARCHIVED.json
         GOTO DESIGN
     CASE redesign:
+        /* Archive old roadmap before re-entering clarify */
+        IF roadmap.json exists:
+            RENAME roadmap.json → roadmap.ARCHIVED.json
         GOTO CLARIFY
 END
 ```
@@ -913,13 +972,21 @@ END
 
 Skills vega-punk directly invokes:
 
-| Skill            | When    | Trigger                                                                               |
+| Skill            | When    | How                                                                                   |
 |------------------|---------|---------------------------------------------------------------------------------------|
 | **root-cause**   | ROUTE   | message contains `bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception` |
-| **plan-builder** | HANDOFF | `.vega-punk-state.json` has `spec_path` or `spec`                                     |
+| **plan-builder** | HANDOFF | via Skill tool — NOT trigger phrase                                                 |
+
+All other skills (test-first, verify-gate, test, domain experts) are routed during SCAN.
 
 > ### ⚠ How to choose skills — CRITICAL
 > 1. Run `discover-skills.sh` — get the full registry
 > 2. Match task intent against each skill's description and trigger conditions
 > 3. Select all relevant skills (1% Rule). Decide execution order from context — no fixed chains
 > 4. Trust your judgment
+
+> ### ⚠ How to invoke skills — NON-NEGOTIABLE
+> 1. **Use the `Skill` tool directly** — do NOT rely on trigger phrase matching
+> 2. Trigger phrases ("I'm using the X skill to...") are deprecated — they were unreliable
+> 3. The `Skill` tool guarantees the skill's full SKILL.md is loaded into context
+> 4. After the skill completes, it returns control to you — resume your own flow

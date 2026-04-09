@@ -15,6 +15,41 @@ Guide completion of development work by presenting clear options and handling ch
 
 **Announce at start:** "I'm using the branch-landing skill to complete this work."
 
+## Pre-Execution Gate
+
+```
+BEGIN STATE_VALIDATION_GATE
+    /* Validate current branch state */
+    current_branch = git branch --show-current
+
+    IF current_branch is "main" OR "master":
+        TELL: "[branch-landing] You're on {current_branch}. This is unusual."
+        ASK: "Are you sure you want to complete from {current_branch}? This could affect the main branch."
+
+    /* Try to find worktree_path */
+    IF .vega-punk-state.json exists:
+        IF worktree_path field missing:
+            /* Try to find worktree from git */
+            worktree_path = git worktree list | grep current_branch | parse path
+            IF worktree_path found:
+                ADD worktree_path to .vega-punk-state.json
+                TELL: "[branch-landing] Found worktree at {worktree_path} via git."
+            ELSE:
+                /* Not in a worktree — might be inline execution */
+                worktree_path = null
+                TELL: "[branch-landing] No worktree found. Proceeding without cleanup."
+        ELSE IF worktree_path directory does NOT exist:
+            /* Worktree was removed — find from git */
+            worktree_path = git worktree list | grep current_branch | parse path
+            IF worktree_path found:
+                UPDATE worktree_path in .vega-punk-state.json
+            ELSE:
+                worktree_path = null
+                TELL: "[branch-landing] Worktree was removed. Skipping cleanup."
+    /* else: standalone mode — no state file */
+END
+```
+
 ## The Process
 
 ### Step 1: Verify Tests
@@ -87,7 +122,7 @@ git merge <feature-branch>
 git branch -d <feature-branch>
 ```
 
-Then: Cleanup worktree (Step 5)
+Then: Cleanup worktree (Step 6)
 
 #### Option 2: Push and Create PR
 
@@ -134,9 +169,30 @@ git checkout <base-branch>
 git branch -D <feature-branch>
 ```
 
-Then: Cleanup worktree (Step 5)
+Then: Cleanup worktree (Step 6)
 
-### Step 5: Cleanup Worktree
+### Step 5: Notify Vega-Punk (if applicable)
+
+**If invoked from a vega-punk workflow (.vega-punk-state.json exists):**
+```
+IF Option 1 (Merge locally) succeeded:
+    READ .vega-punk-state.json
+    UPDATE state = "DONE"
+    ADD: completion_method = "merged"
+    WRITE back
+
+IF Option 4 (Discard) confirmed:
+    READ .vega-punk-state.json
+    UPDATE state = "DONE"
+    ADD: completion_method = "discarded"
+    WRITE back
+
+/* Options 2 and 3: do NOT update state — user may iterate further */
+```
+
+**If standalone (no .vega-punk-state.json):** skip this step.
+
+### Step 6: Cleanup Worktree
 
 **For Options 1 and 4:**
 
@@ -182,7 +238,7 @@ If removal fails (uncommitted files), either:
 
 **Automatic worktree cleanup**
 - **Problem:** Remove worktree when might need it (Option 2, 3)
-- **Fix:** Only cleanup for Options 1 and 4
+- **Fix:** Only cleanup for Options 1 and 4 (Step 6)
 
 **No confirmation for discard**
 - **Problem:** Accidentally delete work

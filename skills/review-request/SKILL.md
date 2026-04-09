@@ -11,12 +11,63 @@ Dispatch `code-reviewer` subagent to catch issues before they cascade. The revie
 
 **Core principle:** Review early, review often.
 
+## Pre-Execution Gate
+
+```
+BEGIN STATE_VALIDATION_GATE
+    /* Required: git repository with commits to review */
+    IF not inside a git repository:
+        FAIL: "[review-request] Not in a git repository. Cannot request review."
+        EXIT
+
+    /* Determine git range */
+    BASE_SHA = git merge-base HEAD main 2>/dev/null || git merge-base HEAD master 2>/dev/null
+    HEAD_SHA = git rev-parse HEAD
+
+    IF BASE_SHA not found AND HEAD_SHA not found:
+        FAIL: "[review-request] No commits to review. Nothing changed."
+        EXIT
+
+    IF BASE_SHA not found:
+        /* Root commit — review all commits from beginning */
+        BASE_SHA = git rev-list --max-parents=0 HEAD
+        TELL: "[review-request] No base branch found. Reviewing all commits from root."
+
+    /* Determine review scope */
+    changed_files = git diff --stat BASE_SHA..HEAD_SHA
+    IF changed_files is empty:
+        FAIL: "[review-request] No file changes between BASE_SHA and HEAD_SHA. Nothing to review."
+        EXIT
+
+    /* Check for existing review artifacts */
+    IF .vega-punk-state.json exists:
+        /* Load context for reviewer — spec, requirements, design */
+        LOAD spec_path, requirements.success, design from state
+    ELSE:
+        /* Standalone mode — use git commit messages as context */
+        context = git log BASE_SHA..HEAD_SHA --oneline
+
+    /* Validate reviewer template exists */
+    IF review-request/code-reviewer.md does NOT exist:
+        TELL: "[review-request] Reviewer template missing. Using default review criteria."
+END
+```
+
+**Boundary with verify-gate:**
+- review-request: Qualitative code quality assessment — architecture, patterns, readability, best practices
+- verify-gate: Command-level verification — tests pass/fail, build success, lint clean
+- review-request checks *how well* it's built; verify-gate checks *that* it works
+- Both are needed — neither replaces the other
+
 ## When to Request Review
 
 **Mandatory:**
-- After each task in subagent-driven development
 - After completing major feature
 - Before merge to main
+
+**In task-dispatcher / plan-executor workflows:**
+- Per-task spec compliance and code quality reviews are handled by the executor's two-stage review loop — **do NOT call review-request for individual tasks**
+- Only invoke review-request at the **final pre-merge checkpoint** (after all tasks/steps complete, before branch-landing)
 
 **Optional but valuable:**
 - When stuck (fresh perspective)
@@ -44,11 +95,10 @@ Use Task tool with `code-reviewer` type, fill template at `code-reviewer.md`
 - `{HEAD_SHA}` - Ending commit
 - `{DESCRIPTION}` - Brief summary
 
-**3. Act on feedback:**
-- Fix Critical issues immediately
-- Fix Important issues before proceeding
-- Note Minor issues for later
-- Push back if reviewer is wrong (with reasoning)
+**3. Act on feedback via review-intake:**
+- Invoke `review-intake` via Skill tool — it handles technical evaluation of each review item
+- review-intake will: verify each suggestion against codebase reality, push back on incorrect items, and implement valid fixes
+- Let review-intake take over from here — don't manually process feedback
 
 ## Review Scope Decision
 
@@ -147,13 +197,11 @@ If reviewer and implementer disagree after 2 rounds:
 ## Review Cadence
 
 **Task-dispatcher workflow:**
-- Review after EACH task (spec compliance + code quality)
-- Don't batch reviews across tasks — catch issues early
+- Per-task reviews handled by dispatcher's two-stage review loop (spec compliance + code quality) — **not review-request**
+- review-request invoked once at the end for final pre-merge review (all changes since branch start)
 
 **Plan-executor workflow:**
-- Review after each checkpoint step
-- Review after each phase completion
-- Final review before branch-landing
+- review-request invoked once at the end for final pre-merge review
 
 **Ad-hoc development:**
 - Review before merge
@@ -191,20 +239,50 @@ You: [Fix progress indicators — Important issue, must fix before next task]
 [Continue to Task 3]
 ```
 
-## Integration with Workflows
+## Completion Contract
 
-**Subagent-Driven Development:**
-- Review after EACH task
-- Catch issues before they compound
-- Fix before moving to next task
+After review completes, hand off to review-intake for processing:
 
-**Executing Plans:**
-- Review after each batch (3 tasks)
-- Get feedback, apply, continue
+```
+BEGIN COMPLETION_CONTRACT
+    /* Summarize review results for review-intake */
+    IF Critical issues found:
+        PRESENT: list of Critical issues with file:line locations
+        BLOCK: do not allow caller to proceed until fixed
+        RETURN: { status: "failed", severity: "critical", issues: [...] }
 
-**Ad-Hoc Development:**
-- Review before merge
-- Review when stuck
+    IF Important issues found:
+        PRESENT: list of Important issues
+        RECOMMEND: fix before next task
+        RETURN: { status: "passed_with_concerns", severity: "important", issues: [...] }
+
+    IF Minor issues found:
+        PRESENT: summary of Minor issues
+        RETURN: { status: "passed", severity: "minor", issues: [...] }
+
+    IF no issues found:
+        PRESENT: strengths observed
+        RETURN: { status: "passed", severity: "none", strengths: [...] }
+
+    /* Step 3: invoke review-intake */
+    INVOKE review-intake via Skill tool
+    PASS: review result, git diff context, and spec requirements
+    WAIT for review-intake to complete
+END
+```
+
+**How callers use the result:**
+The result is passed to `review-intake` via Skill tool invocation. review-intake evaluates each item against codebase reality, implements valid fixes, and pushes back on incorrect ones. Callers wait for review-intake to complete before proceeding.
+
+## Integration
+
+**Called by:**
+- **task-dispatcher** (Step 4) — final pre-merge review after all task batches pass their per-task two-stage reviews
+- **plan-executor** — final pre-merge review before branch-landing
+- Any skill before making success claims about completed work
+
+**Calls next:**
+- **review-intake** — invoked at Step 3 to evaluate and act on review feedback. review-intake handles the technical rigor; review-request handles the dispatching of the reviewer subagent.
 
 ## Red Flags
 
