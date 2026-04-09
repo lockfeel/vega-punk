@@ -1,6 +1,6 @@
 ---
 name: vega-punk
-description: "Central nervous system for AI sessions. Routes requests, designs solutions, analyzes dependencies, selects skills, and hands off to planning. Use at session start for any task beyond simple Q&A. Triggers on: new session, ambiguous request, multi-step task, skill selection needed, or when user says 'let's think about' / 'how should we' / 'what's the plan'."
+description: "A disciplined AI brain: design before execution. State machine-driven — routes requests, orchestrates skills, designs solutions, delivers plans."
 user-invocable: true
 allowed-tools: "Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch"
 hooks:
