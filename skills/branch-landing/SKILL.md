@@ -142,12 +142,17 @@ Then: Cleanup worktree (Step 5)
 
 Check if in worktree:
 ```bash
-git worktree list | grep $(git branch --show-current)
+# First try reading from state file
+IF .vega-punk-state.json has worktree_path:
+    worktree_path = read from .vega-punk-state.json
+ELSE:
+    git worktree list | grep $(git branch --show-current)
+    worktree_path = parsed from git worktree list
 ```
 
-If yes:
+If in worktree:
 ```bash
-git worktree remove <worktree-path>
+git worktree remove "$worktree_path"
 ```
 
 If removal fails (uncommitted files), either:

@@ -710,7 +710,7 @@ END
 
 ```
 BEGIN HANDOFF
-    READ references/plan-builder/SKILL.md
+    INVOKE plan-builder skill via Skill tool
     FOLLOW its workflow
 
     /* .vega-punk-state.json is the data contract — plan-builder reads it directly */
@@ -897,21 +897,6 @@ END
 | "I'll ask all my questions at once"        | CLARIFY enforces one question at a time. Batch questions = batch confusion  |
 | "This bug needs the full flow"             | Emergency exists — prod down → CONDENSED, diagnose → FULL                   |
 
-## Skill Dependencies
-
-**Sub-skills (referenced):**
-
-- **plan-builder** — [references/plan-builder/SKILL.md](references/plan-builder/SKILL.md) - called from HANDOFF
-- **plan-executor** — [references/plan-executor/SKILL.md](references/plan-executor/SKILL.md)  - called from plan-builder's Execution HANDOFF
-- **task-dispatcher** — [references/task-dispatcher/SKILL.md](references/task-dispatcher/SKILL.md) — parallel execution
-- **root-cause** — [references/root-cause/SKILL.md](references/root-cause/SKILL.md) — on bugs
-- **test-first** — [references/test-first/SKILL.md](references/test-first/SKILL.md) — per task
-- **verify-gate** — [references/verify-gate/SKILL.md](references/verify-gate/SKILL.md) — before claiming done
-- **review-request** — [references/review-request/SKILL.md](references/review-request/SKILL.md) — before merge
-- **branch-landing** — [references/branch-landing/SKILL.md](references/branch-landing/SKILL.md) — after all tasks complete
-- **parallel-swarm** — [references/parallel-swarm/SKILL.md](references/parallel-swarm/SKILL.md) — independent concurrent tasks
-- **worktree-setup** — [references/worktree-setup/SKILL.md](references/worktree-setup/SKILL.md) — isolated workspace for feature work
-- **review-intake** — [references/review-intake/SKILL.md](references/review-intake/SKILL.md) — process code review feedback
 
 **Self-recovery:** Built-in — see "Self-Recovery Guide" section above. No external reference needed.
 

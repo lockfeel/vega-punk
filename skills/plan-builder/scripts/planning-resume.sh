@@ -4,10 +4,8 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-ROADMAP="$PROJECT_DIR/roadmap.json"
-STATE="$PROJECT_DIR/.vega-punk-state.json"
+ROADMAP="roadmap.json"
+STATE=".vega-punk-state.json"
 
 if [ ! -f "$ROADMAP" ]; then
   exit 0

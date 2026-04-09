@@ -1,0 +1,279 @@
+---
+name: task-dispatcher
+description: Use when executing implementation plans with independent tasks in the current session
+categories: ["workflow"]
+triggers: ["subagent-driven development", "dispatch subagent", "implement tasks", "roadmap execution"]
+---
+
+# Subagent-Driven Development
+
+Execute plan by dispatching fresh subagent per task, with two-stage review after each: spec compliance review first, then code quality review.
+
+**Why subagents:** You delegate tasks to specialized agents with isolated context. By precisely crafting their instructions and context, you ensure they stay focused and succeed at their task. They should never inherit your session's context or history — you construct exactly what they need. This also preserves your own context for coordination work.
+
+**Two-stage review order:** Spec compliance review first, then code quality review. Rationale: verify we built the right thing before verifying we built it well. A beautifully coded wrong feature is still wrong.
+
+## When to Use
+
+**Use this skill when:**
+- You have an implementation plan (`roadmap.json` from plan-builder)
+- Tasks are mostly independent (can be dispatched separately)
+- You want to stay in the same session (no context switch)
+
+**vs. plan-executor:**
+- task-dispatcher: subagent per task, two-stage review, faster iteration
+- plan-executor: inline execution, simpler, fewer API calls
+
+## The Process
+
+### Step 0: Setup Workspace
+
+Invoke `worktree-setup` by saying: "I'm using the worktree-setup skill to set up an isolated workspace."
+
+### Step 1: Read Plan
+
+Read `roadmap.json` — extract all phases and steps with full context. Build a task dependency graph from `depends_on` fields.
+
+### Step 2: Create Task Tracker
+
+Create a TodoWrite entry per phase/task from the plan. Track status: `pending` → `dispatched` → `reviewing` → `complete`.
+
+### Step 3: Dispatch Tasks (respects `depends_on`, dispatches independent tasks in parallel)
+
+For each batch of tasks that have all dependencies satisfied:
+
+1. **Check dependencies:** Only dispatch tasks whose `depends_on` steps are all `"complete"`.
+2. **Dispatch implementer subagents in parallel** for all tasks in this batch (use `run_in_background: true` or your platform's equivalent). Each subagent gets its own task-specific prompt (see Prompt Templates below).
+3. **Collect implementer results** — wait for all implementers to finish. **Handle implementer status** (see Handling Implementer Status) — fix or re-dispatch as needed.
+4. **Dispatch spec reviewer subagents in parallel** — fix issues → re-review until ✅ (max 3 cycles).
+5. **Dispatch code quality reviewer subagents in parallel** — fix issues → re-review until ✅ (max 2 cycles).
+6. **Mark all tasks in batch complete**
+7. **Invoke `verify-gate`** by saying: "I'm using the verify-gate skill to verify this batch of tasks." — confirm all tasks passed their reviews and verification checks before proceeding to the next batch.
+
+### Step 4: Final Code Review
+
+Invoke the `review-request` skill by saying: "I'm using the review-request skill to run a final code review." Pass the full git range from first to last commit.
+
+### Step 5: Complete Development
+
+Invoke `branch-landing` by saying: "I'm using the branch-landing skill to complete this work."
+
+## Handling Implementer Status
+
+Implementer subagents report one of four statuses. Handle each appropriately:
+
+**DONE:** Proceed to spec compliance review.
+
+**DONE_WITH_CONCERNS:** The implementer completed the work but flagged doubts. Read the concerns before proceeding. If the concerns are about correctness or scope, address them before review. If they're observations (e.g., "this file is getting large"), note them and proceed to review.
+
+**NEEDS_CONTEXT:** The implementer needs information that wasn't provided. Provide the missing context and re-dispatch.
+
+**BLOCKED:** The implementer cannot complete the task. Assess the blocker:
+1. If it's a context problem, provide more context and re-dispatch
+2. If the task requires more reasoning, re-dispatch with a more capable model
+3. If the task is too large, break it into smaller pieces
+4. If the plan itself is wrong, **mark the task as failed, log to progress.json, and continue with remaining tasks** — do not block the entire pipeline on one broken task
+
+## Model Selection
+
+Use the least capable model that can handle each role:
+
+| Role | Claude Code | OpenClaw / Generic | Signal |
+|------|-------------|--------------------|--------|
+| Implementer (mechanical, 1-2 files, clear spec) | haiku | fast model | "write this exact function" |
+| Implementer (integration, multi-file) | sonnet | standard model | "wire up X to Y" |
+| Reviewer (spec compliance) | sonnet | standard model | "verify against spec" |
+| Reviewer (code quality) | sonnet | standard model | "review for patterns/best practices" |
+| Final review / escalation | opus | most capable model | "review entire implementation" |
+
+## Prompt Templates
+
+Build each prompt inline. Do NOT reference external template files — construct the full prompt in your dispatch call.
+
+### Implementer Prompt
+
+```
+## Task: <task_id> - <task_action>
+
+## Context
+- Project: <project_name>
+- Branch: <branch_name>
+- Worktree: <worktree_path>
+
+## What to do
+<full step description from roadmap.json>
+
+## Code to write
+<exact code block from roadmap.json code field>
+
+## Constraints
+- Write ONLY the files specified below. Do NOT modify other files.
+- Follow TDD: write tests first, then implementation.
+- Verify your work by running the relevant tests before reporting done.
+- If the code field is empty or unclear, report BLOCKED with what's missing.
+
+## Files to create/modify
+<list target files from the step>
+
+## Report
+When done, write your status to `.task-status-<task_id>.json` in the worktree root:
+```json
+{ "status": "DONE|DONE_WITH_CONCERNS|NEEDS_CONTEXT|BLOCKED", "details": "<message>" }
+```
+The controller reads this file. Do NOT leave it empty.
+If DONE_WITH_CONCERNS, list specific concerns.
+If BLOCKED, explain what's preventing completion.
+```
+
+### Spec Reviewer Prompt
+
+```
+## Review: Spec Compliance for Task <task_id>
+
+## The Spec
+<relevant requirements from roadmap.json or spec file>
+
+## What was built
+<summary of changes from git diff or implementer report>
+
+## Task
+Compare what was built against what the spec requires.
+Check every requirement has a corresponding implementation.
+Report: PASS (with evidence) or FAIL (with specific gaps: spec says X, built Y).
+```
+
+### Code Quality Reviewer Prompt
+
+```
+## Review: Code Quality for Task <task_id>
+
+## Context
+- Project: <project_name>
+- Files changed: <list from git diff>
+
+## Task
+Review the implementation for:
+1. Correctness: logic bugs, edge cases, error handling
+2. Readability: naming, structure, comments where non-obvious
+3. Consistency: matches existing codebase patterns
+4. Performance: no O(n²) on unbounded data, no N+1 queries
+
+Report: PASS or FAIL (with specific file:line issues).
+Mark severity: Critical / Important / Minor.
+```
+
+## Review Error Recovery
+
+**Spec compliance review — max 3 cycles:**
+- Cycle 1-2: Implementer fixes, reviewer re-reviews
+- Cycle 3: If still failing, the spec itself may be ambiguous. Escalate with specific discrepancy (spec says X, implementer built Y, who's right?)
+
+**Code quality review — max 2 cycles:**
+- Cycle 1: Implementer fixes, reviewer re-reviews
+- Cycle 2: If reviewer still finds Important/Critical issues, implementer may be misunderstanding the pattern. Escalate with conflicting perspectives.
+
+**If reviewer is wrong:** Implementer should push back with technical reasoning (file:line evidence, test results, spec quotes). The controller (you) makes the final call — don't let the review loop indefinitely.
+
+**If all retries exhausted on a task:**
+- Mark the task as `failed`
+- Log to `progress.json` (same directory as `roadmap.json` and `.vega-punk-state.json`): `{ "timestamp": "<ISO8601>", "step_id": "<id>", "error": "review cycles exhausted: <summary>" }`
+- If task is `critical: false` → continue with remaining tasks
+- If task is `critical: true` → stop and ask user for direction
+
+## Example Workflow
+
+```
+You: I'm using the worktree-setup skill to set up an isolated workspace.
+[worktree created, baseline tests pass]
+
+You: I'm using Subagent-Driven Development to execute this plan.
+[Extract all tasks from roadmap.json → Create TodoWrite entries]
+[Build dependency graph from depends_on fields]
+
+For each batch of tasks with all dependencies satisfied:
+  1. Dispatch implementers in parallel (haiku/sonnet, full task text + context)
+  2. Wait for all, handle status (DONE → review, NEEDS_CONTEXT → re-dispatch, BLOCKED → assess)
+  3. Dispatch spec reviewers in parallel (sonnet) → fix → re-review until ✅
+  4. Dispatch code quality reviewers in parallel (sonnet) → fix → re-review until ✅
+  5. You: I'm using the verify-gate skill to verify this batch.
+  6. Mark batch complete → next batch
+
+After all tasks:
+  You: I'm using the review-request skill to run a final code review.
+  You: I'm using the branch-landing skill to complete this work.
+```
+
+## Advantages
+
+**vs. Manual execution:**
+- Subagents follow TDD naturally
+- Fresh context per task (no confusion)
+- Parallel-safe (subagents don't interfere)
+- Subagent can ask questions (before AND during work)
+
+**vs. plan-executor:**
+- Same session (no handoff)
+- Continuous progress (no waiting)
+- Review checkpoints automatic
+
+**Efficiency gains:**
+- No file reading overhead (controller provides full text)
+- Controller curates exactly what context is needed
+- Subagent gets complete information upfront
+- Questions surfaced before work begins (not after)
+
+**Quality gates:**
+- Self-review catches issues before handoff
+- Two-stage review: spec compliance, then code quality
+- Review loops ensure fixes actually work
+- Spec compliance prevents over/under-building
+- Code quality ensures implementation is well-built
+
+## Red Flags
+
+**Never:**
+- Start implementation on main/master branch without explicit user consent
+- Skip reviews (spec compliance OR code quality)
+- Proceed with unfixed issues
+- Dispatch multiple implementation subagents in parallel **within the same task** (conflicts on shared files)
+- Dispatch dependent tasks in parallel — always respect `depends_on` ordering; only parallelize tasks with no mutual dependencies
+- Make subagent read plan file (provide full text instead)
+- Skip scene-setting context (subagent needs to understand where task fits)
+- Ignore subagent questions (answer before letting them proceed)
+- Accept "close enough" on spec compliance (spec reviewer found issues = not done)
+- Skip review loops (reviewer found issues = implementer fixes = review again)
+- Let implementer self-review replace actual review (both are needed)
+- **Start code quality review before spec compliance is ✅** (wrong order)
+- Move to next batch while any task in current batch has open review issues
+- Skip the verify-gate after each batch
+
+**If subagent asks questions:**
+- Answer clearly and completely
+- Provide additional context if needed
+- Don't rush them into implementation
+
+**If reviewer finds issues:**
+- Implementer (same subagent) fixes them
+- Reviewer reviews again
+- Repeat until approved
+- Don't skip the re-review
+
+**If subagent fails task after all retries:**
+- Mark task as failed, log to progress.json
+- Continue with remaining tasks if non-critical
+- Escalate to user if critical task failed
+
+## Integration
+
+**Required skills — auto-invoked by trigger phrase:**
+- `worktree-setup` — invoke at Step 0 before dispatching any tasks
+- `verify-gate` — invoke at Step 3.7 after each batch passes reviews
+- `review-request` — invoke at Step 4 for final code review
+- `branch-landing` — invoke at Step 5 after all tasks complete
+- `plan-builder` — upstream; creates the `roadmap.json` this skill executes
+
+**Subagents should use:**
+- test-first approach for each task
+
+**Alternative execution path:**
+- `plan-executor` — use for inline sequential execution instead of subagent dispatch

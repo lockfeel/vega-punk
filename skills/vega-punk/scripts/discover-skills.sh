@@ -27,25 +27,12 @@ fi
 TMPFILE=$(mktemp)
 trap 'rm -f "$TMPFILE"' EXIT
 
-# ── 1. Local sub-skills (references/*/SKILL.md) ──────────────
-for f in references/*/SKILL.md; do
-  [[ -f "$f" ]] || continue
-  name=$(grep '^name:' "$f" 2>/dev/null | head -1 | sed 's/name: *//' || true)
-  desc=$(grep '^description:' "$f" 2>/dev/null | head -1 | sed 's/description: *//' | sed 's/^"//' | sed 's/"$//' || true)
-  [[ -z "$name" ]] && continue
-  echo "$name	$desc	local	$f" >> "$TMPFILE"
-done
-
-# ── 2. System skills (from main SKILL.md dependency table) ───
+# ── 1. System skills (from main SKILL.md dependency table) ───
 # Extract all **skill-name** references from the Skill Dependencies section
 if [[ -f "SKILL.md" ]]; then
   # Get everything under "## Skill Dependencies" to end of file
   awk '/^## Skill Dependencies/{found=1; next} found' SKILL.md | \
     grep -o '\*\*[a-z][a-z0-9_-]*\*\*' | sed 's/\*\*//g' | sort -u | while read -r name; do
-    # Skip if it's a local skill
-    if [[ -f "references/${name}/SKILL.md" ]]; then
-      continue
-    fi
     echo "$name	external system skill	system	-" >> "$TMPFILE"
   done
 fi

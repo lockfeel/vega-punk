@@ -62,7 +62,7 @@ else
 fi
 
 # Discover all registered skills on every session start
-if [ -f "scripts/discover-skills.sh" ]; then
-  skill_count=$(bash scripts/discover-skills.sh 2>/dev/null | grep -c '"name"' || echo "0")
+if [ -f "$(dirname "$0")/discover-skills.sh" ]; then
+  skill_count=$(bash "$(dirname "$0")/discover-skills.sh" 2>/dev/null | grep -c '"name"' || echo "0")
   echo "[vega-punk] $skill_count skills discovered and available for routing."
 fi
