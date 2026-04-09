@@ -248,50 +248,53 @@ If the spec covers multiple independent subsystems, suggest breaking into separa
 
 ## Self-Review
 
-After writing the complete plan, look at the spec with fresh eyes and check the plan against it:
+After writing the complete plan, do **exactly ONE pass** of review — do NOT loop.
 
 ```
 BEGIN SELF_REVIEW
     READ spec with fresh eyes
-    FOR EACH step in ~/.vega-punk/roadmap.json:
+    COLLECT all issues in a list first (do NOT fix incrementally)
 
-        /* 1. Spec coverage */
-        CHECK every requirement has a corresponding step
-        IF gap found: ADD step to cover it
+    /* 1. Spec coverage */
+    CHECK every requirement has a corresponding step
+    IF gap found: ADD step to cover it
 
-        /* 2. Placeholder scan */
-        SCAN for: "TBD", "TODO", "implement later", "fill in details",
-                  "appropriate error handling", "add validation",
-                  "handle edge cases", "Write tests for the above",
-                  "Similar to Task N"
-        IF found: REPLACE with actual content
+    /* 2. Placeholder scan */
+    SCAN for: "TBD", "TODO", "implement later", "fill in details",
+              "appropriate error handling", "add validation",
+              "handle edge cases", "Write tests for the above",
+              "Similar to Task N"
+    IF found: REPLACE with actual content
 
-        /* 3. Type consistency */
-        CHECK types, method signatures, property names match across steps
-        IF mismatch (e.g. clearLayers() in 1.3 vs clearFullLayers() in 2.7): FIX
+    /* 3. Type consistency */
+    CHECK types, method signatures, property names match across steps
+    IF mismatch (e.g. clearLayers() in 1.3 vs clearFullLayers() in 2.7): FIX
 
-        /* 4. Error handling completeness */
-        FOR EACH external call (API, DB, file I/O):
-            VERIFY error path exists in plan
-        IF missing: ADD error handling step
+    /* 4. Error handling completeness */
+    FOR EACH external call (API, DB, file I/O):
+        VERIFY error path exists in plan
+    IF missing: ADD error handling step
 
-        /* 5. Boundary conditions */
-        CHECK edge cases (empty input, max values, concurrent access)
-        VERIFY covered by specific steps
-        IF missing: ADD edge case step
+    /* 5. Boundary conditions */
+    CHECK edge cases (empty input, max values, concurrent access)
+    VERIFY covered by specific steps
+    IF missing: ADD edge case step
 
-        /* 6. Performance impact */
-        CHECK for O(n²) or worse operations on unbounded data
-        IF found: VERIFY intentional or OPTIMIZE
+    /* 6. Performance impact */
+    CHECK for O(n²) or worse operations on unbounded data
+    IF found: VERIFY intentional or OPTIMIZE
 
-        /* 7. Dependency order validity */
-        FOR EACH serial step:
-            COULD this run in parallel?
-        IF over-constrained: RESTRUCTURE for parallelism
+    /* 7. Dependency order validity */
+    FOR EACH serial step:
+        COULD this run in parallel?
+    IF over-constrained: RESTRUCTURE for parallelism
+
+    /* CRITICAL: Do NOT re-scan after applying fixes. One pass only. */
+    /* If you added new steps, do NOT review the new steps again. */
 END
 ```
 
-If issues found, fix them inline. If a spec requirement has no step, add the step.
+If issues found, fix them in one batch write. If a spec requirement has no step, add the step.
 
 ## Completion Contract
 
@@ -344,8 +347,8 @@ END
 
 ```
 BEGIN COMPLETION_CONTRACT
+    RUN SELF_REVIEW (one pass only — see Self-Review section)
     WRITE ~/.vega-punk/roadmap.json (same directory as ~/.vega-punk/vega-punk-state.json) with all phases, steps, and verification config
-    PASS SELF_REVIEW
     RUN ROUTING_DECISION
 
     IF ~/.vega-punk/vega-punk-state.json exists:
@@ -353,20 +356,23 @@ BEGIN COMPLETION_CONTRACT
         WRITE ~/.vega-punk/vega-punk-state.json:
             state = "HANDOFF"
             ADD: handoff_to = executor
-        /* Use Skill tool directly — NOT trigger phrases */
+        /* Signal completion — do NOT block waiting for executor */
+        TELL: "[plan-builder] Plan written. Handing off to {executor}."
+        /* Attempt handoff via Skill tool, but do NOT wait for result */
         IF executor == "plan-executor":
-            INVOKE plan-executor via Skill tool
+            INVOKE plan-executor via Skill tool (non-blocking)
         ELSE:
-            INVOKE task-dispatcher via Skill tool
-        WAIT for execution_result
+            INVOKE task-dispatcher via Skill tool (non-blocking)
+        /* Return regardless of executor invocation result */
     ELSE:
         /* Standalone mode — no state write-back */
-        /* Use Skill tool directly — NOT trigger phrases */
+        TELL: "[plan-builder] Plan written successfully."
+        /* Attempt handoff via Skill tool, but do NOT wait for result */
         IF executor == "plan-executor":
-            INVOKE plan-executor via Skill tool
+            INVOKE plan-executor via Skill tool (non-blocking)
         ELSE:
-            INVOKE task-dispatcher via Skill tool
-        WAIT for execution_result
+            INVOKE task-dispatcher via Skill tool (non-blocking)
+        /* Return regardless of executor invocation result */
 END
 ```
 
