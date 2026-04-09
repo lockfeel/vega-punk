@@ -3,7 +3,7 @@
 # Always exits 0 — uses stdout for status reporting
 # Usage: ./check-complete.sh [roadmap.json]
 
-PLAN_FILE="${1:-roadmap.json}"
+PLAN_FILE="${1:-$HOME/.vega-punk/roadmap.json}"
 
 if [ ! -f "$PLAN_FILE" ]; then
     echo "[planning-with-json] No roadmap.json found — no active planning session."
@@ -16,7 +16,7 @@ import json
 import sys
 import os
 
-plan_file = sys.argv[1] if len(sys.argv) > 1 else "roadmap.json"
+plan_file = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser("~/.vega-punk/roadmap.json")
 
 if not os.path.exists(plan_file):
     print("[planning-with-json] No roadmap.json found.")

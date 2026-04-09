@@ -15,10 +15,10 @@ hooks:
 
 **Boundary:** vega-punk owns design and routing. After HANDOFF, plan-builder takes execution — reads the state file, generates the roadmap, manages implementation. vega-punk stays in REVIEW to validate results against requirements.
 
-**State file:** `.vega-punk-state.json` in the working directory.
-**Spec directory:** `specs/` in the working directory.
+**State file:** `~/.vega-punk/vega-punk-state.json`.
+**Spec directory:** `~/.vega-punk/specs/`.
 
-For **OpenClaw**, the working directory is your current project. For **Claude Code**, it's the directory where you started the session.
+For **OpenClaw** and **Claude Code**, the workspace is always `~/.vega-punk/` — state, specs, roadmap, and all runtime files live there.
 
 ## Quick Start
 
@@ -34,13 +34,13 @@ See [State Machine](#state-machine) for full flow details.
 
 ## How State Works
 
-**State file:** `.vega-punk-state.json` in the working directory.
+**State file:** `~/.vega-punk/vega-punk-state.json`.
 
 **On every user message:**
 
 ```
 BEGIN STATE_RESOLUTION
-    READ .vega-punk-state.json
+    READ ~/.vega-punk/vega-punk-state.json
 
     IF user says "start over" / "new task" / "forget previous":
         APPLY Post-Completion Cleanup
@@ -57,16 +57,16 @@ BEGIN STATE_RESOLUTION
     IF state == "REVIEW":
         IF execution_result exists:
             ENTER REVIEW
-        ELSE IF roadmap.json exists AND has incomplete steps:
-            RESUME execution from roadmap.json current_step
+        ELSE IF ~/.vega-punk/roadmap.json exists AND has incomplete steps:
+            RESUME execution from ~/.vega-punk/roadmap.json current_step
         ELSE:
             WAIT for user input (do NOT restart ROUTE)
         EXIT
 
     IF state == "REVIEW" AND user requests iterate/redesign:
         /* Archive stale roadmap before re-entering design flow */
-        IF roadmap.json exists:
-            RENAME roadmap.json → roadmap.ARCHIVED.json
+        IF ~/.vega-punk/roadmap.json exists:
+            RENAME ~/.vega-punk/roadmap.json → roadmap.ARCHIVED.json
 
     /* state is not DONE, file exists → recovery */
     ENTER current state directly
@@ -100,30 +100,29 @@ END
 
 BEGIN Post-Completion Cleanup
     /* Step 1: save counters BEFORE deleting state file */
-    IF .vega-punk-state.json has consecutive_dissatisfied_count:
-        WRITE .vega-punk-counters.json:
+    IF ~/.vega-punk/vega-punk-state.json has consecutive_dissatisfied_count:
+        WRITE ~/.vega-punk/vega-punk-counters.json:
             { "consecutive_dissatisfied_count": value }
 
     /* Step 2: archive + delete state */
-    RENAME specs/*.md → *.DONE.md (completed) or *.CANCELLED.md (cancelled)
-    DELETE .vega-punk-state.json
+    RENAME ~/.vega-punk/specs/*.md → *.DONE.md (completed) or *.CANCELLED.md (cancelled)
+    DELETE ~/.vega-punk/vega-punk-state.json
 
     /* On REVIEW → new task: archive specs + preserve counters, then restart ROUTE */
     /* On "start over" / "new task" / "forget previous": also clear counter */
     IF user says "forget previous":
-        DELETE .vega-punk-counters.json
+        DELETE ~/.vega-punk/vega-punk-counters.json
 END
 ```
 
 **Key rule:** Always preserve `task` field across all state transitions.
 
 **State file write rules — ALL skills must follow:**
-1. **NEVER** use full `Write` on `.vega-punk-state.json` — always read first, merge in memory, then `Write` back
+1. **NEVER** use full `Write` on `~/.vega-punk/vega-punk-state.json` — always read first, merge in memory, then `Write` back
 2. **NEVER delete existing fields** — only ADD new fields or UPDATE existing values
 3. If a field was written by another skill (e.g. `worktree_path` by worktree-setup), preserve it
 4. When in doubt, read the current JSON, add your fields, and write back — never assume you own the entire file
 
-**Git:** Add `.vega-punk-state.json` and `.vega-punk-counters.json` to `.gitignore`. **Do NOT** gitignore `specs/` — spec history is project memory and should be committed.
 
 **Progress reporting:** At each transition:
 > "Entering [STATE]..."
@@ -299,15 +298,15 @@ END
 ```
 BEGIN ROUTE
     /* load preserved counters from previous task */
-    IF .vega-punk-counters.json exists:
+    IF ~/.vega-punk/vega-punk-counters.json exists:
         READ consecutive_dissatisfied_count into context
     ELSE:
         INITIALIZE consecutive_dissatisfied_count = 0
 
     /* Step 0: clean slate */
-    IF state == "DONE" AND .vega-punk-state.json exists:
-        RENAME specs/*.md → *.DONE.md
-        DELETE .vega-punk-state.json
+    IF state == "DONE" AND ~/.vega-punk/vega-punk-state.json exists:
+        RENAME ~/.vega-punk/specs/*.md → *.DONE.md
+        DELETE ~/.vega-punk/vega-punk-state.json
 
     /* Step 1: bug detection first */
     IF message contains bug keywords (`bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception`):
@@ -321,7 +320,7 @@ BEGIN ROUTE
         ELSE:
             TELL: "[vega-punk] Emergency mode — minimal design, fast execution."
         /* Step 3: write state (emergency skips SCAN, goes straight to CONDENSED) */
-        WRITE .vega-punk-state.json:
+        WRITE ~/.vega-punk/vega-punk-state.json:
             { "state": "CONDENSED", "task": "<user request>", "mode": "emergency", "transition_count": 1 }
         GOTO CONDENSED
 
@@ -350,7 +349,7 @@ BEGIN ROUTE
         IF classified as Creative/Implementation → see above
 
     /* Step 3: write state */
-    WRITE .vega-punk-state.json:
+    WRITE ~/.vega-punk/vega-punk-state.json:
         { "state": "SCAN", "task": "<user request>", "scan_depth": 0, "transition_count": 1 }
 END
 ```
@@ -393,7 +392,7 @@ BEGIN SCAN
         LOAD skill guidance into context
 
     /* state write */
-    WRITE .vega-punk-state.json:
+    WRITE ~/.vega-punk/vega-punk-state.json:
         state = "CLARIFY"
         ADD: context, selected_skills, scope, skill_selection
         INCREMENT: scan_depth (or set to 1)
@@ -435,7 +434,7 @@ BEGIN CLARIFY
         PROCEED to DESIGN
 
     /* state write */
-    WRITE .vega-punk-state.json:
+    WRITE ~/.vega-punk/vega-punk-state.json:
         state = "DESIGN"
         ADD: requirements = { purpose, constraints, success }
         RESET: scan_depth = 0
@@ -490,7 +489,7 @@ BEGIN DESIGN
         IF exploring alternatives → STAY in DESIGN, restart Phase 1
 
     /* state write */
-    WRITE .vega-punk-state.json:
+    WRITE ~/.vega-punk/vega-punk-state.json:
         state = "DESIGN_QA"
         ADD: design
         INCREMENT: transition_count
@@ -600,7 +599,7 @@ BEGIN DEPENDENCIES
         GOTO DESIGN
 
     /* state write */
-    WRITE .vega-punk-state.json:
+    WRITE ~/.vega-punk/vega-punk-state.json:
         state = "SPEC"
         ADD: dependencies = { components, serial, parallel, critical_path }
         INCREMENT: transition_count
@@ -620,7 +619,7 @@ END
 ```
 BEGIN SPEC
     /* 1. write spec file */
-    WRITE specs/YYYY-MM-DD-<topic>-design.md
+    WRITE ~/.vega-punk/specs/YYYY-MM-DD-<topic>-design.md
     REQUIRED sections:
         Goal, Architecture, Components, Interfaces,
         Data Flow, Error Handling, Testing Plan, Dependency Graph
@@ -640,7 +639,7 @@ BEGIN SPEC
         FIX → RE-RUN self-review
 
     /* state write */
-    WRITE .vega-punk-state.json:
+    WRITE ~/.vega-punk/vega-punk-state.json:
         state = "SPEC_QA"
         ADD: spec_path, qa = { spec_retries: 0, spec_feedback: "" }
         INCREMENT: transition_count
@@ -706,7 +705,7 @@ BEGIN CONDENSED
         state = SCAN /* go FULL from beginning */
     IF approved:
         /* state write */
-        WRITE .vega-punk-state.json:
+        WRITE ~/.vega-punk/vega-punk-state.json:
             state = "HANDOFF"
             ADD: mode = "condensed", spec, dependencies
             ADD: requirements = { purpose, constraints, success } /* from CLARIFY — preserve for plan-builder verification */
@@ -730,10 +729,10 @@ BEGIN HANDOFF
     INVOKE plan-builder via Skill tool
     FOLLOW its workflow
 
-    /* .vega-punk-state.json is the data contract — plan-builder reads it directly */
+    /* ~/.vega-punk/vega-punk-state.json is the data contract — plan-builder reads it directly */
 
     /* state write */
-    WRITE .vega-punk-state.json:
+    WRITE ~/.vega-punk/vega-punk-state.json:
         state = "REVIEW"
         ADD: handoff_to = "plan-builder", user_satisfaction = null
         INCREMENT: transition_count
@@ -810,14 +809,14 @@ BEGIN REVIEW
         RESET consecutive_dissatisfied_count = 0
 
     /* persist counter to survive Post-Completion Cleanup */
-    WRITE .vega-punk-counters.json:
+    WRITE ~/.vega-punk/vega-punk-counters.json:
         { "consecutive_dissatisfied_count": value }
 
     IF user_satisfaction == "dissatisfied" AND execution_result.status == "success":
         TELL: "Criteria met but you're not happy — what's missing?"
         /* Archive old roadmap */
-        IF roadmap.json exists:
-            RENAME roadmap.json → roadmap.ARCHIVED.json
+        IF ~/.vega-punk/roadmap.json exists:
+            RENAME ~/.vega-punk/roadmap.json → roadmap.ARCHIVED.json
         GOTO CLARIFY /* realign requirements */
 
     IF consecutive_dissatisfied_count >= 3:
@@ -830,13 +829,13 @@ BEGIN REVIEW
         GOTO ROUTE
     CASE iterate:
         /* Archive old roadmap before re-entering design to prevent version confusion */
-        IF roadmap.json exists:
-            RENAME roadmap.json → roadmap.ARCHIVED.json
+        IF ~/.vega-punk/roadmap.json exists:
+            RENAME ~/.vega-punk/roadmap.json → roadmap.ARCHIVED.json
         GOTO DESIGN
     CASE redesign:
         /* Archive old roadmap before re-entering clarify */
-        IF roadmap.json exists:
-            RENAME roadmap.json → roadmap.ARCHIVED.json
+        IF ~/.vega-punk/roadmap.json exists:
+            RENAME ~/.vega-punk/roadmap.json → roadmap.ARCHIVED.json
         GOTO CLARIFY
 END
 ```
@@ -845,9 +844,7 @@ END
 
 ```
 BEGIN BOOTSTRAP
-    MKDIR specs
-    ADD .vega-punk-state.json and .vega-punk-counters.json to .gitignore
-    DO NOT gitignore vega-punk/ (spec history is project memory, commit it)
+    MKDIR ~/.vega-punk/specs
     VERIFY scripts/ exists (session-hook.sh, etc.)
     IF missing → inform user
     GOTO ROUTE
@@ -860,7 +857,7 @@ When vega-punk's state becomes corrupted or inconsistent:
 
 ```
 BEGIN RECOVERY
-    READ .vega-punk-state.json
+    READ ~/.vega-punk/vega-punk-state.json
     VALID_STATES = [ROUTE, SCAN, CLARIFY, DESIGN, DESIGN_QA,
                     DEPENDENCIES, SPEC, SPEC_QA, CONDENSED, HANDOFF, REVIEW, DONE]
 
@@ -875,7 +872,7 @@ BEGIN RECOVERY
             state = ROUTE
             TELL: "State file was corrupted. Recovered to ROUTE."
         ELSE:
-            DELETE .vega-punk-state.json
+            DELETE ~/.vega-punk/vega-punk-state.json
             GOTO ROUTE
             TELL: "State file was corrupted. Starting fresh."
 
@@ -894,7 +891,7 @@ BEGIN RECOVERY
             state = CLARIFY
             TELL: "Spec file was lost. Let me re-run the design flow."
 
-    CASE state == REVIEW AND (roadmap.json missing OR invalid JSON):
+    CASE state == REVIEW AND (~/.vega-punk/roadmap.json missing OR invalid JSON):
         /* execution interrupted during planning */
         IF spec_path exists AND spec file readable:
             RE-RUN HANDOFF
@@ -923,11 +920,11 @@ BEGIN RECOVERY
 
     CASE user says "reset everything":
         /* nuclear option */
-        RENAME specs/*.md → *.CANCELLED.md
-        DELETE .vega-punk-state.json
-        DELETE roadmap.json (if exists)
-        DELETE findings.json (if exists)
-        DELETE progress.json (if exists)
+        RENAME ~/.vega-punk/specs/*.md → *.CANCELLED.md
+        DELETE ~/.vega-punk/vega-punk-state.json
+        DELETE ~/.vega-punk/roadmap.json (if exists)
+        DELETE ~/.vega-punk/findings.json (if exists)
+        DELETE ~/.vega-punk/progress.json (if exists)
         TELL: "[vega-punk] Full reset complete. Starting fresh. What shall we build?"
         GOTO ROUTE
 END

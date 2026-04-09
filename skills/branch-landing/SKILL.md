@@ -27,12 +27,12 @@ BEGIN STATE_VALIDATION_GATE
         ASK: "Are you sure you want to complete from {current_branch}? This could affect the main branch."
 
     /* Try to find worktree_path */
-    IF .vega-punk-state.json exists:
+    IF ~/.vega-punk/vega-punk-state.json exists:
         IF worktree_path field missing:
             /* Try to find worktree from git */
             worktree_path = git worktree list | grep current_branch | parse path
             IF worktree_path found:
-                ADD worktree_path to .vega-punk-state.json
+                ADD worktree_path to ~/.vega-punk/vega-punk-state.json
                 TELL: "[branch-landing] Found worktree at {worktree_path} via git."
             ELSE:
                 /* Not in a worktree — might be inline execution */
@@ -42,7 +42,7 @@ BEGIN STATE_VALIDATION_GATE
             /* Worktree was removed — find from git */
             worktree_path = git worktree list | grep current_branch | parse path
             IF worktree_path found:
-                UPDATE worktree_path in .vega-punk-state.json
+                UPDATE worktree_path in ~/.vega-punk/vega-punk-state.json
             ELSE:
                 worktree_path = null
                 TELL: "[branch-landing] Worktree was removed. Skipping cleanup."
@@ -173,16 +173,16 @@ Then: Cleanup worktree (Step 6)
 
 ### Step 5: Notify Vega-Punk (if applicable)
 
-**If invoked from a vega-punk workflow (.vega-punk-state.json exists):**
+**If invoked from a vega-punk workflow (~/.vega-punk/vega-punk-state.json exists):**
 ```
 IF Option 1 (Merge locally) succeeded:
-    READ .vega-punk-state.json
+    READ ~/.vega-punk/vega-punk-state.json
     UPDATE state = "DONE"
     ADD: completion_method = "merged"
     WRITE back
 
 IF Option 4 (Discard) confirmed:
-    READ .vega-punk-state.json
+    READ ~/.vega-punk/vega-punk-state.json
     UPDATE state = "DONE"
     ADD: completion_method = "discarded"
     WRITE back
@@ -190,7 +190,7 @@ IF Option 4 (Discard) confirmed:
 /* Options 2 and 3: do NOT update state — user may iterate further */
 ```
 
-**If standalone (no .vega-punk-state.json):** skip this step.
+**If standalone (no ~/.vega-punk/vega-punk-state.json):** skip this step.
 
 ### Step 6: Cleanup Worktree
 
@@ -199,8 +199,8 @@ IF Option 4 (Discard) confirmed:
 Check if in worktree:
 ```bash
 # First try reading from state file
-IF .vega-punk-state.json has worktree_path:
-    worktree_path = read from .vega-punk-state.json
+IF ~/.vega-punk/vega-punk-state.json has worktree_path:
+    worktree_path = read from ~/.vega-punk/vega-punk-state.json
 ELSE:
     git worktree list | grep $(git branch --show-current)
     worktree_path = parsed from git worktree list

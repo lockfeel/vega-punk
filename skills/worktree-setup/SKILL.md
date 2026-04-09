@@ -31,7 +31,7 @@ BEGIN STATE_VALIDATION_GATE
         stash_created = true
 
     /* Check if a worktree for target branch already exists */
-    IF .vega-punk-state.json exists AND worktree_path field exists:
+    IF ~/.vega-punk/vega-punk-state.json exists AND worktree_path field exists:
         IF worktree_path directory exists:
             TELL: "[worktree-setup] Worktree already exists at {worktree_path}. Reusing."
             SKIP creation, proceed to setup
@@ -91,9 +91,9 @@ git check-ignore -q "$worktree_dir" 2>/dev/null
 ### Step 1: Determine Branch Name
 
 ```
-IF roadmap.json exists:
+IF ~/.vega-punk/roadmap.json exists:
     branch_name = "feature/{roadmap.project}-{roadmap.goal_slug}"
-ELSE IF .vega-punk-state.json has task field:
+ELSE IF ~/.vega-punk/vega-punk-state.json has task field:
     branch_name = "feature/{task_slug}"
 ELSE:
     branch_name = "feature/working"
@@ -165,10 +165,10 @@ Run tests to ensure worktree starts clean:
 
 ### Step 6: Record Worktree Path
 
-Write worktree path to `.vega-punk-state.json` so downstream skills (branch-landing) can find it:
+Write worktree path to `~/.vega-punk/vega-punk-state.json` so downstream skills (branch-landing) can find it:
 
 ```
-IF .vega-punk-state.json exists:
+IF ~/.vega-punk/vega-punk-state.json exists:
     ADD worktree_path = "<absolute path to worktree>"
     ADD worktree_branch = "<branch_name>"
 ```
@@ -226,7 +226,7 @@ Ready to implement <feature-name>
 ### Not recording worktree path
 
 - **Problem:** branch-landing can't find the worktree to clean up
-- **Fix:** Always write `worktree_path` to `.vega-punk-state.json`
+- **Fix:** Always write `worktree_path` to `~/.vega-punk/vega-punk-state.json`
 
 ### Relying on `cd` across steps
 
@@ -240,12 +240,12 @@ You: I'm using the worktree-setup skill to set up an isolated workspace.
 
 [Check .worktrees/ - exists → worktree_dir=".worktrees"]
 [Verify ignored - git check-ignore confirms]
-[Determine branch name from roadmap.json: feature/myapp-add-auth]
+[Determine branch name from ~/.vega-punk/roadmap.json: feature/myapp-add-auth]
 [Check existing worktree - not found]
 [Create: git worktree add /Users/jesse/myproject/.worktrees/feature-myapp-add-auth -b feature/myapp-add-auth]
 [Run: (cd "$worktree_path" && npm install)]
 [Run: (cd "$worktree_path" && npm test) - 47 passing]
-[Write worktree_path to .vega-punk-state.json]
+[Write worktree_path to ~/.vega-punk/vega-punk-state.json]
 
 Worktree ready at /Users/jesse/myproject/.worktrees/feature-myapp-add-auth
 Branch: feature/myapp-add-auth
@@ -282,4 +282,4 @@ Ready to implement auth feature
 - Any skill needing isolated workspace
 
 **Pairs with:**
-- **branch-landing** — reads `worktree_path` from `.vega-punk-state.json` for cleanup
+- **branch-landing** — reads `worktree_path` from `~/.vega-punk/vega-punk-state.json` for cleanup

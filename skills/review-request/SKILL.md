@@ -40,7 +40,7 @@ BEGIN STATE_VALIDATION_GATE
         EXIT
 
     /* Check for existing review artifacts */
-    IF .vega-punk-state.json exists:
+    IF ~/.vega-punk/vega-punk-state.json exists:
         /* Load context for reviewer — spec, requirements, design */
         LOAD spec_path, requirements.success, design from state
     ELSE:
@@ -137,7 +137,7 @@ A good review request gives the reviewer everything they need without overwhelmi
 **Example:**
 ```
 WHAT_WAS_IMPLEMENTED: UserService with email validation and retry logic
-PLAN_OR_REQUIREMENTS: Task 2 from roadmap.json — user registration with email verification
+PLAN_OR_REQUIREMENTS: Task 2 from ~/.vega-punk/roadmap.json — user registration with email verification
 BASE_SHA: a7981ec
 HEAD_SHA: 3df7661
 DESCRIPTION: Created UserService class with validateEmail(), retryOperation(), and constructor.
@@ -220,7 +220,7 @@ HEAD_SHA=$(git rev-parse HEAD)
 
 [Dispatch `code-reviewer` subagent]
   WHAT_WAS_IMPLEMENTED: Verification and repair functions for conversation index
-  PLAN_OR_REQUIREMENTS: Task 2 from specs/deployment-plan.md
+  PLAN_OR_REQUIREMENTS: Task 2 from ~/.vega-punk/specs/deployment-plan.md
   BASE_SHA: a7981ec
   HEAD_SHA: 3df7661
   DESCRIPTION: Added verifyIndex() and repairIndex() with 4 issue types.

@@ -21,9 +21,9 @@ Claiming work is complete without verification is unreliable — evidence before
 ```
 BEGIN STATE_VALIDATION_GATE
     /* Identify verification commands from project context */
-    IF roadmap.json exists:
+    IF ~/.vega-punk/roadmap.json exists:
         /* Check if there are verification targets in current step/phase */
-        current_step = roadmap.json current_step
+        current_step = ~/.vega-punk/roadmap.json current_step
         IF current_step has verify field:
             verification_target = current_step.verify
             /* Use verify.type to determine command */
@@ -36,8 +36,8 @@ BEGIN STATE_VALIDATION_GATE
         ASK: "What should I verify? (1) tests, (2) build, (3) lint, (4) specific check"
 
     /* Check for previous verification results */
-    IF verify-result.json exists:
-        last_result = read verify-result.json
+    IF ~/.vega-punk/verify-result.json exists:
+        last_result = read ~/.vega-punk/verify-result.json
         IF last_result.passed == true AND last_result.timestamp < 5 minutes ago:
             TELL: "[verify-gate] Previous verification passed {time} ago. Re-verifying for freshness."
             /* Still re-run — iron law requires fresh evidence */
@@ -73,7 +73,7 @@ Skip any step = unverified claim, not a verified result
 After running verification, write a structured result so the calling skill can act on it:
 
 ```
-WRITE verify-result.json (same directory as roadmap.json and .vega-punk-state.json):
+WRITE ~/.vega-punk/verify-result.json (same directory as ~/.vega-punk/roadmap.json and ~/.vega-punk/vega-punk-state.json):
 {
   "timestamp": "<ISO8601>",
   "command": "<command that was run>",
@@ -84,7 +84,7 @@ WRITE verify-result.json (same directory as roadmap.json and .vega-punk-state.js
 }
 ```
 
-If verify-result.json already exists, append to an array instead of overwriting.
+If ~/.vega-punk/verify-result.json already exists, append to an array instead of overwriting.
 
 ## Verification Failure Handling
 
@@ -104,7 +104,7 @@ IF verification failed:
         /* Caller (task-dispatcher) must fix failures and re-invoke verify-gate.
            Max 3 verify-gate invocations per batch. If still failing:
            → Mark task as failed per task-dispatcher retry rules
-           → Log to progress.json
+           → Log to ~/.vega-punk/progress.json
            → Escalate if critical */
 
     IF caller is plan-executor (step mode):
@@ -128,7 +128,7 @@ verify-gate itself does not fix — it only reports. The **caller** is responsib
 
 | Caller | Who fixes | Max retries | On exhaustion |
 |--------|-----------|-------------|---------------|
-| task-dispatcher | Implementer subagent (same task) | 3 verify-gate invocations | Mark task failed, log to progress.json, escalate if critical |
+| task-dispatcher | Implementer subagent (same task) | 3 verify-gate invocations | Mark task failed, log to ~/.vega-punk/progress.json, escalate if critical |
 | plan-executor | Current session (STEP_MACHINE) | 3 step attempts | Mark step failed, ask user |
 | review-request | Implementer fixes flagged issues | 2 review cycles | Escalate disagreement to user |
 | standalone | Current session or user | User-directed | Follow user choice |

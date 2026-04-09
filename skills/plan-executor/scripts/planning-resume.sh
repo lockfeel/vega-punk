@@ -4,8 +4,8 @@
 
 set -euo pipefail
 
-ROADMAP="roadmap.json"
-STATE=".vega-punk-state.json"
+ROADMAP="$HOME/.vega-punk/roadmap.json"
+STATE="$HOME/.vega-punk/vega-punk-state.json"
 
 if [ ! -f "$ROADMAP" ]; then
   exit 0

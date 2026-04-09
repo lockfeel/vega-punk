@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # vega-punk session state recovery hook.
-# Reads .vega-punk-state.json and announces the current state.
+# Reads vega-punk-state.json and announces the current state.
 # Safe against missing file, invalid JSON, and empty state.
 set -euo pipefail
 
-STATE_FILE=".vega-punk-state.json"
+STATE_FILE="$HOME/.vega-punk/vega-punk-state.json"
 
 if [ ! -f "$STATE_FILE" ]; then
   echo "[vega-punk] Ready. What shall we build?"

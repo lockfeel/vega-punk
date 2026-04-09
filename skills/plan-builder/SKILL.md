@@ -1,8 +1,8 @@
 ---
 name: plan-builder
-description: Resilient executable planning that never loses context. Creates roadmap.json with phases, steps, code, tools, and verification. Breaks multi-step tasks into bite-sized, testable units with complete code in every step. Use when you have a spec or requirements for a multi-step task, before touching code.
+description: Resilient executable planning that never loses context. Creates ~/.vega-punk/roadmap.json with phases, steps, code, tools, and verification. Breaks multi-step tasks into bite-sized, testable units with complete code in every step. Use when you have a spec or requirements for a multi-step task, before touching code.
 categories: ["workflow"]
-triggers: ["plan", "roadmap.json", "multi-step task", "break down", "implementation plan", "create a plan", "spec to tasks"]
+triggers: ["plan", "~/.vega-punk/roadmap.json", "multi-step task", "break down", "implementation plan", "create a plan", "spec to tasks"]
 user-invocable: true
 allowed-tools: "Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch"
 hooks:
@@ -19,8 +19,8 @@ hooks:
 
 ```
 BEGIN STATE_VALIDATION_GATE
-    /* Required: user request OR .vega-punk-state.json */
-    IF .vega-punk-state.json does NOT exist:
+    /* Required: user request OR ~/.vega-punk/vega-punk-state.json */
+    IF ~/.vega-punk/vega-punk-state.json does NOT exist:
         IF user provided a direct request:
             /* Standalone mode — proceed with user request as spec */
             mode = "standalone"
@@ -29,7 +29,7 @@ BEGIN STATE_VALIDATION_GATE
             FAIL: "[plan-builder] No state file and no user request. Cannot plan."
             EXIT
 
-    READ .vega-punk-state.json
+    READ ~/.vega-punk/vega-punk-state.json
 
     /* Validate required fields */
     IF state field missing OR state != "HANDOFF" AND state != "SCAN" AND state != "CONDENSED":
@@ -61,35 +61,35 @@ END
 
 ## Entry Protocol — Data Contract
 
-**From vega-punk HANDOFF:** The `.vega-punk-state.json` file in the working directory is the **single source of truth** for all design context. Read it first before doing anything else.
+**From vega-punk HANDOFF:** The `~/.vega-punk/vega-punk-state.json` file in the working directory is the **single source of truth** for all design context. Read it first before doing anything else.
 
 ```
 BEGIN ENTRY_PROTOCOL
     RUN STATE_VALIDATION_GATE (see above)
 
-    IF .vega-punk-state.json does NOT exist:
+    IF ~/.vega-punk/vega-punk-state.json does NOT exist:
         /* Standalone mode — direct invocation */
         TELL: "[plan-builder] Standalone mode — creating plan from your request."
         GOTO CREATE_PLAN
         SKIP state write-back on completion
 
-    READ .vega-punk-state.json
+    READ ~/.vega-punk/vega-punk-state.json
     EXTRACT: spec_path (or spec), dependencies, design, requirements, selected_skills
 
-    /* roadmap.json is always written to the same directory as .vega-punk-state.json */
-    DETERINE roadmap_dir = directory of .vega-punk-state.json
+    /* ~/.vega-punk/roadmap.json is always written to the same directory as ~/.vega-punk/vega-punk-state.json */
+    DETERINE roadmap_dir = directory of ~/.vega-punk/vega-punk-state.json
 
     IF mode == "condensed":
         /* CONDENSED path — no spec file, no multi-phase structuring */
         USE spec field (3-sentence summary) + requirements object
-        CREATE roadmap.json with single phase in roadmap_dir
+        CREATE ~/.vega-punk/roadmap.json with single phase in roadmap_dir
     ELSE:
         /* Full flow path — spec file exists */
         READ spec_path for detailed requirements
         USE dependencies.serial/parallel to structure phases
-        CREATE multi-phase roadmap.json in roadmap_dir
+        CREATE multi-phase ~/.vega-punk/roadmap.json in roadmap_dir
 
-    USE requirements.success as verification target for roadmap.json
+    USE requirements.success as verification target for ~/.vega-punk/roadmap.json
 END
 ```
 
@@ -113,12 +113,12 @@ Before defining tasks, map out which files will be created or modified:
 ### Step 2: Analyze and Break Down
 
 1. Analyze the user's request and break it into phases and steps
-2. Write roadmap.json using the structure below
+2. Write ~/.vega-punk/roadmap.json using the structure below
 3. Set `current_step` to the first step's id
 4. Run **Self-Review** to validate the plan
 5. Signal completion — let the upstream orchestrator handle execution delegation
 
-**roadmap.json structure:**
+**~/.vega-punk/roadmap.json structure:**
 ```json
 {
   "version": "2.0",
@@ -253,7 +253,7 @@ After writing the complete plan, look at the spec with fresh eyes and check the 
 ```
 BEGIN SELF_REVIEW
     READ spec with fresh eyes
-    FOR EACH step in roadmap.json:
+    FOR EACH step in ~/.vega-punk/roadmap.json:
 
         /* 1. Spec coverage */
         CHECK every requirement has a corresponding step
@@ -302,7 +302,7 @@ After writing the plan and passing self-review, decide which execution path to u
 ```
 BEGIN ROUTING_DECISION
     /* If vega-punk SCAN already selected skills, respect that selection */
-    IF .vega-punk-state.json has selected_skills:
+    IF ~/.vega-punk/vega-punk-state.json has selected_skills:
         IF "task-dispatcher" IN selected_skills:
             executor = "task-dispatcher"
         ELSE IF "plan-executor" IN selected_skills:
@@ -344,13 +344,13 @@ END
 
 ```
 BEGIN COMPLETION_CONTRACT
-    WRITE roadmap.json (same directory as .vega-punk-state.json) with all phases, steps, and verification config
+    WRITE ~/.vega-punk/roadmap.json (same directory as ~/.vega-punk/vega-punk-state.json) with all phases, steps, and verification config
     PASS SELF_REVIEW
     RUN ROUTING_DECISION
 
-    IF .vega-punk-state.json exists:
+    IF ~/.vega-punk/vega-punk-state.json exists:
         /* Invoked from vega-punk — update state for execution handoff */
-        WRITE .vega-punk-state.json:
+        WRITE ~/.vega-punk/vega-punk-state.json:
             state = "HANDOFF"
             ADD: handoff_to = executor
         /* Use Skill tool directly — NOT trigger phrases */
@@ -383,7 +383,7 @@ Scripts are co-located with this SKILL.md.
 
 | File | When to Update |
 |------|---------------|
-| `roadmap.json` | After plan creation; always in the same directory as `.vega-punk-state.json` |
+| `~/.vega-punk/roadmap.json` | After plan creation; always in the same directory as `~/.vega-punk/vega-punk-state.json` |
 
 ## Security
 
@@ -398,5 +398,5 @@ Scripts are co-located with this SKILL.md.
 | Skip planning for complex tasks | Create a plan first |
 | Write vague steps | Make each step 2-5 minutes of concrete work |
 | Use placeholders in code | Include complete, actual code in every step |
-| Rewrite entire roadmap.json | Rewrite is fine — use Write tool for clarity |
-| Use TodoWrite for persistence | Use roadmap.json as the single source of truth |
+| Rewrite entire ~/.vega-punk/roadmap.json | Rewrite is fine — use Write tool for clarity |
+| Use TodoWrite for persistence | Use ~/.vega-punk/roadmap.json as the single source of truth |

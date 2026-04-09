@@ -1,8 +1,8 @@
 ---
 name: plan-executor
-description: Use when you have a written implementation plan (roadmap.json) to execute inline in the current session with review checkpoints
+description: Use when you have a written implementation plan (~/.vega-punk/roadmap.json) to execute inline in the current session with review checkpoints
 categories: ["workflow"]
-triggers: ["execute plan", "roadmap.json", "implementation plan", "execute steps"]
+triggers: ["execute plan", "~/.vega-punk/roadmap.json", "implementation plan", "execute steps"]
 user-invocable: true
 allowed-tools: "Read, Write, Edit, Bash, Glob, Grep"
 hooks:
@@ -13,42 +13,42 @@ hooks:
 
 # Executing Plans (Inline)
 
-Inline execution of roadmap.json — each step runs in this session. For subagent-driven execution, use `task-dispatcher` instead.
+Inline execution of ~/.vega-punk/roadmap.json — each step runs in this session. For subagent-driven execution, use `task-dispatcher` instead.
 
 ## Pre-Execution Gate
 
 ```
 BEGIN STATE_VALIDATION_GATE
-    /* Required: roadmap.json */
-    IF roadmap.json does NOT exist:
-        IF .vega-punk-state.json exists:
+    /* Required: ~/.vega-punk/roadmap.json */
+    IF ~/.vega-punk/roadmap.json does NOT exist:
+        IF ~/.vega-punk/vega-punk-state.json exists:
             /* Try to find roadmap in same directory as state file */
-            state_dir = directory of .vega-punk-state.json
+            state_dir = directory of ~/.vega-punk/vega-punk-state.json
             IF state_dir/roadmap.json exists:
                 USE state_dir/roadmap.json
             ELSE:
-                FAIL: "[plan-executor] roadmap.json not found. Planning phase may not have completed."
+                FAIL: "[plan-executor] ~/.vega-punk/roadmap.json not found. Planning phase may not have completed."
                 EXIT
         ELSE:
-            FAIL: "[plan-executor] No roadmap.json and no state file. Nothing to execute."
+            FAIL: "[plan-executor] No ~/.vega-punk/roadmap.json and no state file. Nothing to execute."
             EXIT
 
-    READ roadmap.json
+    READ ~/.vega-punk/roadmap.json
 
     /* Validate roadmap structure */
     IF phases field missing OR phases is empty:
-        FAIL: "[plan-executor] roadmap.json has no phases. Invalid plan."
+        FAIL: "[plan-executor] ~/.vega-punk/roadmap.json has no phases. Invalid plan."
         EXIT
 
     IF current_step field missing:
         /* Auto-initialize to first step */
         current_step = phases[0].steps[0].id
         current_phase = phases[0].id
-        WRITE roadmap.json
+        WRITE ~/.vega-punk/roadmap.json
         TELL: "[plan-executor] current_step was missing. Auto-set to {current_step}."
 
     /* Check if worktree is needed */
-    IF .vega-punk-state.json exists:
+    IF ~/.vega-punk/vega-punk-state.json exists:
         IF worktree_path field missing:
             TELL: "[plan-executor] No worktree found. Invoking worktree-setup to create one."
             INVOKE worktree-setup via Skill tool
@@ -62,8 +62,8 @@ END
 ## Entry Protocol
 
 ```
-1. Read roadmap.json (same directory as .vega-punk-state.json)
-2. Check .vega-punk-state.json (same directory, if exists) for execution context
+1. Read ~/.vega-punk/roadmap.json (same directory as ~/.vega-punk/vega-punk-state.json)
+2. Check ~/.vega-punk/vega-punk-state.json (same directory, if exists) for execution context
 3. IF resuming (current_step != first step AND branch already exists):
        GOTO Step 1.5 (resume path)
    ELSE:
@@ -71,12 +71,12 @@ END
    Resume from current_step
 ```
 
-**File locations** — `.vega-punk-state.json`, `roadmap.json`, `findings.json`, and `progress.json` all live in the same directory.
+**File locations** — `~/.vega-punk/vega-punk-state.json`, `~/.vega-punk/roadmap.json`, `findings.json`, and `~/.vega-punk/progress.json` all live in the same directory.
 
 ## Quick Reference
 
 ```
-A. Load & Review: Read roadmap.json, check concerns, resolve or raise before starting
+A. Load & Review: Read ~/.vega-punk/roadmap.json, check concerns, resolve or raise before starting
 B. Setup: Invoke worktree-setup (fresh start only) — it handles baseline tests internally
 C. Execute Loop: check deps → in_progress → Execute → Verify (verify-gate) → complete → write back
 D. On Completion: Invoke branch-landing — it handles test re-verify, options, and cleanup
@@ -86,8 +86,8 @@ D. On Completion: Invoke branch-landing — it handles test re-verify, options, 
 
 ### Step 1: Load and Review
 
-1. Read `roadmap.json` — understand goal, phases, steps, current_step
-2. Review `roadmap.json` schema awareness:
+1. Read `~/.vega-punk/roadmap.json` — understand goal, phases, steps, current_step
+2. Review `~/.vega-punk/roadmap.json` schema awareness:
    - Each step has: `id`, `description`, `tool`, `target`, `code`, `status`, `attempts` (default 0), `checkpoint` (optional bool), `depends_on` (optional array of step IDs)
    - `attempts` is auto-incremented on each failed verification (max 3)
    - Phase objects have: `name`, `status`, `steps`
@@ -115,13 +115,13 @@ For each step (respecting `depends_on` — skip steps whose dependencies are not
 4. **Explicitly invoke `verify-gate` via Skill tool** — pass the step's verification target. verify-gate will run the command, check output, and return pass/fail.
 5. On pass → set `"complete"` with outcome summary; on fail → increment `attempts` and set status to `"retrying"` (max 3, then mark `"failed"` and ask user)
 6. Update `current_step`, `metadata`, and `updated` timestamp
-7. Write `roadmap.json` back
+7. Write `~/.vega-punk/roadmap.json` back
 
-Use the `Write` tool to rewrite roadmap.json after each step.
+Use the `Write` tool to rewrite ~/.vega-punk/roadmap.json after each step.
 
 ```
 BEGIN STEP_MACHINE
-    READ current roadmap.json
+    READ current ~/.vega-punk/roadmap.json
     IDENTIFY step = roadmap[current_step]
 
     /* ── Step Success ── */
@@ -139,7 +139,7 @@ BEGIN STEP_MACHINE
             IF next phase exists:
                 next_phase.status = "in_progress"
                 roadmap.current_phase++
-        WRITE roadmap.json
+        WRITE ~/.vega-punk/roadmap.json
         EXIT
 
     /* ── Step Failure — unified retry logic ── */
@@ -151,23 +151,23 @@ BEGIN STEP_MACHINE
         IF step.attempts >= 3:
             step.status = "failed"
             step.result = "<error description>"
-            WRITE roadmap.json
-            APPEND to progress.json (same directory): { timestamp, step_id, error }
+            WRITE ~/.vega-punk/roadmap.json
+            APPEND to ~/.vega-punk/progress.json (same directory): { timestamp, step_id, error }
             IF step.critical == true:
                 ASK user for direction — do not advance to next steps
             ELSE:
                 roadmap.current_step = next pending step id
-                WRITE roadmap.json
+                WRITE ~/.vega-punk/roadmap.json
                 CONTINUE loop
         ELSE IF step.attempts == 1:
             /* First failure — planned approach didn't work */
             step.result = "<attempt 1 failed: brief reason>"
-            WRITE roadmap.json
+            WRITE ~/.vega-punk/roadmap.json
             RE-READ target → ANALYZE → ADJUST approach → RETRY
         ELSE IF step.attempts == 2:
             /* Second failure — need a different strategy */
             step.result = "<attempt 2 failed: brief reason>"
-            WRITE roadmap.json
+            WRITE ~/.vega-punk/roadmap.json
             TRY completely different approach or tool → RETRY
 END
 ```
@@ -180,7 +180,7 @@ END
 | `Edit` | Apply edit from `code` to `target` (read first to disambiguate) | `content_contains` + `content_not_contains` |
 | `Bash` | Run command in `target` (never add `--force`/`--yes` unless plan specifies) | `command_success` / `tests_pass` / `build_pass` |
 | `Glob`/`Grep` | Search for context before Write/Edit | Non-empty results |
-| `WebSearch`/`WebFetch` | Fetch content, write to `findings.json` in the plan directory (not roadmap.json) | `content_contains` on findings |
+| `WebSearch`/`WebFetch` | Fetch content, write to `findings.json` in the plan directory (not ~/.vega-punk/roadmap.json) | `content_contains` on findings |
 
 **verify-gate rules** — invoke the `verify-gate` skill via the `Skill` tool at each verification point. See verify-gate's SKILL.md for the full rule set: evidence before claims, no success claims without fresh verification output, etc.
 
@@ -207,11 +207,11 @@ After all steps reach a terminal state (`"complete"` or non-critical `"failed"`)
 
 ## Execution Recovery
 
-**Mid-task disconnect:** Read `roadmap.json` → `current_step` shows resume point. If step was `"in_progress"` or `"retrying"`, re-verify by running the step's verification method (tests, build, or file content check): pass → mark complete; fail → re-execute from scratch.
+**Mid-task disconnect:** Read `~/.vega-punk/roadmap.json` → `current_step` shows resume point. If step was `"in_progress"` or `"retrying"`, re-verify by running the step's verification method (tests, build, or file content check): pass → mark complete; fail → re-execute from scratch.
 
 **Stale roadmap:** If `updated` > 24 hours ago, re-read codebase, compare remaining steps against actual file state. If diverged → suggest re-planning.
 
-**Progress logging:** On step failures, append to `progress.json` (same directory as `roadmap.json` and `.vega-punk-state.json`). Format: `{ "timestamp": "<ISO8601>", "step_id": "<id>", "error": "<description>" }`. This file is optional — skip logging if it doesn't exist.
+**Progress logging:** On step failures, append to `~/.vega-punk/progress.json` (same directory as `~/.vega-punk/roadmap.json` and `~/.vega-punk/vega-punk-state.json`). Format: `{ "timestamp": "<ISO8601>", "step_id": "<id>", "error": "<description>" }`. This file is optional — skip logging if it doesn't exist.
 
 ## Execution Anti-Patterns
 
@@ -227,9 +227,9 @@ After all steps reach a terminal state (`"complete"` or non-critical `"failed"`)
 | Let a long step hang indefinitely | If a step takes > 5 minutes with no progress, report status and ask user |
 
 ## Remember
-- Read `roadmap.json` first — single source of truth
+- Read `~/.vega-punk/roadmap.json` first — single source of truth
 - Follow each step's `tool`, `target`, and `code` exactly
-- Update `roadmap.json` after every step
+- Update `~/.vega-punk/roadmap.json` after every step
 - Stop when blocked, don't guess
 - Never start on main/master without explicit user consent
 
@@ -240,9 +240,9 @@ After execution completes and verification passes (or after branch-landing compl
 ```
 BEGIN COMPLETION_CONTRACT
     /* Invoked from vega-punk — write back execution_result */
-    IF .vega-punk-state.json exists (same directory as roadmap.json):
+    IF ~/.vega-punk/vega-punk-state.json exists (same directory as ~/.vega-punk/roadmap.json):
         IF all critical steps completed successfully:
-            WRITE .vega-punk-state.json:
+            WRITE ~/.vega-punk/vega-punk-state.json:
                 state = "REVIEW"
                 execution_result = {
                     status: "success",
@@ -252,7 +252,7 @@ BEGIN COMPLETION_CONTRACT
                     notes: "<any caveats or follow-ups>"
                 }
         ELSE IF any critical steps failed:
-            WRITE .vega-punk-state.json:
+            WRITE ~/.vega-punk/vega-punk-state.json:
                 state = "REVIEW"
                 execution_result = {
                     status: "failed",
@@ -261,7 +261,7 @@ BEGIN COMPLETION_CONTRACT
                 }
         ELSE:
             /* Partial success — all critical steps done, some non-critical skipped/failed */
-            WRITE .vega-punk-state.json:
+            WRITE ~/.vega-punk/vega-punk-state.json:
                 state = "REVIEW"
                 execution_result = {
                     status: "partial",
@@ -290,7 +290,7 @@ END
 - `verify-gate` — invoked via Skill tool at each step verification point (Step 2.4); and at Step 3.3 before landing
 - `review-request` — at Step 3.2 for final pre-merge code quality review
 - `branch-landing` — at Step 3.4 via Skill tool
-- `plan-builder` — upstream; creates roadmap.json schema and step structure
+- `plan-builder` — upstream; creates ~/.vega-punk/roadmap.json schema and step structure
 
 **Delegation:**
 - When invoking a skill, the skill's SKILL.md takes over the conversation. You become the orchestrator — follow the skill's instructions, don't override them.

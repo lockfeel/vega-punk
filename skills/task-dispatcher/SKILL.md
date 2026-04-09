@@ -17,34 +17,34 @@ Execute plan by dispatching fresh subagent per task, with two-stage review after
 
 ```
 BEGIN STATE_VALIDATION_GATE
-    /* Required: roadmap.json */
-    IF roadmap.json does NOT exist:
-        IF .vega-punk-state.json exists:
-            state_dir = directory of .vega-punk-state.json
+    /* Required: ~/.vega-punk/roadmap.json */
+    IF ~/.vega-punk/roadmap.json does NOT exist:
+        IF ~/.vega-punk/vega-punk-state.json exists:
+            state_dir = directory of ~/.vega-punk/vega-punk-state.json
             IF state_dir/roadmap.json exists:
                 USE state_dir/roadmap.json
             ELSE:
-                FAIL: "[task-dispatcher] roadmap.json not found. Run plan-builder first."
+                FAIL: "[task-dispatcher] ~/.vega-punk/roadmap.json not found. Run plan-builder first."
                 EXIT
         ELSE:
-            FAIL: "[task-dispatcher] No roadmap.json and no state file. Nothing to execute."
+            FAIL: "[task-dispatcher] No ~/.vega-punk/roadmap.json and no state file. Nothing to execute."
             EXIT
 
-    READ roadmap.json
+    READ ~/.vega-punk/roadmap.json
 
     /* Validate roadmap has executable tasks */
     IF phases field missing OR phases is empty:
-        FAIL: "[task-dispatcher] roadmap.json has no phases. Invalid plan."
+        FAIL: "[task-dispatcher] ~/.vega-punk/roadmap.json has no phases. Invalid plan."
         EXIT
 
     /* Count total tasks and check dependency graph */
     total_tasks = count of all steps across all phases
     IF total_tasks == 0:
-        FAIL: "[task-dispatcher] roadmap.json has no tasks. Nothing to dispatch."
+        FAIL: "[task-dispatcher] ~/.vega-punk/roadmap.json has no tasks. Nothing to dispatch."
         EXIT
 
     /* Check if worktree is needed */
-    IF .vega-punk-state.json exists:
+    IF ~/.vega-punk/vega-punk-state.json exists:
         IF worktree_path field missing:
             TELL: "[task-dispatcher] No worktree found. Invoking worktree-setup."
             INVOKE worktree-setup via Skill tool
@@ -69,7 +69,7 @@ END
 ## When to Use
 
 **Use this skill when:**
-- You have an implementation plan (`roadmap.json` from plan-builder)
+- You have an implementation plan (`~/.vega-punk/roadmap.json` from plan-builder)
 - Tasks are mostly independent (can be dispatched separately)
 - You want to stay in the same session (no context switch)
 
@@ -88,7 +88,7 @@ Invoke `worktree-setup` via Skill tool.
 
 ### Step 1: Read Plan
 
-Read `roadmap.json` — extract all phases and steps with full context. Build a task dependency graph from `depends_on` fields.
+Read `~/.vega-punk/roadmap.json` — extract all phases and steps with full context. Build a task dependency graph from `depends_on` fields.
 
 ### Step 2: Create Task Tracker
 
@@ -106,7 +106,7 @@ For each batch of tasks that have all dependencies satisfied:
    - IF current batch has ≥ 2 tasks AND all tasks have ZERO mutual depends_on AND tasks target disjoint file sets → invoke `parallel-swarm` via Skill tool for this batch
    - ELSE → dispatch implementer subagents directly in parallel (normal path)
 4. **Dispatch implementer subagents in parallel** for all tasks in this batch (use `run_in_background: true` or your platform's equivalent). Each subagent gets its own task-specific prompt (see Prompt Templates below).
-5. **Collect implementer results** — wait for all implementers to finish. Read each `.task-status-<task_id>.json` from the **worktree root** (use `worktree_path` from `.vega-punk-state.json`). **Handle implementer status** (see Handling Implementer Status) — fix or re-dispatch as needed.
+5. **Collect implementer results** — wait for all implementers to finish. Read each `.task-status-<task_id>.json` from the **worktree root** (use `worktree_path` from `~/.vega-punk/vega-punk-state.json`). **Handle implementer status** (see Handling Implementer Status) — fix or re-dispatch as needed.
 6. **Dispatch spec reviewer subagents in parallel** — fix issues → re-review until ✅ (max 3 cycles).
 7. **Dispatch code quality reviewer subagents in parallel** — fix issues → re-review until ✅ (max 2 cycles).
 8. **Mark all tasks in batch complete**
@@ -138,7 +138,7 @@ Implementer subagents report one of four statuses. Handle each appropriately:
 1. If it's a context problem, provide more context and re-dispatch
 2. If the task requires more reasoning, re-dispatch with a more capable model
 3. If the task is too large, break it into smaller pieces
-4. If the plan itself is wrong, **mark the task as failed, log to progress.json, and continue with remaining tasks** — do not block the entire pipeline on one broken task
+4. If the plan itself is wrong, **mark the task as failed, log to ~/.vega-punk/progress.json, and continue with remaining tasks** — do not block the entire pipeline on one broken task
 
 ## Model Selection
 
@@ -167,10 +167,10 @@ Build each prompt inline. Do NOT reference external template files — construct
 - Worktree: <worktree_path>
 
 ## What to do
-<full step description from roadmap.json>
+<full step description from ~/.vega-punk/roadmap.json>
 
 ## Code to write
-<exact code block from roadmap.json code field>
+<exact code block from ~/.vega-punk/roadmap.json code field>
 
 ## Constraints
 - Write ONLY the files specified below. Do NOT modify other files.
@@ -214,7 +214,7 @@ If BLOCKED, explain what's preventing completion.
 ## Review: Spec Compliance for Task <task_id>
 
 ## The Spec
-<relevant requirements from roadmap.json or spec file>
+<relevant requirements from ~/.vega-punk/roadmap.json or spec file>
 
 ## What was built
 <summary of changes from git diff or implementer report>
@@ -259,7 +259,7 @@ Mark severity: Critical / Important / Minor.
 
 **If all retries exhausted on a task:**
 - Mark the task as `failed`
-- Log to `progress.json` (same directory as `roadmap.json` and `.vega-punk-state.json`): `{ "timestamp": "<ISO8601>", "step_id": "<id>", "error": "review cycles exhausted: <summary>" }`
+- Log to `~/.vega-punk/progress.json` (same directory as `~/.vega-punk/roadmap.json` and `~/.vega-punk/vega-punk-state.json`): `{ "timestamp": "<ISO8601>", "step_id": "<id>", "error": "review cycles exhausted: <summary>" }`
 - If task is `critical: false` → continue with remaining tasks
 - If task is `critical: true` → stop and ask user for direction
 
@@ -270,7 +270,7 @@ You: [Invoke worktree-setup via Skill tool]
 [worktree created, baseline tests pass]
 
 You: [Invoke task-dispatcher flow — subagent-driven development]
-[Extract all tasks from roadmap.json → Create TodoWrite entries]
+[Extract all tasks from ~/.vega-punk/roadmap.json → Create TodoWrite entries]
 [Build dependency graph from depends_on fields]
 
 For each batch of tasks with all dependencies satisfied:
@@ -344,7 +344,7 @@ After all tasks:
 - Don't skip the re-review
 
 **If subagent fails task after all retries:**
-- Mark task as failed, log to progress.json
+- Mark task as failed, log to ~/.vega-punk/progress.json
 - Continue with remaining tasks if non-critical
 - Escalate to user if critical task failed
 
@@ -358,7 +358,7 @@ After all tasks:
 - `verify-gate` — invoke at Step 3.9 after each batch passes reviews, and at Step 5 before landing
 - `review-request` — invoke at Step 4 for final code review
 - `branch-landing` — invoke at Step 6 after all tasks complete
-- `plan-builder` — upstream; creates the `roadmap.json` this skill executes
+- `plan-builder` — upstream; creates the `~/.vega-punk/roadmap.json` this skill executes
 
 **Auto-invocation rule:** All skills are invoked via the `Skill` tool — trigger phrases are deprecated and should not be used.
 

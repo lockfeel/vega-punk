@@ -41,7 +41,7 @@ BEGIN STATE_VALIDATION_GATE
             CHECK environment variables, config files, dependencies
 
     /* Check for existing findings */
-    IF .vega-punk-state.json exists AND findings field exists:
+    IF ~/.vega-punk/vega-punk-state.json exists AND findings field exists:
         LOAD existing findings into context
 END
 ```

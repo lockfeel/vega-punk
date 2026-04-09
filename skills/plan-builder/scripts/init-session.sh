@@ -54,10 +54,12 @@ progress = {
     "next_actions": []
 }
 
-import os
+vega_punk_dir = os.path.expanduser("~/.vega-punk")
+os.makedirs(vega_punk_dir, exist_ok=True)
 for fname, data in [("roadmap.json", roadmap), ("findings.json", findings), ("progress.json", progress)]:
-    if not os.path.exists(fname):
-        with open(fname, 'w') as f:
+    fpath = os.path.join(vega_punk_dir, fname)
+    if not os.path.exists(fpath):
+        with open(fpath, 'w') as f:
             json.dump(data, f, indent=2)
             f.write('\n')
         print(f"Created {fname}")
@@ -67,4 +69,4 @@ PYEOF
 
 echo ""
 echo "Planning files initialized!"
-echo "Files: roadmap.json (v2.0), findings.json, progress.json"
+echo "Files: ~/.vega-punk/roadmap.json (v2.0), ~/.vega-punk/findings.json, ~/.vega-punk/progress.json"

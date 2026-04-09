@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 
 PLANNING_FILES = ['roadmap.json', 'progress.json', 'findings.json']
+VEGA_PUNK_DIR = Path.home() / '.vega-punk'
 
 PLATFORM_SESSION_DIRS = {
     'Claude Code': Path.home() / '.claude' / 'projects',
@@ -173,7 +174,7 @@ def main():
 
     # Check if planning files exist (indicates active task)
     has_planning_files = any(
-        Path(project_path, f).exists() for f in PLANNING_FILES
+        (VEGA_PUNK_DIR / f).exists() for f in PLANNING_FILES
     )
     if not has_planning_files:
         return
@@ -231,7 +232,7 @@ def main():
 
     print("\n--- RECOMMENDED ---")
     print("1. Run: git diff --stat")
-    print("2. Read: roadmap.json, progress.json, findings.json")
+    print("2. Read: ~/.vega-punk/roadmap.json, ~/.vega-punk/progress.json, ~/.vega-punk/findings.json")
     print("3. Update planning files based on above context")
     print("4. Continue with task")
 

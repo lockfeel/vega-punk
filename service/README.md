@@ -27,7 +27,7 @@ service/
 
 | Layer | Responsibility | Communication |
 |-------|---------------|---------------|
-| **SKILL System** (SKILL.md + references/) | Workflow orchestration, state machine, design→plan→execute→review | `.vega-punk-state.json` + `roadmap.json` |
+| **SKILL System** (SKILL.md + references/) | Workflow orchestration, state machine, design→plan→execute→review | `~/.vega-punk/vega-punk-state.json` + `~/.vega-punk/roadmap.json` |
 | **Service Layer** (service/) | Runtime infrastructure, gateway proxy, session management, security audit | HTTP/WebSocket API |
 
 **The SKILL system does not depend on the Service layer.** vega-punk can run fully without service/. The Service layer provides for multi-user scenarios:
