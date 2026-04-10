@@ -87,6 +87,7 @@ Use `merge-base` to find the common ancestor with the target branch. Fall back t
 **2. Dispatch code-reviewer subagent:**
 
 Use Task tool with `code-reviewer` type, fill template at `code-reviewer.md`
+- **Record the subagent's OpenClaw sessionKey** (format: `agent:main:subagent:<uuid>`) in the dispatch table.
 
 **Placeholders:**
 - `{WHAT_WAS_IMPLEMENTED}` - What you just built
@@ -99,6 +100,13 @@ Use Task tool with `code-reviewer` type, fill template at `code-reviewer.md`
 - Invoke `review-intake` via Skill tool — it handles technical evaluation of each review item
 - review-intake will: verify each suggestion against codebase reality, push back on incorrect items, and implement valid fixes
 - Let review-intake take over from here — don't manually process feedback
+
+**4. Recycle code-reviewer subagent:**
+- Look up the code-reviewer's OpenClaw sessionKey from the dispatch table
+- Deregister/terminate the subagent with that sessionKey
+- Clear any cached context or session data
+- Remove the entry from the dispatch table
+- Log: "[review-request] code-reviewer subagent recycled."
 
 ## Review Scope Decision
 
@@ -268,6 +276,11 @@ BEGIN COMPLETION_CONTRACT
     INVOKE review-intake via Skill tool
     PASS: review result, git diff context, and spec requirements
     WAIT for review-intake to complete
+
+    /* Step 4: recycle subagent */
+    DEREGISTER the code-reviewer subagent
+    CLEAR any cached context or session data
+    LOG: "[review-request] code-reviewer subagent recycled."
 END
 ```
 
@@ -283,6 +296,7 @@ The result is passed to `review-intake` via Skill tool invocation. review-intake
 
 **Calls next:**
 - **review-intake** — invoked at Step 3 to evaluate and act on review feedback. review-intake handles the technical rigor; review-request handles the dispatching of the reviewer subagent.
+- **Subagent recycling** — invoked at Step 4 after review-intake completes.
 
 ## Red Flags
 

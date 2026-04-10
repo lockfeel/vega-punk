@@ -95,6 +95,8 @@ Each agent gets:
 
 ### 3. Dispatch in Parallel
 
+- **Record each subagent's OpenClaw sessionKey** (format: `agent:main:subagent:<uuid>`) in a dispatch table.
+
 ```typescript
 // In Claude Code / AI environment
 Task("Fix agent-tool-abort.test.ts failures")
@@ -110,6 +112,15 @@ When agents return:
 - Verify fixes don't conflict
 - Run full test suite
 - Integrate all changes
+
+### 5. Recycle Subagents
+
+After integration completes:
+- Iterate the dispatch table. For each entry `{ sessionKey }`:
+  - Deregister/terminate the subagent with sessionKey `<sessionKey>`
+  - Clear any cached context or session data
+  - Remove the entry from the dispatch table
+- Log: "[parallel-swarm] All subagents recycled."
 
 ## Agent Prompt Structure
 

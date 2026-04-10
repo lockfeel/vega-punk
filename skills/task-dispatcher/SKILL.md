@@ -106,11 +106,20 @@ For each batch of tasks that have all dependencies satisfied:
    - IF current batch has ≥ 2 tasks AND all tasks have ZERO mutual depends_on AND tasks target disjoint file sets → invoke `parallel-swarm` via Skill tool for this batch
    - ELSE → dispatch implementer subagents directly in parallel (normal path)
 4. **Dispatch implementer subagents in parallel** for all tasks in this batch (use `run_in_background: true` or your platform's equivalent). Each subagent gets its own task-specific prompt (see Prompt Templates below).
+   - **Record each subagent's OpenClaw sessionKey** (format: `agent:main:subagent:<uuid>`) in a dispatch table keyed by `task_id` and `role`.
 5. **Collect implementer results** — wait for all implementers to finish. Read each `.task-status-<task_id>.json` from the **worktree root** (use `worktree_path` from `~/.vega-punk/vega-punk-state.json`). **Handle implementer status** (see Handling Implementer Status) — fix or re-dispatch as needed.
 6. **Dispatch spec reviewer subagents in parallel** — fix issues → re-review until ✅ (max 3 cycles).
+   - **Record each subagent's OpenClaw sessionKey** in the dispatch table.
 7. **Dispatch code quality reviewer subagents in parallel** — fix issues → re-review until ✅ (max 2 cycles).
-8. **Mark all tasks in batch complete**
-9. **Invoke `verify-gate` via Skill tool** — confirm all tasks passed their reviews and verification checks before proceeding to the next batch.
+   - **Record each subagent's OpenClaw sessionKey** in the dispatch table.
+8. **Recycle all subagents** — iterate the dispatch table for this batch. For each entry `{ role, task_id, sessionKey }`:
+   - Deregister/terminate the subagent with sessionKey `<sessionKey>`
+   - Clear any cached context or session data associated with it
+   - Remove the entry from the dispatch table
+   - Log: "[task-dispatcher] Subagent <sessionKey> (<role>, task <task_id>) recycled."
+   Log: "[task-dispatcher] All subagents for batch <batch_id> recycled."
+9. **Mark all tasks in batch complete**
+10. **Invoke `verify-gate` via Skill tool** — confirm all tasks passed their reviews and verification checks before proceeding to the next batch.
 
 ### Step 4: Final Code Review
 
@@ -279,8 +288,9 @@ For each batch of tasks with all dependencies satisfied:
   3. Wait for all, handle status (DONE → review, NEEDS_CONTEXT → re-dispatch, BLOCKED → assess)
   4. Dispatch spec reviewers in parallel (sonnet) → fix → re-review until ✅
   5. Dispatch code quality reviewers in parallel (sonnet) → fix → re-review until ✅
-  6. Invoke verify-gate via Skill tool.
-  7. Mark batch complete → next batch
+  6. Recycle all subagents (implementers + reviewers) — deregister, clear context
+  7. Invoke verify-gate via Skill tool.
+  8. Mark batch complete → next batch
 
 After all tasks:
   You: [Invoke review-request via Skill tool]
