@@ -2,7 +2,7 @@
 name: parallel-swarm
 description: Use when facing 2+ independent tasks that can be worked on without shared state or sequential dependencies
 categories: ["workflow"]
-triggers: ["parallel", "independent tasks", "multiple failures", "different root causes", "dispatch agents"]
+triggers: ["parallel", "independent tasks", "multiple failures", "different root causes", "dispatch agents", "should these run in parallel"]
 ---
 
 # Dispatching Parallel Agents
@@ -11,9 +11,9 @@ triggers: ["parallel", "independent tasks", "multiple failures", "different root
 
 You delegate tasks to specialized agents with isolated context. By precisely crafting their instructions and context, you ensure they stay focused and succeed at their task. They should never inherit your session's context or history — you construct exactly what they need. This also preserves your own context for coordination work.
 
-When you have multiple unrelated failures (different test files, different subsystems, different bugs), investigating them sequentially wastes time. Each investigation is independent and can happen in parallel.
-
 **Core principle:** Dispatch one agent per independent problem domain. Let them work concurrently.
+
+**Role:** parallel-swarm is the decision skill for parallelization. It answers: "Should these tasks run in parallel?" and "How do I structure their prompts?" The caller (task-dispatcher or manual workflow) owns dispatch table management, subagent lifecycle, and result collection.
 
 ## Pre-Execution Gate
 
@@ -45,22 +45,18 @@ END
 
 ## When to Use
 
-```dot
-digraph when_to_use {
-    "Multiple failures?" [shape=diamond];
-    "Are they independent?" [shape=diamond];
-    "Single agent investigates all" [shape=box];
-    "One agent per problem domain" [shape=box];
-    "Can they work in parallel?" [shape=diamond];
-    "Sequential agents" [shape=box];
-    "Parallel dispatch" [shape=box];
+**Decision tree:**
 
-    "Multiple failures?" -> "Are they independent?" [label="yes"];
-    "Are they independent?" -> "Single agent investigates all" [label="no - related"];
-    "Are they independent?" -> "Can they work in parallel?" [label="yes"];
-    "Can they work in parallel?" -> "Parallel dispatch" [label="yes"];
-    "Can they work in parallel?" -> "Sequential agents" [label="no - shared state"];
-}
+```
+Multiple failures or independent tasks?
+├── No → Sequential execution (don't use parallel-swarm)
+└── Yes
+    └── Are they independent? (disjoint files, no shared state)
+        ├── No, related → Single agent investigates all
+        └── Yes
+            └── Can they run without interfering?
+                ├── No, shared resources → Sequential agents
+                └── Yes → Parallel dispatch (this skill)
 ```
 
 **Use when:**
@@ -74,60 +70,117 @@ digraph when_to_use {
 - Need to understand full system state
 - Agents would interfere with each other
 
-## The Pattern
+## The Decision Process
 
-### 1. Identify Independent Domains
+```
+BEGIN PARALLEL_EVALUATION
+    /* Step 1: Classify Independence */
+    FOR EACH pair of tasks (A, B):
+        IF A and B modify same files:
+            MARK: NOT parallel — shared file edits risk conflicts
+            EXIT as "sequential"
+        IF A depends on B's output:
+            MARK: NOT parallel — dependency ordering required
+            EXIT as "sequential"
+        IF A and B share mutable state (DB, config, env):
+            MARK: NOT parallel — interference risk
+            EXIT as "sequential"
 
-Group failures by what's broken:
-- File A tests: Tool approval flow
-- File B tests: Batch completion behavior
-- File C tests: Abort functionality
+    /* Step 2: Verify Sufficient Context */
+    FOR EACH task:
+        IF task has no specific target (file, function, test):
+            ADD missing target → cannot dispatch
+            EXIT as "needs_context"
+        IF task has no expected output:
+            ADD expected output: "Make these tests pass / Fix this behavior"
 
-Each domain is independent - fixing tool approval doesn't affect abort tests.
-
-### 2. Create Focused Agent Tasks
-
-Each agent gets:
-- **Specific scope:** One test file or subsystem
-- **Clear goal:** Make these tests pass
-- **Constraints:** Don't change other code
-- **Expected output:** Summary of what you found and fixed
-
-### 3. Dispatch in Parallel
-
-- **Record each subagent's OpenClaw sessionKey** (format: `agent:main:subagent:<uuid>`) in a dispatch table.
-
-```typescript
-// In Claude Code / AI environment
-Task("Fix agent-tool-abort.test.ts failures")
-Task("Fix batch-completion-behavior.test.ts failures")
-Task("Fix tool-approval-race-conditions.test.ts failures")
-// All three run concurrently
+    /* Step 3: Decide Strategy */
+    IF all tasks pass Steps 1 and 2:
+        EXIT as "parallel"
+        RETURN: dispatch strategy = parallel_swarm
+    ELSE:
+        EXIT as "sequential"
+        RETURN: dispatch strategy = sequential
+END
 ```
 
-### 4. Review and Integrate
+## Dispatch Table (Caller-managed)
 
-When agents return:
-- Read each summary
-- Verify fixes don't conflict
-- Run full test suite
-- Integrate all changes
+The calling skill (typically task-dispatcher) owns the dispatch table. Use this structure for tracking:
 
-### 5. Recycle Subagents
+```json
+{
+  "dispatch_table": [
+    {
+      "task_id": "1",
+      "scope": "Fix 3 timing failures in agent-tool-abort.test.ts",
+      "target_files": ["src/agents/agent-tool-abort.test.ts"],
+      "goal": "Make all 3 tests pass without increasing timeouts",
+      "constraints": "Fix tests only — do NOT change production code",
+      "status": "dispatched|complete|failed",
+      "agent_ref": "<platform-native agent identifier>"
+    }
+  ]
+}
+```
 
-After integration completes:
-- Iterate the dispatch table. For each entry `{ sessionKey }`:
-  - Deregister/terminate the subagent with sessionKey `<sessionKey>`
-  - Clear any cached context or session data
-  - Remove the entry from the dispatch table
-- Log: "[parallel-swarm] All subagents recycled."
+**Note:** `agent_ref` is whatever tracking mechanism your platform provides (sessionKey, process ID, task handle, etc.). Do NOT assume a specific format — use what's available.
 
-## Agent Prompt Structure
+## Agent Lifecycle
+
+Each dispatched agent follows a lifecycle managed by the caller:
+
+```
+DISPATCHED → (running) → COMPLETE | FAILED | PARTIAL
+                                     ↓              ↓
+                              integrate        assess safety
+                                               partial fixes
+```
+
+| Status | Meaning | Caller Action |
+|--------|---------|---------------|
+| `COMPLETE` | All tasks in scope pass, summary returned | Integrate changes |
+| `FAILED` | Agent couldn't fix the issue | Diagnose manually or mark for later |
+| `PARTIAL` | Some but not all tasks pass | Assess if partial fix is safe to merge |
+| `NEEDS_CONTEXT` | Agent lacked information to proceed | Re-dispatch with missing context |
+
+**Handling stuck agents:** If an agent takes too long or loops:
+1. Check its intermediate output
+2. If making progress → wait
+3. If spinning → terminate and handle manually
+
+## Prompt Construction Principles
 
 Good agent prompts are:
 1. **Focused** - One clear problem domain
 2. **Self-contained** - All context needed to understand the problem
 3. **Specific about output** - What should the agent return?
+
+### Template
+
+```markdown
+## Task: <brief description>
+
+## Problem
+<exact error messages, test names, or failure symptoms>
+
+## Scope
+- Files to read: <list>
+- Files to modify: <list>
+- Do NOT touch: <list or "anything else">
+
+## Context
+<relevant code snippets, recent changes, or background info>
+
+## Constraints
+- <constraint 1, e.g., "Fix tests only, no production changes">
+- <constraint 2, e.g., "Do NOT increase arbitrary timeouts">
+
+## Expected Output
+Return: <summary of root cause, what you changed, and verification steps>
+```
+
+### Examples
 
 ```markdown
 Fix the 3 failing tests in src/agents/agent-tool-abort.test.ts:
@@ -171,63 +224,34 @@ Return: Summary of what you found and what you fixed.
 **Exploratory debugging:** You don't know what's broken yet
 **Shared state:** Agents would interfere (editing same files, using same resources)
 
-## Real Example from Session
+## Real-World Example
 
-**Scenario:** 6 test failures across 3 files after major refactoring
+**Scenario:** 6 test failures across 3 files after major refactoring (2025-10-03)
 
 **Failures:**
-- agent-tool-abort.test.ts: 3 failures (timing issues)
+- agent-tool-abort.test.ts: 3 failures (timing/race conditions)
 - batch-completion-behavior.test.ts: 2 failures (tools not executing)
 - tool-approval-race-conditions.test.ts: 1 failure (execution count = 0)
 
-**Decision:** Independent domains - abort logic separate from batch completion separate from race conditions
+**Decision:** Independent domains — abort logic ≠ batch completion ≠ race conditions
 
-**Dispatch:**
-```
-Agent 1 → Fix agent-tool-abort.test.ts
-Agent 2 → Fix batch-completion-behavior.test.ts
-Agent 3 → Fix tool-approval-race-conditions.test.ts
-```
+**Dispatch:** 3 agents in parallel, each with focused prompt + file scope constraint
 
 **Results:**
-- Agent 1: Replaced timeouts with event-based waiting
-- Agent 2: Fixed event structure bug (threadId in wrong place)
-- Agent 3: Added wait for async tool execution to complete
+| Agent | Root Cause | Fix |
+|-------|-----------|-----|
+| 1 | Arbitrary timeouts masking race conditions | Replaced with event-based waiting |
+| 2 | Event structure bug (threadId in wrong place) | Moved threadId to correct field |
+| 3 | Missing async wait for tool execution | Added await for completion signal |
 
-**Integration:** All fixes independent, no conflicts, full suite green
-
-**Time saved:** 3 problems solved in parallel vs sequentially
-
-## Key Benefits
-
-1. **Parallelization** - Multiple investigations happen simultaneously
-2. **Focus** - Each agent has narrow scope, less context to track
-3. **Independence** - Agents don't interfere with each other
-4. **Speed** - 3 problems solved in time of 1
-
-## Verification
-
-After agents return:
-1. **Review each summary** - Understand what changed
-2. **Check for conflicts** - Did agents edit same code?
-3. **Run full suite** - Verify all fixes work together
-4. **Spot check** - Agents can make systematic errors
-
-## Real-World Impact
-
-From debugging session (2025-10-03):
-- 6 failures across 3 files
-- 3 agents dispatched in parallel
-- All investigations completed concurrently
-- All fixes integrated successfully
-- Zero conflicts between agent changes
+**Outcome:** All fixes independent, zero conflicts, full suite green. Time saved: 3 problems solved concurrently vs sequentially.
 
 ## Integration
 
 **Called by:**
-- **task-dispatcher** (Step 3) — when a batch has ≥ 2 fully independent tasks with disjoint file targets
+- **task-dispatcher** (Step 3) — evaluates parallelism strategy and dispatches when criteria are met
 - Any workflow with multiple independent debugging tasks across different subsystems
 
-**Calls next:**
-- Each dispatched agent follows root-cause + test-first discipline for their assigned domain
-- Results are collected and integrated by the caller (task-dispatcher)
+**Responsibility boundary:**
+- parallel-swarm owns: decision logic (when to parallelize), prompt construction principles
+- caller owns: dispatch table management, subagent lifecycle (launch/track/recycle), result collection, conflict resolution, full test suite verification

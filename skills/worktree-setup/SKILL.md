@@ -48,28 +48,31 @@ END
 
 Follow this priority order — **no user interaction required unless explicitly requested**:
 
-### 1. Check Existing Directories
-
-```bash
-ls -d .worktrees 2>/dev/null     # Preferred (hidden)
-ls -d worktrees 2>/dev/null      # Alternative
 ```
+BEGIN DIRECTORY_SELECTION
+    /* Priority 1: Check existing directories */
+    IF .worktrees/ exists:
+        worktree_dir = ".worktrees"
+    ELSE IF worktrees/ exists:
+        worktree_dir = "worktrees"
 
-**If found:** Use that directory. If both exist, `.worktrees` wins. Set `worktree_dir` to the found path.
+    /* Priority 2: Check CLAUDE.md / AGENTS.md for preference */
+    IF worktree_dir NOT SET:
+        grep -i "worktree.*director" CLAUDE.md AGENTS.md 2>/dev/null
+        IF match found:
+            worktree_dir = <configured path from CLAUDE.md/AGENTS.md>
 
-### 2. Check CLAUDE.md / AGENTS.md
+    /* Priority 3: Default (no interaction) */
+    IF worktree_dir NOT SET:
+        worktree_dir = ".worktrees"
 
-```bash
-grep -i "worktree.*director" CLAUDE.md AGENTS.md 2>/dev/null
+    /* Safety: verify project-local directory is gitignored */
+    IF worktree_dir is project-local (not absolute path outside repo):
+        IF git check-ignore -q "$worktree_dir" FAILS:
+            ADD "$worktree_dir/" to .gitignore
+            COMMIT the .gitignore change
+END
 ```
-
-**If preference found:** Use it. Set `worktree_dir` to the configured path.
-
-### 3. Default (no interaction)
-
-If no directory exists and no config found: **default to `.worktrees/`** (project-local, hidden). Set `worktree_dir=".worktrees"`.
-
-**`worktree_dir` is now the single variable for all subsequent steps.**
 
 ## Safety Verification
 
@@ -88,98 +91,62 @@ git check-ignore -q "$worktree_dir" 2>/dev/null
 
 ## Creation Process
 
-### Step 1: Determine Branch Name
-
 ```
-IF ~/.vega-punk/roadmap.json exists:
-    branch_name = "feature/{roadmap.project}-{roadmap.goal_slug}"
-ELSE IF ~/.vega-punk/vega-punk-state.json has task field:
-    branch_name = "feature/{task_slug}"
-ELSE:
-    branch_name = "feature/working"
-```
+BEGIN WORKTREE_CREATION
+    /* Step 1: Determine branch name */
+    IF ~/.vega-punk/roadmap.json exists:
+        branch_name = "feature/{roadmap.project}-{roadmap.goal_slug}"
+    ELSE IF ~/.vega-punk/vega-punk-state.json has task field:
+        branch_name = "feature/{task_slug}"
+    ELSE:
+        branch_name = "feature/working"
 
-Slug rules: lowercase, hyphens, max 40 chars, no trailing hyphens.
+    /* Slug rules: lowercase, hyphens, max 40 chars, no trailing hyphens */
 
-### Step 2: Check for Existing Worktree
+    /* Step 2: Check for existing worktree */
+    existing_path = git worktree list --porcelain | awk for branch_name
+    IF existing_path is non-empty:
+        worktree_path = existing_path
+        TELL: "Worktree already exists at <path>. Reusing it."
+        GOTO STEP 4 (Verify Clean Baseline)
 
-```bash
-existing_path=$(git worktree list --porcelain | awk '/^worktree /{p=$2} /^branch .+\/'"$branch_name"'$/{print p; exit}')
-```
+    /* Step 3: Create worktree */
+    worktree_path = "$(pwd)/$worktree_dir/$branch_name"
+    git worktree add "$worktree_path" -b "$branch_name"
 
-**If `existing_path` is non-empty (worktree already exists):**
-- Set `worktree_path="$existing_path"`
-- Report: "Worktree already exists at `<path>`. Reusing it."
-- Skip to Step 4 (Verify Clean Baseline)
+    /* Step 4: Run project setup — auto-detect and install */
+    IF pnpm-workspace.yaml OR lerna.json exists in worktree_path:
+        (cd "$worktree_path" && pnpm install)
+    ELSE IF package.json exists in worktree_path:
+        (cd "$worktree_path" && npm install)
 
-### Step 3: Create Worktree
+    IF Cargo.toml exists in worktree_path:
+        (cd "$worktree_path" && cargo build)
 
-```bash
-worktree_path="$(pwd)/$worktree_dir/$branch_name"
-git worktree add "$worktree_path" -b "$branch_name"
-```
+    IF requirements.txt exists in worktree_path:
+        (cd "$worktree_path" && pip install -r requirements.txt)
+    IF pyproject.toml exists in worktree_path:
+        (cd "$worktree_path" && poetry install)
 
-### Step 4: Run Project Setup
+    IF go.mod exists in worktree_path:
+        (cd "$worktree_path" && go mod download)
 
-Auto-detect and run appropriate setup (use absolute paths, do NOT rely on `cd`):
+    /* Step 5: Verify clean baseline */
+    RUN project test command (npm test / cargo test / pytest / go test ./...)
+    IF tests pass:
+        test_status = "all passing"
+    ELSE:
+        test_status = "<N> pre-existing failures"
+        FLAG: "These are pre-existing — flag so executor can distinguish new vs existing"
 
-```bash
-# Node.js — check for monorepo first
-if [ -f "$worktree_path/pnpm-workspace.yaml" ] || [ -f "$worktree_path/lerna.json" ]; then
-  (cd "$worktree_path" && pnpm install)
-elif [ -f "$worktree_path/package.json" ]; then
-  (cd "$worktree_path" && npm install)
-fi
+    /* Step 6: Record worktree path */
+    IF ~/.vega-punk/vega-punk-state.json exists:
+        ADD worktree_path = "<absolute path>" to state
+        ADD worktree_branch = "<branch_name>" to state
 
-# Rust
-if [ -f "$worktree_path/Cargo.toml" ]; then
-  (cd "$worktree_path" && cargo build)
-fi
-
-# Python
-if [ -f "$worktree_path/requirements.txt" ]; then
-  (cd "$worktree_path" && pip install -r requirements.txt)
-fi
-if [ -f "$worktree_path/pyproject.toml" ]; then
-  (cd "$worktree_path" && poetry install)
-fi
-
-# Go
-if [ -f "$worktree_path/go.mod" ]; then
-  (cd "$worktree_path" && go mod download)
-fi
-```
-
-**Monorepo note:** Run install at the workspace root. Individual package builds handled by task-specific steps.
-
-### Step 5: Verify Clean Baseline
-
-Run tests to ensure worktree starts clean:
-
-```bash
-# Use project-appropriate command: npm test / cargo test / pytest / go test ./...
-# Always run in a subshell: (cd "$worktree_path" && npm test)
-```
-
-**If tests fail:** Report failures with count. Proceed anyway (these are pre-existing issues) but flag them so the executor knows which failures are pre-existing vs new.
-
-### Step 6: Record Worktree Path
-
-Write worktree path to `~/.vega-punk/vega-punk-state.json` so downstream skills (branch-landing) can find it:
-
-```
-IF ~/.vega-punk/vega-punk-state.json exists:
-    ADD worktree_path = "<absolute path to worktree>"
-    ADD worktree_branch = "<branch_name>"
-```
-
-### Step 7: Report
-
-```
-Worktree ready at <full-path>
-Branch: <branch_name>
-Tests: <N> passing, <M> pre-existing failures
-Ready to implement <feature-name>
+    /* Step 7: Report */
+    TELL: "Worktree ready at <full-path>\nBranch: <branch_name>\nTests: <test_status>\nReady to implement <feature-name>"
+END
 ```
 
 ## Quick Reference

@@ -13,7 +13,7 @@ hooks:
 
 # Planning with JSON (Resilient)
 
-**Core Feature:** Never lose context. Bite-sized TDD tasks with complete code in every step.
+**Core Feature:** Never lose context. Bite-sized TDD tasks with executable code in every step.
 
 ## Pre-Execution Gate
 
@@ -162,7 +162,7 @@ Before defining tasks, map out which files will be created or modified:
 **Fields:**
 - `architecture`: 2-3 sentences about the approach
 - `techStack`: Array of key technologies/libraries. Used to inform subagent dispatch context — each implementer subagent should know what technologies they're working with without reading the full spec.
-- `code`: Complete code block for Write/Edit steps (no placeholders allowed)
+- `code`: Complete code for Write steps; `old_string`/`new_string` pairs for large Edit steps. See "Step Size vs Code Field" for rules.
 
 ### Step Granularity Rules
 
@@ -175,8 +175,8 @@ A step is small enough when the executing agent can perform it **without any add
 1. **First step: Design the structure** — Define the file/class layout with all variables, constants, and method signatures (no implementation). This creates the skeleton.
 2. **For each function/method, create a TDD pair of steps:**
    - **Step A (RED):** Write the test with exact test code, verify it fails
-   - **Step B (GREEN):** Write the minimal implementation with exact code, verify it passes
-3. **Each step must contain the exact code to write** — No "implement logic for..." descriptions. The `code` field must have the actual implementation.
+   - **Step B (GREEN):** Write the minimal implementation, verify it passes
+3. **Code content rules — see "Step Size vs Code Field" below** — small steps get full `code` field, large edits use `old_string`/`new_string` pairs
 
 Example decomposition for a `UserService` class:
 
@@ -217,7 +217,32 @@ Every step must contain the actual content an engineer needs. These are **plan f
 - Steps that describe what to do without showing how (code blocks required for code steps)
 - References to types, functions, or methods not defined in any task
 
-**Every code step must have the complete `code` field with actual implementation.**
+**Code step requirements:**
+- For **Write** steps: include complete code in the `code` field
+- For **Edit** steps: use `old_string`/`new_string` pairs or precise line-range instructions
+- Never reference code that doesn't exist yet without defining it first
+
+### Step Size vs Code Field
+
+The `code` field requirement scales with step size:
+
+| Step Size | `code` Field | Rationale |
+|-----------|-------------|-----------|
+| New file or function (< 50 lines) | Complete implementation | Small enough to be fully self-contained |
+| Single function/method replacement | Full function body | Clear boundary, no ambiguity |
+| Large refactor (> 50 lines or multi-section edit) | `old_string`/`new_string` pairs for each section, plus a summary of what changed | Prevents roadmap JSON bloat while remaining fully executable |
+| Structural change (add class, add methods, add routes) | Signatures + method bodies for new code, `old_string`/`new_string` for modifications | Mix of creation and modification |
+
+**For large edits, the `code` field becomes a structured list:**
+```
+/* Example: large refactor step */
+- Replace old_string: "function validateUser(data) { return true; }"
+  with new_string: "function validateUser(data) { ... full implementation ... }"
+- After the validateUser block, insert: "function normalizeUser(data) { ... }"
+- In handleError(), replace the switch statement with: "... new implementation ..."
+```
+
+Every step must be executable without inference. If the agent can't determine exactly what to change from the step text, the step is too vague.
 
 ### Scope Check
 
@@ -302,48 +327,35 @@ After writing the plan and passing self-review, decide which execution path to u
 
 ### Execution Routing
 
-```
-BEGIN ROUTING_DECISION
-    /* If vega-punk SCAN already selected skills, respect that selection */
-    IF ~/.vega-punk/vega-punk-state.json has selected_skills:
-        IF "task-dispatcher" IN selected_skills:
-            executor = "task-dispatcher"
-        ELSE IF "plan-executor" IN selected_skills:
-            executor = "plan-executor"
-        ELSE:
-            /* No explicit executor — use default heuristics below */
-            GOTO DEFAULT_ROUTING
-    ELSE:
-        /* Standalone mode — no vega-punk context — use default heuristics */
-        GOTO DEFAULT_ROUTING
+**Priority 1:** If vega-punk SCAN already selected an executor in `selected_skills`, use it.
 
-BEGIN DEFAULT_ROUTING
-    COUNT total_steps = sum of all steps across all phases
-    COUNT parallel_groups = count of steps/tasks with NO depends_on between them (can run simultaneously)
-    COUNT critical_path_length = longest serial dependency chain
+**Priority 2:** Otherwise, score the plan across dimensions. Count `+` for each executor:
 
-    IF total_steps <= 5 OR critical_path_length == total_steps:
-        /* Small plan or fully sequential — use inline executor */
-        executor = "plan-executor"
-    ELSE IF parallel_groups >= 2 AND total_steps >= 6:
-        /* Multiple independent tasks — use subagent dispatch for parallelism */
-        executor = "task-dispatcher"
-    ELSE:
-        /* Default to inline executor */
-        executor = "plan-executor"
-END
-```
+| Dimension | plan-executor (+) | task-dispatcher (+) |
+|-----------|--------------------|----------------------|
+| Step count | ≤ 5 steps | ≥ 8 steps |
+| Parallelism | Fully sequential (all steps depend on each other) | ≥ 2 parallel groups with NO mutual depends_on |
+| File overlap | ≥ 2 steps modify same file | Each step targets disjoint files |
+| Integration complexity | Requires shared context across steps (types, state, auth) | Steps are self-contained units |
+| External dependencies | Shares credentials, API keys, or session state across steps | Each step has its own dependencies |
+| Error propagation | Fixing one step likely changes how the next behaves | Each step can fail independently |
+| Review granularity | Benefits from single end-to-end review | Each step benefits from independent review |
+| Risk tolerance | Well-understood domain, low experiment rate | Experimental, unfamiliar territory, benefits from isolation |
 
-### Routing Table
+**Decision rule:**
+- plan-executor leads by any margin → `plan-executor` (lower overhead wins ties)
+- task-dispatcher leads by ≥ 3 → `task-dispatcher`
+- Otherwise → `plan-executor`
 
-**Priority:** If vega-punk SCAN already selected an executor skill, that takes priority. The heuristics below only apply when no explicit selection was made.
+### Scenario Examples
 
-| Condition | Executor | Why |
-|-----------|----------|-----|
-| ≤ 5 steps, or fully sequential chain | `plan-executor` | Overhead of subagents > benefit |
-| ≥ 6 steps with ≥ 2 parallel groups | `task-dispatcher` | Subagent parallelism saves time |
-| Complex integration tasks touching many files | `plan-executor` | Shared context helps |
-| Independent feature modules | `task-dispatcher` | Isolated context per task |
+| Scenario | Result | Reasoning |
+|----------|--------|-----------|
+| 3 sequential steps, same file | plan-executor (7-1) | Overlap, sequential, shared context |
+| 10 steps, 4 parallel groups, disjoint files | task-dispatcher (6-2) | Parallelism, isolation, review per step |
+| 6 steps, shared types then separate impls | plan-executor (4-4→tie) | Overlap + context balance parallelism |
+| 4 steps, 2 independent features, different subsystems | task-dispatcher (5-3) | Isolation, disjoint files, independent review |
+| 8 steps, sequential chain, 3 different files | plan-executor (5-3) | Sequential + context > step count alone |
 
 ```
 BEGIN COMPLETION_CONTRACT
@@ -403,6 +415,6 @@ Scripts are co-located with this SKILL.md.
 |-------|-----|
 | Skip planning for complex tasks | Create a plan first |
 | Write vague steps | Make each step 2-5 minutes of concrete work |
-| Use placeholders in code | Include complete, actual code in every step |
+| Use placeholders in code | Include executable code — full code for small steps, old_string/new_string for large edits |
 | Rewrite entire ~/.vega-punk/roadmap.json | Rewrite is fine — use Write tool for clarity |
 | Use TodoWrite for persistence | Use ~/.vega-punk/roadmap.json as the single source of truth |

@@ -46,14 +46,41 @@ END
 ## The Response Pattern
 
 ```
-WHEN receiving code review feedback:
+BEGIN REVIEW_RESPONSE
+    /* Step 1: READ — Complete feedback without reacting */
+    READ all feedback items fully
 
-1. READ: Complete feedback without reacting
-2. UNDERSTAND: Restate requirement in own words (or ask)
-3. VERIFY: Check against codebase reality
-4. EVALUATE: Technically sound for THIS codebase?
-5. RESPOND: Technical acknowledgment or reasoned pushback
-6. IMPLEMENT: One item at a time, test each
+    /* Step 2: UNDERSTAND — Restate or ask */
+    FOR EACH feedback item:
+        RESTATE requirement in own words
+        IF unclear:
+            MARK as needing clarification
+
+    /* Step 3: VERIFY — Check against codebase reality */
+    FOR EACH feedback item referencing file:line:
+        VERIFY file exists AND line is in range
+        IF stale location:
+            MARK item as unactionable
+
+    /* Step 4: EVALUATE — Technically sound for THIS codebase? */
+    FOR EACH actionable item:
+        CHECK: technically correct for this codebase?
+        CHECK: breaks existing functionality?
+        CHECK: works on all platforms/versions?
+
+    /* Step 5: RESPOND — Technical acknowledgment or reasoned pushback */
+    IF items need clarification:
+        STOP — do not implement anything
+        ASK for clarification on all unclear items
+    ELSE:
+        PROCEED to Step 6
+
+    /* Step 6: IMPLEMENT — One item at a time, test each */
+    FOR EACH item (ordered: blocking → simple → complex):
+        IMPLEMENT fix
+        TEST individually
+        VERIFY no regressions
+END
 ```
 
 ## Forbidden Responses
@@ -68,15 +95,17 @@ WHEN receiving code review feedback:
 - Ask clarifying questions
 - Push back with technical reasoning if wrong
 - Just start working (actions > words)
+- Brief genuine acknowledgment is fine, but lead with substance
 
 ## Handling Unclear Feedback
 
 ```
-IF any item is unclear:
-  STOP - do not implement anything yet
-  ASK for clarification on unclear items
-
-WHY: Items may be related. Partial understanding = wrong implementation.
+BEGIN HANDLE_UNCLEAR
+    IF any item is unclear:
+        STOP — do not implement anything yet
+        ASK for clarification on all unclear items
+    /* WHY: Items may be related. Partial understanding = wrong implementation. */
+END
 ```
 
 **Example:**
@@ -98,21 +127,23 @@ You understand 1,2,3,6. Unclear on 4,5.
 
 ### From External Reviewers
 ```
-BEFORE implementing:
-  1. Check: Technically correct for THIS codebase?
-  2. Check: Breaks existing functionality?
-  3. Check: Reason for current implementation?
-  4. Check: Works on all platforms/versions?
-  5. Check: Does reviewer understand full context?
+BEGIN EXTERNAL_REVIEW
+    FOR EACH suggestion:
+        /* Check 1: Technically correct for THIS codebase? */
+        /* Check 2: Breaks existing functionality? */
+        /* Check 3: Reason for current implementation? */
+        /* Check 4: Works on all platforms/versions? */
+        /* Check 5: Does reviewer understand full context? */
 
-IF suggestion seems wrong:
-  Push back with technical reasoning
+        IF suggestion seems wrong:
+            PUSH BACK with technical reasoning
 
-IF can't easily verify:
-  Say so: "I can't verify this without [X]. Should I [investigate/ask/proceed]?"
+        IF can't easily verify:
+            SAY: "I can't verify this without [X]. Should I [investigate/ask/proceed]?"
 
-IF conflicts with your human partner's prior decisions:
-  Stop and discuss with your human partner first
+        IF conflicts with human partner's prior decisions:
+            STOP and discuss with human partner first
+END
 ```
 
 **your human partner's rule:** "External feedback - be skeptical, but check carefully"
@@ -120,11 +151,14 @@ IF conflicts with your human partner's prior decisions:
 ## YAGNI Check for "Professional" Features
 
 ```
-IF reviewer suggests "implementing properly":
-  grep codebase for actual usage
-
-  IF unused: "This endpoint isn't called. Remove it (YAGNI)?"
-  IF used: Then implement properly
+BEGIN YAGNI_CHECK
+    IF reviewer suggests "implementing properly":
+        GREP codebase for actual usage of suggested feature
+        IF unused:
+            PROPOSE: "This endpoint isn't called. Remove it (YAGNI)?"
+        IF used:
+            IMPLEMENT properly
+END
 ```
 
 **your human partner's rule:** "You and reviewer both report to me. If we don't need this feature, don't add it."
@@ -132,14 +166,20 @@ IF reviewer suggests "implementing properly":
 ## Implementation Order
 
 ```
-FOR multi-item feedback:
-  1. Clarify anything unclear FIRST
-  2. Then implement in this order:
-     - Blocking issues (breaks, security)
-     - Simple fixes (typos, imports)
-     - Complex fixes (refactoring, logic)
-  3. Test each fix individually
-  4. Verify no regressions
+BEGIN IMPLEMENTATION_ORDER
+    /* Step 1: Clarify anything unclear FIRST */
+    IF any item unclear:
+        ASK → WAIT → do NOT proceed
+
+    /* Step 2: Implement in priority order */
+    FOR EACH item in order [blocking → simple → complex]:
+        blocking_items:     /* breaks, security */
+        simple_fixes:       /* typos, imports */
+        complex_fixes:      /* refactoring, logic */
+        IMPLEMENT fix
+        TEST individually
+        VERIFY no regressions
+END
 ```
 
 ## When To Push Back
@@ -162,36 +202,37 @@ Push back when:
 
 ## Acknowledging Correct Feedback
 
-When feedback IS correct:
 ```
-✅ "Fixed. [Brief description of what changed]"
-✅ "Good catch - [specific issue]. Fixed in [location]."
-✅ [Just fix it and show in the code]
-
-❌ "You're absolutely right!"
-❌ "Great point!"
-❌ "Thanks for catching that!"
-❌ "Thanks for [anything]"
-❌ ANY gratitude expression
+BEGIN ACKNOWLEDGE_CORRECT
+    WHEN feedback IS correct:
+        OUTPUT ONE OF:
+            "Fixed. [Brief description of what changed]"
+            "Good catch - [specific issue]. Fixed in [location]."
+            [Just fix it and show in the code]
+        AVOID EMPTY GRATITUDE:
+            "You're absolutely right!"
+            "Great point!"
+            "Thanks for catching that!"
+            "Thank you!" without substance
+        /* Prefer stating the fix factually. Brief genuine acknowledgment is fine — empty praise is not. */
+END
 ```
-
-**Why no thanks:** Actions speak. Just fix it. The code itself shows you heard the feedback.
-
-**If you catch yourself about to write "Thanks":** DELETE IT. State the fix instead.
 
 ## Gracefully Correcting Your Pushback
 
-If you pushed back and were wrong:
 ```
-✅ "You were right - I checked [X] and it does [Y]. Implementing now."
-✅ "Verified this and you're correct. My initial understanding was wrong because [reason]. Fixing."
-
-❌ Long apology
-❌ Defending why you pushed back
-❌ Over-explaining
+BEGIN CORRECT_PUSHPBACK
+    IF you pushed back and were wrong:
+        OUTPUT ONE OF:
+            "You were right - I checked [X] and it does [Y]. Implementing now."
+            "Verified this and you're correct. My initial understanding was wrong because [reason]. Fixing."
+        NEVER:
+            Long apology
+            Defending why you pushed back
+            Over-explaining
+        /* State the correction factually and move on. */
+END
 ```
-
-State the correction factually and move on.
 
 ## Common Mistakes
 

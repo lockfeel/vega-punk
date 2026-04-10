@@ -62,62 +62,162 @@ END
 ## Entry Protocol
 
 ```
-1. Read ~/.vega-punk/roadmap.json (same directory as ~/.vega-punk/vega-punk-state.json)
-2. Check ~/.vega-punk/vega-punk-state.json (same directory, if exists) for execution context
-3. IF resuming (current_step != first step AND branch already exists):
-       GOTO Step 1.5 (resume path)
-   ELSE:
-       GOTO Step 1.6 (fresh start path)
-   Resume from current_step
-```
+BEGIN ENTRY_PROTOCOL
+    READ ~/.vega-punk/roadmap.json (same directory as ~/.vega-punk/vega-punk-state.json)
+    CHECK ~/.vega-punk/vega-punk-state.json for execution context (if exists)
 
-**File locations** — `~/.vega-punk/vega-punk-state.json`, `~/.vega-punk/roadmap.json`, `findings.json`, and `~/.vega-punk/progress.json` all live in the same directory.
+    IF resuming (current_step != first step AND branch already exists):
+        RE-READ current step's target files
+        RE-RUN step's verification method
+        IF already passing:
+            MARK complete, advance current_step
+        IF failing:
+            KEEP status "in_progress", re-execute from scratch
+    ELSE (fresh start):
+        INVOKE worktree-setup skill via Skill tool
+        IF worktree-setup reports failing baseline tests:
+            STOP and ask user before proceeding
+
+    /* File locations: ~/.vega-punk/vega-punk-state.json, roadmap.json, findings.json, progress.json all in same directory */
+END
+```
 
 ## Quick Reference
 
 ```
-A. Load & Review: Read ~/.vega-punk/roadmap.json, check concerns, resolve or raise before starting
-B. Setup: Invoke worktree-setup (fresh start only) — it handles baseline tests internally
-C. Execute Loop: check deps → in_progress → Execute → Verify (verify-gate) → complete → write back
-D. On Completion: Invoke branch-landing — it handles test re-verify, options, and cleanup
+BEGIN QUICK_REFERENCE
+    A. Load & Review:
+        READ ~/.vega-punk/roadmap.json
+        CHECK concerns → resolve or raise before starting
+
+    B. Setup:
+        INVOKE worktree-setup (fresh start only)
+        /* worktree-setup handles baseline tests internally */
+
+    C. Execute Loop:
+        FOR each step (respecting depends_on):
+            CHECK deps → status "in_progress"
+            CLASSIFY step type:
+                bug fix / crash / error → INVOKE root-cause first
+                new feature / behavior change / refactoring → INVOKE test-first
+                context gathering → execute directly
+            EXECUTE using tool + target + code
+            INVOKE verify-gate via Skill tool
+            IF pass → "complete" with outcome summary
+            IF fail → increment attempts, "retrying" (max 3, then "failed")
+            UPDATE current_step, metadata, updated
+            WRITE ~/.vega-punk/roadmap.json back
+
+    D. On Completion:
+        INVOKE branch-landing via Skill tool
+        /* branch-landing handles test re-verify, options, cleanup */
+END
 ```
 
 ## The Process
 
 ### Step 1: Load and Review
 
-1. Read `~/.vega-punk/roadmap.json` — understand goal, phases, steps, current_step
-2. Review `~/.vega-punk/roadmap.json` schema awareness:
-   - Each step has: `id`, `description`, `tool`, `target`, `code`, `status`, `attempts` (default 0), `checkpoint` (optional bool), `depends_on` (optional array of step IDs)
-   - `attempts` is auto-incremented on each failed verification (max 3)
-   - Phase objects have: `name`, `status`, `steps`
-3. If concerns: raise with user before starting
-4. If no concerns: proceed
-5. IF resuming from a previous session (current_step != first step, branch already exists):
-   - Re-read the current step's target files
-   - Re-run the step's verification method
-   - If already passing → mark complete, advance current_step
-   - If failing → keep status `in_progress`, re-execute from scratch
-6. ELSE (fresh start):
-   - Invoke the `worktree-setup` skill via Skill tool — it handles baseline tests internally
-   - worktree-setup will auto-detect project setup, create the worktree, install dependencies, and run baseline tests
-   - If worktree-setup reports failing baseline tests → stop and ask user before proceeding
+```
+BEGIN STEP1_LOAD_REVIEW
+    READ ~/.vega-punk/roadmap.json — understand goal, phases, steps, current_step
+    REVIEW schema awareness:
+        - Each step: id, description, tool, target, code, status, attempts (default 0), checkpoint (optional), depends_on (optional)
+        - attempts auto-incremented on failed verification (max 3)
+        - Phase objects: name, status, steps
+    IF concerns: raise with user before starting
+    IF no concerns: proceed
+
+    /* Resume path */
+    IF resuming (current_step != first step, branch exists):
+        RE-READ current step's target files
+        RE-RUN step's verification method
+        IF passing → mark complete, advance current_step
+        IF failing → keep "in_progress", re-execute from scratch
+    /* Fresh start path */
+    ELSE:
+        INVOKE worktree-setup skill via Skill tool
+        IF failing baseline tests → stop and ask user
+END
+```
 
 ### Step 2: Execute Steps
 
-For each step (respecting `depends_on` — skip steps whose dependencies are not `"complete"`):
-1. Mark status `"in_progress"`
-2. **Classify step type** before executing:
-   - If step involves **bug fix, crash, error, or unexpected behavior** → invoke `root-cause` skill first, follow its Phase 1-3 before writing any code
-   - If step involves **new feature, behavior change, or refactoring** → invoke `test-first` skill, follow RED-GREEN-REFACTOR cycle
-   - If step is **context gathering** (Glob, Grep, WebSearch) → execute directly
-3. Execute using the specified `tool` and `target` (use `code` field content if present)
-4. **Explicitly invoke `verify-gate` via Skill tool** — pass the step's verification target. verify-gate will run the command, check output, and return pass/fail.
-5. On pass → set `"complete"` with outcome summary; on fail → increment `attempts` and set status to `"retrying"` (max 3, then mark `"failed"` and ask user)
-6. Update `current_step`, `metadata`, and `updated` timestamp
-7. Write `~/.vega-punk/roadmap.json` back
+```
+BEGIN STEP2_EXECUTE
+    FOR each step (respecting depends_on — skip if dependencies not "complete"):
+        /* Mark in progress */
+        step.status = "in_progress"
 
-Use the `Write` tool to rewrite ~/.vega-punk/roadmap.json after each step.
+        /* Classify step type */
+        IF bug fix / crash / error / unexpected behavior:
+            INVOKE root-cause skill — follow Phase 1-3 before writing code
+        IF new feature / behavior change / refactoring:
+            INVOKE test-first skill — follow RED-GREEN-REFACTOR cycle
+        IF context gathering (Glob, Grep, WebSearch):
+            EXECUTE directly
+
+        /* Execute using specified tool and target */
+        CASE tool = "Write":
+            WRITE code to target → verify: file_exists + content_contains
+        CASE tool = "Edit":
+            APPLY edit (read first to disambiguate) → verify: content_contains + content_not_contains
+        CASE tool = "Bash":
+            RUN command (never add --force/--yes unless plan specifies)
+            → verify: command_success / tests_pass / build_pass
+        CASE tool = "Glob" / "Grep":
+            SEARCH for context → verify: non-empty results
+        CASE tool = "WebSearch" / "WebFetch":
+            FETCH content, write to findings.json → verify: content_contains on findings
+
+        /* Verify with verify-gate */
+        INVOKE verify-gate via Skill tool with step's verification target
+
+        /* Handle result */
+        IF pass:
+            step.status = "complete"
+            step.result = "<brief outcome summary>"
+        IF fail:
+            step.attempts++
+            IF attempts >= 3:
+                step.status = "failed"
+                APPEND to ~/.vega-punk/progress.json: { timestamp, step_id, error }
+                IF step.critical == true:
+                    ASK user for direction — do NOT advance
+                ELSE:
+                    ADVANCE to next pending step
+            ELSE:
+                step.status = "retrying"
+                step.result = "<attempt N failed: brief reason>"
+                RE-READ target → ANALYZE → ADJUST approach → RETRY
+
+        /* Checkpoint handling */
+        IF step.checkpoint == true:
+            PAUSE and wait for user confirmation before advancing
+
+        UPDATE current_step, metadata, updated timestamp
+        WRITE ~/.vega-punk/roadmap.json back
+END
+```
+
+### Step 3: Complete Development
+
+```
+BEGIN STEP3_COMPLETE
+    /* Check completion eligibility */
+    FOR EACH step:
+        IF critical == true AND status != "complete":
+            DO NOT proceed to review
+            REPORT status, wait for user direction
+            STOP
+
+    /* All critical steps done */
+    INVOKE review-request via Skill tool (full git range from first to last commit)
+    INVOKE verify-gate via Skill tool (final mechanical check: tests, build, lint)
+    INVOKE branch-landing via Skill tool
+    /* branch-landing re-verifies tests, presents merge/PR/keep/discard options */
+END
+```
 
 ```
 BEGIN STEP_MACHINE
@@ -174,36 +274,15 @@ END
 
 ### Step 2a: Step Type Handling
 
-| Step type | How to execute | Verify with |
-|-----------|---------------|-------------|
-| `Write` | Write `code` to `target` | `file_exists` + `content_contains` |
-| `Edit` | Apply edit from `code` to `target` (read first to disambiguate) | `content_contains` + `content_not_contains` |
-| `Bash` | Run command in `target` (never add `--force`/`--yes` unless plan specifies) | `command_success` / `tests_pass` / `build_pass` |
-| `Glob`/`Grep` | Search for context before Write/Edit | Non-empty results |
-| `WebSearch`/`WebFetch` | Fetch content, write to `findings.json` in the plan directory (not ~/.vega-punk/roadmap.json) | `content_contains` on findings |
-
-**verify-gate rules** — invoke the `verify-gate` skill via the `Skill` tool at each verification point. See verify-gate's SKILL.md for the full rule set: evidence before claims, no success claims without fresh verification output, etc.
+(Already integrated in STEP2_EXECUTE above. See verify-gate's SKILL.md for full rule set.)
 
 ### Step 2b: Checkpoint Handling
 
-When a step has `checkpoint: true`: execute, verify, then **pause** and wait for user confirmation before advancing.
+(Already integrated in STEP2_EXECUTE above.)
 
 ### Step 2c: Dependency-Aware Execution
 
-Dependencies are checked before each step in the main Step 2 loop. Steps with `depends_on` must wait for all dependency steps to be `"complete"`. Independent steps in the same phase run sequentially without unnecessary pauses.
-
-### Step 3: Complete Development
-
-After all steps reach a terminal state (`"complete"` or non-critical `"failed"`):
-
-1. **Check completion eligibility:**
-   - All `critical: true` steps must be `"complete"`
-   - `critical: false` steps may be `"complete"` or `"failed"`
-   - If any `critical: true` step is not `"complete"` → do NOT proceed to review, report status and wait for user direction
-2. **Invoke the `review-request` skill via Skill tool** — pass the full git range from first to last commit for final pre-merge code quality review
-3. **Invoke `verify-gate` via Skill tool** — final mechanical check (tests pass, build clean, lint ok) after review-request passes
-4. **Invoke the `branch-landing` skill via Skill tool** — branch-landing will re-verify tests, present merge/PR/keep/discard options, and execute the user's choice
-5. If branch-landing asks for user input, present the options clearly to the user
+(Already integrated in STEP2_EXECUTE above.)
 
 ## Execution Recovery
 

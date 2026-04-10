@@ -55,47 +55,55 @@ BEGIN STATE_RESOLUTION
         GOTO ROUTE
 
     IF state == "REVIEW":
+        /* Sub-condition: has execution_result → validate it */
         IF execution_result exists:
             ENTER REVIEW
-        ELSE IF ~/.vega-punk/roadmap.json exists AND has incomplete steps:
-            RESUME execution from ~/.vega-punk/roadmap.json current_step
-        ELSE:
-            WAIT for user input (do NOT restart ROUTE)
+            EXIT
+        /* Sub-condition: roadmap exists with work left → resume */
+        IF ~/.vega-punk/roadmap.json exists AND has incomplete steps:
+            RESUME execution from roadmap.json current_step
+            EXIT
+        /* Sub-condition: user wants iterate/redesign → archive and restart */
+        IF user requests iterate/redesign:
+            IF ~/.vega-punk/roadmap.json exists:
+                RENAME roadmap.json → roadmap.ARCHIVED.json
+            GOTO DESIGN
+            EXIT
+        /* Sub-condition: nothing to review, no direction → wait */
+        WAIT for user input (do NOT restart ROUTE)
         EXIT
-
-    IF state == "REVIEW" AND user requests iterate/redesign:
-        /* Archive stale roadmap before re-entering design flow */
-        IF ~/.vega-punk/roadmap.json exists:
-            RENAME ~/.vega-punk/roadmap.json → roadmap.ARCHIVED.json
 
     /* state is not DONE, file exists → recovery */
     ENTER current state directly
     DO NOT go back to ROUTE
 
-    /* skill loop protection — only applies during SCAN entry */
+    /* ── Global guards (apply after routing) ── */
+    APPLY GlobalGuards
+    APPLY StateTransition
+END
+
+BEGIN GlobalGuards
+    /* Loop protection — prevents skill routing loops during SCAN */
     IF state == "SCAN" AND scan_depth >= 3:
-        SKIP skill routing
-        GOTO CLARIFY
+        SKIP skill routing → GOTO CLARIFY
 
-    /* scan_depth lifecycle — applies on state transitions, NOT immediate execution */
-    /* On SCAN entry:   INCREMENT scan_depth   */
-    /* On CLARIFY entry: RESET scan_depth = 0 */
+    /* Depth lifecycle */
+    ON entering SCAN:   INCREMENT scan_depth
+    ON entering CLARIFY: RESET scan_depth = 0
 
-    /* state compaction (prevent unbounded growth) */
-    /* threshold > 12 allows a full 9-state flow + retries without premature compaction */
+    /* Compaction — prevents unbounded state file growth */
+    /* threshold > 12 allows full 9-state flow + retries without premature compaction */
     IF qa.retries > 2 OR transition_count > 12:
-        COMPACT:
-            PRESERVE: state, task, context, selected_skills, scope, requirements, design, dependencies, spec_path
-            COMPRESS qa → { "retries": N, "last_feedback": "<summary>", "status": "FAIL" }
-            DROP any field > 500 chars not in preserve list → replace with 1-sentence summary
+        PRESERVE: state, task, context, selected_skills, scope, requirements, design, dependencies, spec_path
+        COMPRESS qa → { retries: N, last_feedback: "<summary>", status: "FAIL" }
+        DROP any field > 500 chars not in preserve list → 1-sentence summary
+END
 
-    /* state transition rule */
-    ON each state change:
-        READ current JSON
-        CHANGE state field
-        ADD new fields (NEVER delete existing fields)
-        INCREMENT transition_count (initialize to 1 if absent)
-        WRITE back
+BEGIN StateTransition
+    /* Applies to every state change — ALL skills must follow: */
+    READ current JSON → merge in memory → CHANGE state → ADD new fields
+    NEVER delete existing fields (cross-skill safety)
+    INCREMENT transition_count (init to 1 if absent) → WRITE back
 END
 
 BEGIN Post-Completion Cleanup

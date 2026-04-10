@@ -103,15 +103,15 @@ For each batch of tasks that have all dependencies satisfied:
    - If task involves **bug fix, crash, error, or unexpected behavior** → include `root-cause` skill instructions in the implementer prompt
    - If task involves **new feature, behavior change, or refactoring** → include `test-first` skill instructions (RED-GREEN-REFACTOR) in the implementer prompt
 3. **Evaluate parallelism strategy:**
-   - IF current batch has ≥ 2 tasks AND all tasks have ZERO mutual depends_on AND tasks target disjoint file sets → invoke `parallel-swarm` via Skill tool for this batch
-   - ELSE → dispatch implementer subagents directly in parallel (normal path)
-4. **Dispatch implementer subagents in parallel** for all tasks in this batch (use `run_in_background: true` or your platform's equivalent). Each subagent gets its own task-specific prompt (see Prompt Templates below).
-   - **Record each subagent's OpenClaw sessionKey** (format: `agent:main:subagent:<uuid>`) in a dispatch table keyed by `task_id` and `role`.
+   - IF current batch has ≥ 2 tasks AND all tasks have ZERO mutual depends_on AND tasks target disjoint file sets → use **parallel dispatch** (apply parallel-swarm decision principles)
+   - ELSE → dispatch implementer subagents sequentially or with minimal parallelism
+4. **Dispatch implementer subagents** for all tasks in this batch (use `run_in_background: true` or your platform's equivalent). Each subagent gets its own task-specific prompt (see Prompt Templates below).
+   - **Record each subagent's sessionKey** (format: `agent:main:subagent:<uuid>` or platform-native equivalent) in a dispatch table keyed by `task_id` and `role`.
 5. **Collect implementer results** — wait for all implementers to finish. Read each `.task-status-<task_id>.json` from the **worktree root** (use `worktree_path` from `~/.vega-punk/vega-punk-state.json`). **Handle implementer status** (see Handling Implementer Status) — fix or re-dispatch as needed.
-6. **Dispatch spec reviewer subagents in parallel** — fix issues → re-review until ✅ (max 3 cycles).
-   - **Record each subagent's OpenClaw sessionKey** in the dispatch table.
-7. **Dispatch code quality reviewer subagents in parallel** — fix issues → re-review until ✅ (max 2 cycles).
-   - **Record each subagent's OpenClaw sessionKey** in the dispatch table.
+6. **Dispatch spec reviewer subagents** — fix issues → re-review until ✅ (max 3 cycles).
+   - **Record each subagent's sessionKey** in the dispatch table.
+7. **Dispatch code quality reviewer subagents** — fix issues → re-review until ✅ (max 2 cycles).
+   - **Record each subagent's sessionKey** in the dispatch table.
 8. **Recycle all subagents** — iterate the dispatch table for this batch. For each entry `{ role, task_id, sessionKey }`:
    - Deregister/terminate the subagent with sessionKey `<sessionKey>`
    - Clear any cached context or session data associated with it
@@ -135,31 +135,53 @@ Invoke `branch-landing` via Skill tool.
 
 ## Handling Implementer Status
 
-Implementer subagents report one of four statuses. Handle each appropriately:
+```
+BEGIN HANDLE_IMPLEMENTER_STATUS
+    CASE DONE:
+        PROCEED to spec compliance review
 
-**DONE:** Proceed to spec compliance review.
+    CASE DONE_WITH_CONCERNS:
+        READ concerns before proceeding
+        IF concerns about correctness or scope:
+            ADDRESS before review
+        IF concerns are observations (e.g., "this file is getting large"):
+            NOTE and proceed to review
 
-**DONE_WITH_CONCERNS:** The implementer completed the work but flagged doubts. Read the concerns before proceeding. If the concerns are about correctness or scope, address them before review. If they're observations (e.g., "this file is getting large"), note them and proceed to review.
+    CASE NEEDS_CONTEXT:
+        PROVIDE missing context
+        RE-DISPATCH implementer
 
-**NEEDS_CONTEXT:** The implementer needs information that wasn't provided. Provide the missing context and re-dispatch.
-
-**BLOCKED:** The implementer cannot complete the task. Assess the blocker:
-1. If it's a context problem, provide more context and re-dispatch
-2. If the task requires more reasoning, re-dispatch with a more capable model
-3. If the task is too large, break it into smaller pieces
-4. If the plan itself is wrong, **mark the task as failed, log to ~/.vega-punk/progress.json, and continue with remaining tasks** — do not block the entire pipeline on one broken task
+    CASE BLOCKED:
+        ASSESS blocker:
+            IF context problem:
+                PROVIDE more context → RE-DISPATCH
+            IF task requires more reasoning:
+                RE-DISPATCH with more capable model
+            IF task too large:
+                BREAK into smaller pieces
+            IF plan itself wrong:
+                MARK task as failed
+                LOG to ~/.vega-punk/progress.json
+                CONTINUE with remaining tasks — do NOT block entire pipeline
+END
+```
 
 ## Model Selection
 
-Use the least capable model that can handle each role:
-
-| Role | Claude Code | OpenClaw / Generic | Signal |
-|------|-------------|--------------------|--------|
-| Implementer (mechanical, 1-2 files, clear spec) | haiku | fast model | "write this exact function" |
-| Implementer (integration, multi-file) | sonnet | standard model | "wire up X to Y" |
-| Reviewer (spec compliance) | sonnet | standard model | "verify against spec" |
-| Reviewer (code quality) | sonnet | standard model | "review for patterns/best practices" |
-| Final review / escalation | opus | most capable model | "review entire implementation" |
+```
+BEGIN MODEL_SELECTION
+    CASE implementer (mechanical, 1-2 files, clear spec):
+        USE haiku / fast model
+    CASE implementer (integration, multi-file):
+        USE sonnet / standard model
+    CASE reviewer (spec compliance):
+        USE sonnet / standard model
+    CASE reviewer (code quality):
+        USE sonnet / standard model
+    CASE final review / escalation:
+        USE opus / most capable model
+END
+```
 
 ## Prompt Templates
 
@@ -256,21 +278,41 @@ Mark severity: Critical / Important / Minor.
 
 ## Review Error Recovery
 
-**Spec compliance review — max 3 cycles:**
-- Cycle 1-2: Implementer fixes, reviewer re-reviews
-- Cycle 3: If still failing, the spec itself may be ambiguous. Escalate with specific discrepancy (spec says X, implementer built Y, who's right?)
+```
+BEGIN REVIEW_RECOVERY
+    /* Spec compliance review — max 3 cycles */
+    FOR cycle 1 to 3:
+        IF reviewer passes:
+            BREAK → proceed to code quality review
+        IF cycle <= 2:
+            IMPLEMENTER fixes → RE-REVIEW
+        IF cycle == 3:
+            /* Spec itself may be ambiguous — escalate */
+            ESCALATE: "spec says X, implementer built Y, who's right?"
 
-**Code quality review — max 2 cycles:**
-- Cycle 1: Implementer fixes, reviewer re-reviews
-- Cycle 2: If reviewer still finds Important/Critical issues, implementer may be misunderstanding the pattern. Escalate with conflicting perspectives.
+    /* Code quality review — max 2 cycles */
+    FOR cycle 1 to 2:
+        IF reviewer passes:
+            BREAK → task complete
+        IF cycle == 1:
+            IMPLEMENTER fixes → RE-REVIEW
+        IF cycle == 2:
+            /* Implementer misunderstanding pattern — escalate */
+            ESCALATE with conflicting perspectives
 
-**If reviewer is wrong:** Implementer should push back with technical reasoning (file:line evidence, test results, spec quotes). The controller (you) makes the final call — don't let the review loop indefinitely.
+    /* If reviewer is wrong */
+    IMPLEMENTER pushes back with technical reasoning (file:line evidence, test results, spec quotes)
+    CONTROLLER makes final call — don't let review loop indefinitely
 
-**If all retries exhausted on a task:**
-- Mark the task as `failed`
-- Log to `~/.vega-punk/progress.json` (same directory as `~/.vega-punk/roadmap.json` and `~/.vega-punk/vega-punk-state.json`): `{ "timestamp": "<ISO8601>", "step_id": "<id>", "error": "review cycles exhausted: <summary>" }`
-- If task is `critical: false` → continue with remaining tasks
-- If task is `critical: true` → stop and ask user for direction
+    /* If all retries exhausted */
+    MARK task as failed
+    LOG to ~/.vega-punk/progress.json: { timestamp, step_id, error: "review cycles exhausted" }
+    IF task is critical:
+        STOP and ask user for direction
+    ELSE:
+        CONTINUE with remaining tasks
+END
+```
 
 ## Example Workflow
 
@@ -364,8 +406,8 @@ After all tasks:
 - `worktree-setup` — invoke at Step 0 before dispatching any tasks
 - `root-cause` — inject discipline into implementer prompts for bug fix tasks
 - `test-first` — inject discipline into implementer prompts for feature/refactor tasks
-- `parallel-swarm` — invoke at Step 3 when batch has ≥ 2 fully independent tasks with disjoint file targets
-- `verify-gate` — invoke at Step 3.9 after each batch passes reviews, and at Step 5 before landing
+- `parallel-swarm` — decision skill for parallelism evaluation (Step 3); provides independence check and prompt construction principles, not dispatch mechanics
+- `verify-gate` — invoke at Step 3.10 after each batch passes reviews, and at Step 5 before landing
 - `review-request` — invoke at Step 4 for final code review
 - `branch-landing` — invoke at Step 6 after all tasks complete
 - `plan-builder` — upstream; creates the `~/.vega-punk/roadmap.json` this skill executes

@@ -82,170 +82,158 @@ You MUST complete each phase before proceeding to the next.
 
 ### Phase 1: Root Cause Investigation
 
-**BEFORE attempting ANY fix:**
+```
+BEGIN PHASE1_ROOT_CAUSE
+    /* Step 1: Read Error Messages Carefully */
+    READ full error output — do NOT skip past errors or warnings
+    NOTE: line numbers, file paths, error codes from stack traces
 
-1. **Read Error Messages Carefully**
-   - Don't skip past errors or warnings
-   - They often contain the exact solution
-   - Read stack traces completely
-   - Note line numbers, file paths, error codes
+    /* Step 2: Reproduce Consistently */
+    ATTEMPT to trigger issue reliably
+    IF not reproducible:
+        ADD diagnostic instrumentation
+        COLLECT evidence
+        IF evidence still insufficient:
+            ASK user for reproduction steps
+            STOP — do NOT guess
 
-2. **Reproduce Consistently**
-   - Can you trigger it reliably?
-   - What are the exact steps?
-   - Does it happen every time?
-   - If not reproducible → gather more data, don't guess
+    /* Step 3: Check Recent Changes */
+    IF git repository:
+        CHECK git diff, recent commits, new dependencies, config changes
+        IF no recent changes:
+            CHECK environment variables, config files, dependencies
 
-3. **Check Recent Changes**
-   - What changed that could cause this?
-   - Git diff, recent commits
-   - New dependencies, config changes
-   - Environmental differences
+    /* Step 4: Gather Evidence in Multi-Component Systems */
+    IF system has multiple components:
+        FOR EACH component boundary:
+            LOG what data enters component
+            LOG what data exits component
+            VERIFY environment/config propagation
+            CHECK state at each layer
+        RUN once to gather evidence
+        ANALYZE evidence to identify WHERE it breaks
+        INVESTIGATE that specific component
 
-4. **Gather Evidence in Multi-Component Systems**
+    EXAMPLE — multi-layer system (codesign pipeline):
+    ```bash
+    # Layer 1: Workflow — are secrets available?
+    echo "=== Secrets available: ==="
+    echo "IDENTITY: ${IDENTITY:+SET}${IDENTITY:-UNSET}"
 
-   **WHEN system has multiple components (CI → build → signing, API → service → database):**
+    # Layer 2: Build script — env propagation?
+    echo "=== Env vars in build script: ==="
+    env | grep IDENTITY || echo "IDENTITY not in environment"
 
-   **BEFORE proposing fixes, add diagnostic instrumentation:**
-   ```
-   For EACH component boundary:
-     - Log what data enters component
-     - Log what data exits component
-     - Verify environment/config propagation
-     - Check state at each layer
+    # Layer 3: Signing script — keychain state?
+    echo "=== Keychain state: ==="
+    security list-keychains
+    security find-identity -v
 
-   Run once to gather evidence showing WHERE it breaks
-   THEN analyze evidence to identify failing component
-   THEN investigate that specific component
-   ```
+    # Layer 4: Actual signing — does it work?
+    codesign --sign "$IDENTITY" --verbose=4 "$APP"
+    ```
+    This reveals which layer fails: secrets → workflow ✓, workflow → build ✗
 
-   **Example (multi-layer system — codesign pipeline):**
-   ```bash
-   # Layer 1: Workflow
-   echo "=== Secrets available in workflow: ==="
-   echo "IDENTITY: ${IDENTITY:+SET}${IDENTITY:-UNSET}"
-
-   # Layer 2: Build script
-   echo "=== Env vars in build script: ==="
-   env | grep IDENTITY || echo "IDENTITY not in environment"
-
-   # Layer 3: Signing script
-   echo "=== Keychain state: ==="
-   security list-keychains
-   security find-identity -v
-
-   # Layer 4: Actual signing
-   codesign --sign "$IDENTITY" --verbose=4 "$APP"
-   ```
-
-   **This reveals:** Which layer fails (secrets → workflow ✓, workflow → build ✗)
-
-5. **Trace Data Flow**
-
-   **WHEN error is deep in call stack:**
-
-   See `root-cause-tracing.md` in this directory for the complete backward tracing technique.
-
-   **Quick version:**
-   - Where does bad value originate?
-   - What called this with bad value?
-   - Keep tracing up until you find the source
-   - Fix at source, not at symptom
+    /* Step 5: Trace Data Flow */
+    IF error is deep in call stack:
+        See root-cause-tracing.md for complete backward tracing technique
+        TRACE backward: where does bad value originate?
+        TRACE upward: what called this with bad value?
+        CONTINUE until source found
+        FIX at source, NOT at symptom
+END
+```
 
 ### Phase 2: Pattern Analysis
 
-**Find the pattern before fixing:**
+```
+BEGIN PHASE2_PATTERN
+    /* Step 1: Find Working Examples */
+    LOCATE similar working code in same codebase
+    IDENTIFY what works that's similar to what's broken
 
-1. **Find Working Examples**
-   - Locate similar working code in same codebase
-   - What works that's similar to what's broken?
+    /* Step 2: Compare Against References */
+    IF implementing a known pattern:
+        READ reference implementation COMPLETELY — every line
+        UNDERSTAND the pattern fully before applying
 
-2. **Compare Against References**
-   - If implementing pattern, read reference implementation COMPLETELY
-   - Don't skim - read every line
-   - Understand the pattern fully before applying
+    /* Step 3: Identify Differences */
+    LIST every difference between working and broken, however small
+    DO NOT assume "that can't matter"
 
-3. **Identify Differences**
-   - What's different between working and broken?
-   - List every difference, however small
-   - Don't assume "that can't matter"
-
-4. **Understand Dependencies**
-   - What other components does this need?
-   - What settings, config, environment?
-   - What assumptions does it make?
+    /* Step 4: Understand Dependencies */
+    IDENTIFY: what other components does this need?
+    IDENTIFY: what settings, config, environment?
+    IDENTIFY: what assumptions does it make?
+END
+```
 
 ### Phase 3: Hypothesis and Testing
 
-**Scientific method:**
+```
+BEGIN PHASE3_HYPOTHESIS
+    /* Step 1: Form Single Hypothesis */
+    STATE clearly: "I think X is the root cause because Y"
+    WRITE it down — be specific, not vague
 
-1. **Form Single Hypothesis**
-   - State clearly: "I think X is the root cause because Y"
-   - Write it down
-   - Be specific, not vague
+    /* Step 2: Test Minimally */
+    Make SMALLEST possible change to test hypothesis
+    One variable at a time — do NOT fix multiple things at once
 
-2. **Test Minimally**
-   - Make the SMALLEST possible change to test hypothesis
-   - One variable at a time
-   - Don't fix multiple things at once
+    /* Step 3: Verify Before Continuing */
+    IF it worked:
+        PROCEED to Phase 4
+    IF it didn't work:
+        Form NEW hypothesis — do NOT add more fixes on top
 
-3. **Verify Before Continuing**
-   - Did it work? Yes → Phase 4
-   - Didn't work? Form NEW hypothesis
-   - DON'T add more fixes on top
-
-4. **When You Don't Know**
-   - Say "I don't understand X"
-   - Don't pretend to know
-   - Ask for help
-   - Research more
+    /* Step 4: When You Don't Know */
+    IF cannot form hypothesis:
+        SAY "I don't understand X"
+        ASK for help or research more
+END
+```
 
 ### Phase 4: Implementation
 
-**Fix the root cause, not the symptom:**
+```
+BEGIN PHASE4_IMPLEMENTATION
+    /* Step 1: Create Failing Test Case */
+    WRITE simplest possible reproduction
+    AUTOMATE test if possible (use test-first skill)
+    MUST have before fixing
 
-1. **Create Failing Test Case**
-   - Simplest possible reproduction
-   - Automated test if possible
-   - One-off test script if no framework
-   - MUST have before fixing
-   - Use the `test-first` skill for writing proper failing tests
+    /* Step 2: Implement Single Fix */
+    Address root cause only — ONE change at a time
+    NO "while I'm here" improvements
+    NO bundled refactoring
 
-2. **Implement Single Fix**
-   - Address the root cause identified
-   - ONE change at a time
-   - No "while I'm here" improvements
-   - No bundled refactoring
+    /* Step 3: Verify Fix */
+    CHECK: test passes?
+    CHECK: no other tests broken?
+    CHECK: issue actually resolved?
 
-3. **Verify Fix**
-   - Test passes now?
-   - No other tests broken?
-   - Issue actually resolved?
+    /* Step 4: If Fix Doesn't Work */
+    IF fix fails:
+        COUNT: how many fixes tried?
+        IF < 3:
+            RETURN to Phase 1, re-analyze with new information
+        IF >= 3:
+            GOTO STEP 5 (Question Architecture)
 
-4. **If Fix Doesn't Work**
-   - STOP
-   - Count: How many fixes have you tried?
-   - If < 3: Return to Phase 1, re-analyze with new information
-   - **If ≥ 3: STOP and question the architecture (step 5 below)**
-   - DON'T attempt Fix #4 without architectural discussion
-
-5. **If 3+ Fixes Failed: Question Architecture**
-
-   **Pattern indicating architectural problem:**
-   - Each fix reveals new shared state/coupling/problem in different place
-   - Fixes require "massive refactoring" to implement
-   - Each fix creates new symptoms elsewhere
-
-   **STOP and question fundamentals:**
-   - Is this pattern fundamentally sound?
-   - Are we "sticking with it through sheer inertia"?
-   - Should we refactor architecture vs. continue fixing symptoms?
-
-   **Discuss with your human partner before attempting more fixes**
-
-   This is NOT a failed hypothesis - this is a wrong architecture.
-
-   **If invoked from vega-punk:** Set state to CLARIFY (if requirements need redefinition) or DESIGN (if architecture needs restructuring). Bring the `execution_result` and evidence from all failed fix attempts.
+    /* Step 5: If 3+ Fixes Failed — Question Architecture */
+    IF pattern matches architectural problem:
+        - Each fix reveals new shared state/coupling in different place
+        - Fixes require "massive refactoring" to implement
+        - Each fix creates new symptoms elsewhere
+    THEN:
+        STOP — this is NOT a failed hypothesis, this is a wrong architecture
+        DISCUSS with human partner before more fixes
+        IF invoked from vega-punk:
+            SET state = CLARIFY (requirements need redefinition)
+                OR DESIGN (architecture needs restructuring)
+            BRING execution_result + evidence from all failed attempts
+END
+```
 
 ## Red Flags - STOP and Follow Process
 

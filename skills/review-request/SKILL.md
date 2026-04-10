@@ -76,37 +76,34 @@ END
 
 ## How to Request
 
-**1. Get git SHAs:**
-```bash
-BASE_SHA=$(git merge-base HEAD main 2>/dev/null || git merge-base HEAD master 2>/dev/null || git rev-list --max-parents=0 HEAD 2>/dev/null || git rev-parse HEAD~1)
-HEAD_SHA=$(git rev-parse HEAD)
 ```
+BEGIN REQUEST_REVIEW
+    /* Step 1: Get git SHAs */
+    BASE_SHA = git merge-base HEAD main || git merge-base HEAD master || git rev-list --max-parents=0 HEAD || git rev-parse HEAD~1
+    HEAD_SHA = git rev-parse HEAD
 
-Use `merge-base` to find the common ancestor with the target branch. Fall back to root commit, then `HEAD~1` only if neither exists.
+    /* Step 2: Dispatch code-reviewer subagent */
+    DISPATCH code-reviewer subagent with:
+        WHAT_WAS_IMPLEMENTED: <what you just built>
+        PLAN_OR_REQUIREMENTS: <what it should do>
+        BASE_SHA: <starting commit>
+        HEAD_SHA: <ending commit>
+        DESCRIPTION: <brief summary>
+    RECORD subagent sessionKey in dispatch table
 
-**2. Dispatch code-reviewer subagent:**
+    /* Step 3: Act on feedback via review-intake */
+    INVOKE review-intake via Skill tool
+    /* review-intake handles: verify suggestions, push back on incorrect, implement valid fixes */
+    WAIT for review-intake to complete
 
-Use Task tool with `code-reviewer` type, fill template at `code-reviewer.md`
-- **Record the subagent's OpenClaw sessionKey** (format: `agent:main:subagent:<uuid>`) in the dispatch table.
-
-**Placeholders:**
-- `{WHAT_WAS_IMPLEMENTED}` - What you just built
-- `{PLAN_OR_REQUIREMENTS}` - What it should do
-- `{BASE_SHA}` - Starting commit
-- `{HEAD_SHA}` - Ending commit
-- `{DESCRIPTION}` - Brief summary
-
-**3. Act on feedback via review-intake:**
-- Invoke `review-intake` via Skill tool — it handles technical evaluation of each review item
-- review-intake will: verify each suggestion against codebase reality, push back on incorrect items, and implement valid fixes
-- Let review-intake take over from here — don't manually process feedback
-
-**4. Recycle code-reviewer subagent:**
-- Look up the code-reviewer's OpenClaw sessionKey from the dispatch table
-- Deregister/terminate the subagent with that sessionKey
-- Clear any cached context or session data
-- Remove the entry from the dispatch table
-- Log: "[review-request] code-reviewer subagent recycled."
+    /* Step 4: Recycle code-reviewer subagent */
+    LOOKUP sessionKey from dispatch table
+    DEREGISTER/TERMINATE subagent
+    CLEAR cached context/session data
+    REMOVE entry from dispatch table
+    LOG: "[review-request] code-reviewer subagent recycled."
+END
+```
 
 ## Review Scope Decision
 
@@ -156,51 +153,49 @@ DESCRIPTION: Created UserService class with validateEmail(), retryOperation(), a
 
 ## Handling Review Results
 
-### By Severity
+```
+BEGIN HANDLE_REVIEW_RESULTS
+    FOR EACH issue by severity:
 
-**Critical (Must Fix):**
-- Bugs, security vulnerabilities, data loss risks
-- Fix immediately, do not proceed until fixed
-- Re-request review after fix
+    CASE Critical (Must Fix):
+        /* Bugs, security vulnerabilities, data loss risks */
+        FIX immediately
+        DO NOT proceed until fixed
+        RE-REQUEST review after fix
 
-**Important (Should Fix):**
-- Architecture problems, missing error handling, test gaps
-- Fix before moving to next task
-- No re-review needed unless the fix is complex
+    CASE Important (Should Fix):
+        /* Architecture problems, missing error handling, test gaps */
+        FIX before moving to next task
+        NO re-review needed unless fix is complex
 
-**Minor (Nice to Have):**
-- Code style, naming, small optimizations
-- Note for later, don't fix now (YAGNI on polish)
-- Batch minor fixes at end of phase if desired
+    CASE Minor (Nice to Have):
+        /* Code style, naming, small optimizations */
+        NOTE for later — don't fix now (YAGNI on polish)
+        BATCH minor fixes at end of phase if desired
+END
+```
 
 ### When Reviewer Is Wrong
 
-Push back with technical reasoning, not defensiveness:
-
 ```
-❌ "I disagree" — vague, no basis
-✅ "The reviewer flagged missing error handling in fetchUser(), but
-    line 47-52 already wraps the call in try/catch with specific
-    error types. See UserService.ts:47-52."
+BEGIN PUSHBACK
+    IF pushing back:
+        MUST include technical reasoning with file:line evidence
+        MUST NOT use: "I disagree" (vague), "It works fine" (working ≠ correct), "We can fix it later"
+        VALID reasons: reviewer lacks context, breaks existing behavior (cite tests), YAGNI, conflicts with architecture
+END
 ```
-
-**Valid pushback reasons:**
-- Reviewer lacks full context (e.g., didn't see the spec)
-- Suggestion breaks existing behavior (cite tests that would fail)
-- Suggestion adds unneeded features (YAGNI)
-- Suggestion conflicts with architectural decisions from DESIGN phase
-
-**Invalid pushback reasons:**
-- "I don't like it" — preference isn't technical reasoning
-- "It works fine" — working ≠ correct/maintainable
-- "We can fix it later" — later never comes
 
 ### Review Loop Limits
 
-If reviewer and implementer disagree after 2 rounds:
-1. Summarize the disagreement clearly (1 paragraph each side)
-2. Present to the human for decision
-3. Don't loop indefinitely — escalate early
+```
+BEGIN REVIEW_LOOP_LIMITS
+    IF reviewer and implementer disagree after 2 rounds:
+        SUMMARIZE disagreement clearly (1 paragraph each side)
+        PRESENT to human for decision
+        DO NOT loop indefinitely — escalate early
+END
+```
 
 ## Review Cadence
 

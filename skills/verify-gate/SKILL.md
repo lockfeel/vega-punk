@@ -89,37 +89,34 @@ If ~/.vega-punk/verify-result.json already exists, append to an array instead of
 ## Verification Failure Handling
 
 ```
-IF verification passed:
-    Report: "Verified: <command> — all <N> checks passed"
-    Return control to caller
+BEGIN VERIFY_FAILURE
+    IF verification passed:
+        REPORT: "Verified: <command> — all <N> checks passed"
+        RETURN control to caller
 
-IF verification failed:
-    Report: "Verification FAILED: <command> — <N> failures"
-    List each failure with evidence
+    IF verification failed:
+        REPORT: "Verification FAILED: <command> — <N> failures"
+        LIST each failure with evidence
 
-    IF caller is task-dispatcher (batch mode):
-        DO NOT advance to next batch
-        Mark current batch as "verification_failed"
-        Return control to caller for fix-and-retry
-        /* Caller (task-dispatcher) must fix failures and re-invoke verify-gate.
-           Max 3 verify-gate invocations per batch. If still failing:
-           → Mark task as failed per task-dispatcher retry rules
-           → Log to ~/.vega-punk/progress.json
-           → Escalate if critical */
+        CASE caller is task-dispatcher (batch mode):
+            DO NOT advance to next batch
+            MARK current batch as "verification_failed"
+            RETURN control to caller for fix-and-retry
+            /* Max 3 verify-gate invocations per batch.
+               If still failing: mark task failed, log to progress.json, escalate if critical */
 
-    IF caller is plan-executor (step mode):
-        DO NOT mark step as complete
-        Return control to caller (STEP_MACHINE handles retry logic)
-        /* plan-executor's STEP_MACHINE already retries up to 3 attempts.
-           verify-gate is invoked at each attempt. On 3rd failure:
-           → STEP_MACHINE marks step as "failed" and asks user */
+        CASE caller is plan-executor (step mode):
+            DO NOT mark step as complete
+            RETURN control to caller (STEP_MACHINE handles retry logic)
+            /* STEP_MACHINE retries up to 3 attempts. On 3rd failure: marks step "failed", asks user */
 
-    IF caller is standalone (direct invocation):
-        ASK: "Verification failed. What would you like to do?
-              (1) I'll fix it and re-verify
-               (2) Show me the details
-               (3) Proceed anyway (not recommended)"
-        FOLLOW user direction
+        CASE caller is standalone (direct invocation):
+            ASK: "Verification failed. What would you like to do?
+                  (1) I'll fix it and re-verify
+                   (2) Show me the details
+                   (3) Proceed anyway (not recommended)"
+            FOLLOW user direction
+END
 ```
 
 ## Failure Retry Loop

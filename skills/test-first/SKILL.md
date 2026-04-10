@@ -79,151 +79,104 @@ Implement fresh from tests. Period.
 
 ## Red-Green-Refactor
 
-```dot
-digraph tdd_cycle {
-    rankdir=LR;
-    red [label="RED\nWrite failing test", shape=box, style=filled, fillcolor="#ffcccc"];
-    verify_red [label="Verify fails\ncorrectly", shape=diamond];
-    green [label="GREEN\nMinimal code", shape=box, style=filled, fillcolor="#ccffcc"];
-    verify_green [label="Verify passes\nAll green", shape=diamond];
-    refactor [label="REFACTOR\nClean up", shape=box, style=filled, fillcolor="#ccccff"];
-    next [label="Next", shape=ellipse];
-
-    red -> verify_red;
-    verify_red -> green [label="yes"];
-    verify_red -> red [label="wrong\nfailure"];
-    green -> verify_green;
-    verify_green -> refactor [label="yes"];
-    verify_green -> green [label="no"];
-    refactor -> verify_green [label="stay\ngreen"];
-    verify_green -> next;
-    next -> red;
-}
 ```
+BEGIN TDD_CYCLE
+    /* RED — Write Failing Test */
+    WRITE one minimal test showing what should happen
+    REQUIREMENTS:
+        - One behavior (no "and" in test name — split if present)
+        - Clear name describing behavior
+        - Real code (no mocks unless unavoidable)
 
-### RED - Write Failing Test
+    EXAMPLE — Good vs Bad RED:
+    ```typescript
+    // ✅ Good: Clear name, tests real behavior, one thing
+    test('retries failed operations 3 times', async () => {
+      let attempts = 0;
+      const operation = () => {
+        attempts++;
+        if (attempts < 3) throw new Error('fail');
+        return 'success';
+      };
+      const result = await retryOperation(operation);
+      expect(result).toBe('success');
+      expect(attempts).toBe(3);
+    });
 
-Write one minimal test showing what should happen.
+    // ❌ Bad: Vague name, tests mock not code
+    test('retry works', async () => {
+      const mock = jest.fn()
+        .mockRejectedValueOnce(new Error())
+        .mockRejectedValueOnce(new Error())
+        .mockResolvedValueOnce('success');
+      await retryOperation(mock);
+      expect(mock).toHaveBeenCalledTimes(3);
+    });
+    ```
 
-| Quality | Good | Bad |
-|---------|------|-----|
-| **Example** | `test('retries failed operations 3 times', ...)` — Clear name, tests real behavior, one thing | `test('retry works', ...)` with mock — Vague name, tests mock not code |
+    /* Verify RED — Watch It Fail (MANDATORY, never skip) */
+    RUN project test command
+    CONFIRM:
+        IF test passes:
+            FAIL: "You're testing existing behavior. Fix test or confirm this is a new behavior."
+        IF test errors (not fails):
+            FIX error, re-run until it fails correctly
+        IF test fails with unexpected reason:
+            FIX test to fail for expected reason
+        IF test fails as expected:
+            PROCEED to GREEN
 
-```typescript
-// Good: Clear name, tests real behavior, one thing
-test('retries failed operations 3 times', async () => {
-  let attempts = 0;
-  const operation = () => {
-    attempts++;
-    if (attempts < 3) throw new Error('fail');
-    return 'success';
-  };
+    /* GREEN — Minimal Code */
+    WRITE simplest code to make the test pass
+    CONSTRAINTS:
+        - Don't add features no test requires
+        - Don't refactor other code
+        - Don't "improve" beyond the test
 
-  const result = await retryOperation(operation);
-
-  expect(result).toBe('success');
-  expect(attempts).toBe(3);
-});
-
-// Bad: Vague name, tests mock not code
-test('retry works', async () => {
-  const mock = jest.fn()
-    .mockRejectedValueOnce(new Error())
-    .mockRejectedValueOnce(new Error())
-    .mockResolvedValueOnce('success');
-  await retryOperation(mock);
-  expect(mock).toHaveBeenCalledTimes(3);
-});
-```
-
-**Requirements:**
-- One behavior
-- Clear name
-- Real code (no mocks unless unavoidable)
-
-### Verify RED - Watch It Fail
-
-**MANDATORY. Never skip.**
-
-```bash
-# Run project's test command for the relevant test file
-# (infer from package.json scripts, pyproject.toml, Cargo.toml, etc.)
-```
-
-Confirm:
-- Test fails (not errors)
-- Failure message is expected
-- Fails because feature missing (not typos)
-
-**Test passes?** You're testing existing behavior. Fix test.
-
-**Test errors?** Fix error, re-run until it fails correctly.
-
-### GREEN - Minimal Code
-
-Write simplest code to pass the test.
-
-| Quality | Good | Bad |
-|---------|------|-----|
-| **Example** | Just enough to pass — 3 lines of logic | Over-engineered — options, backoff, callbacks that no test requires |
-
-```typescript
-// Good: Just enough to pass
-async function retryOperation<T>(fn: () => Promise<T>): Promise<T> {
-  for (let i = 0; i < 3; i++) {
-    try {
-      return await fn();
-    } catch (e) {
-      if (i === 2) throw e;
+    EXAMPLE — Good vs Bad GREEN:
+    ```typescript
+    // ✅ Good: Just enough to pass
+    async function retryOperation<T>(fn: () => Promise<T>): Promise<T> {
+      for (let i = 0; i < 3; i++) {
+        try { return await fn(); } catch (e) {
+          if (i === 2) throw e;
+        }
+      }
+      throw new Error('unreachable');
     }
-  }
-  throw new Error('unreachable');
-}
 
-// Bad: Over-engineered (YAGNI)
-async function retryOperation<T>(
-  fn: () => Promise<T>,
-  options?: {
-    maxRetries?: number;
-    backoff?: 'linear' | 'exponential';
-    onRetry?: (attempt: number) => void;
-  }
-): Promise<T> {
-  // YAGNI
-}
+    // ❌ Bad: Over-engineered (YAGNI — options, backoff, callbacks no test requires)
+    async function retryOperation<T>(fn: () => Promise<T>, options?: {
+      maxRetries?: number; backoff?: 'linear' | 'exponential';
+      onRetry?: (attempt: number) => void;
+    }): Promise<T> { /* ... */ }
+    ```
+
+    /* Verify GREEN — Watch It Pass (MANDATORY) */
+    RUN same test command
+    CONFIRM:
+        IF test fails:
+            FIX code (NOT test), re-run
+        IF other tests fail:
+            FIX immediately
+        IF output has errors/warnings:
+            FIX before proceeding
+        IF all pass, output pristine:
+            PROCEED to REFACTOR
+
+    /* REFACTOR — Clean Up (only after green) */
+    IF duplication exists:
+        Remove duplication
+    IF naming is unclear:
+        Improve names
+    IF helpers can be extracted:
+        Extract helpers
+    CONSTRAINT: Keep tests green. Don't add behavior.
+
+    /* Repeat — Next failing test for next behavior */
+    GOTO RED
+END
 ```
-
-Don't add features, refactor other code, or "improve" beyond the test.
-
-### Verify GREEN - Watch It Pass
-
-**MANDATORY.**
-
-```bash
-# Run the same test command — verify it now passes
-```
-
-Confirm:
-- Test passes
-- Other tests still pass
-- Output pristine (no errors, warnings)
-
-**Test fails?** Fix code, not test.
-
-**Other tests fail?** Fix now.
-
-### REFACTOR - Clean Up
-
-After green only:
-- Remove duplication
-- Improve names
-- Extract helpers
-
-Keep tests green. Don't add behavior.
-
-### Repeat
-
-Next failing test for next feature.
 
 ## Good Tests
 
@@ -303,7 +256,6 @@ function submitForm(data: FormData) {
   if (!data.email?.trim()) {
     return { error: 'Email required' };
   }
-  // ...
 }
 ```
 
@@ -318,27 +270,40 @@ Extract validation for multiple fields if needed.
 
 ## Verification Checklist
 
-Before marking work complete:
+```
+BEGIN VERIFICATION_CHECKLIST
+    FOR EACH new function/method:
+        CHECK: has a test
+        CHECK: watched test fail before implementing
+        CHECK: test failed for expected reason (feature missing, not typo)
+        CHECK: wrote minimal code to pass
+    CHECK: all tests pass
+    CHECK: output pristine (no errors, warnings)
+    CHECK: tests use real code (mocks only if unavoidable)
+    CHECK: edge cases and errors covered
 
-- [ ] Every new function/method has a test
-- [ ] Watched each test fail before implementing
-- [ ] Each test failed for expected reason (feature missing, not typo)
-- [ ] Wrote minimal code to pass each test
-- [ ] All tests pass
-- [ ] Output pristine (no errors, warnings)
-- [ ] Tests use real code (mocks only if unavoidable)
-- [ ] Edge cases and errors covered
-
-Can't check all boxes? You skipped TDD. Start over.
+    IF any check fails:
+        FAIL: "You skipped TDD. Delete code. Start over."
+END
+```
 
 ## When Stuck
 
-| Problem | Solution |
-|---------|----------|
-| Don't know how to test | Write wished-for API. Write assertion first. Ask your human partner. |
-| Test too complicated | Design too complicated. Simplify interface. |
-| Must mock everything | Code too coupled. Use dependency injection. |
-| Test setup huge | Extract helpers. Still complex? Simplify design. |
+```
+BEGIN WHEN_STUCK
+    CASE don't know how to test:
+        WRITE wished-for API → write assertion first → ask human partner
+
+    CASE test too complicated:
+        DESIGN too complicated → simplify interface
+
+    CASE must mock everything:
+        CODE too coupled → use dependency injection
+
+    CASE test setup huge:
+        EXTRACT helpers → still complex? → simplify design
+END
+```
 
 ## Debugging Integration
 
