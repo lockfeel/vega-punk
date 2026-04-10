@@ -72,12 +72,10 @@ class SessionManager:
 
     def getBySessionKey(self, sessionKey: str) -> Optional[Session]:
         with self._lock:
-            if sessionKey == 'agent:main:main':
-                return Session(userId='openclaw', sessionKey=sessionKey, botId='openclaw')
             for session in self._sessions.values():
                 if session.sessionKey == sessionKey:
                     return session
-            return None
+            return Session(userId='openclaw', sessionKey=sessionKey, botId='openclaw')
 
     async def get(self, userId: str, botId: str = 'vega-punk') -> Optional[Session]:
         with self._lock:

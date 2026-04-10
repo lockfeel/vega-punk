@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import json
 import os
 import sqlite3
 import time
@@ -41,45 +40,8 @@ class DBase:
                     deleted INTEGER DEFAULT 0
                 );
 
-                CREATE TABLE IF NOT EXISTS plans (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL,
-                    description TEXT,
-                    status TEXT DEFAULT 'draft',
-                    progress INTEGER DEFAULT 0,
-                    assigneeIds TEXT,
-                    createTime INTEGER DEFAULT (strftime('%s', 'now')),
-                    updateTime INTEGER DEFAULT (strftime('%s', 'now')),
-                    deleted INTEGER DEFAULT 0
-                );
-
-                CREATE TABLE IF NOT EXISTS tasks (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    planId INTEGER NOT NULL,
-                    title TEXT NOT NULL,
-                    description TEXT,
-                    assignee TEXT,
-                    status TEXT DEFAULT 'pending',
-                    dependsOn TEXT,
-                    result TEXT,
-                    createTime INTEGER DEFAULT (strftime('%s', 'now')),
-                    updateTime INTEGER DEFAULT (strftime('%s', 'now')),
-                    deleted INTEGER DEFAULT 0,
-                    FOREIGN KEY (planId) REFERENCES plans(id)
-                );
-
-                CREATE TABLE IF NOT EXISTS task_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    botId TEXT NOT NULL,
-                    taskId INTEGER,
-                    content TEXT,
-                    type TEXT DEFAULT 'progress',
-                    createTime INTEGER DEFAULT (strftime('%s', 'now'))
-                );
-
                 CREATE TABLE IF NOT EXISTS messages (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    planId INTEGER,
                     botId TEXT,
                     senderId TEXT NOT NULL,
                     role TEXT NOT NULL,
@@ -88,15 +50,8 @@ class DBase:
                     deleted INTEGER DEFAULT 0
                 );
 
-                CREATE INDEX IF NOT EXISTS idx_bots_manager ON bots(managerId);
-
-                CREATE INDEX IF NOT EXISTS idx_tasks_plan ON tasks(planId, status);
-                CREATE INDEX IF NOT EXISTS idx_task_logs_task ON task_logs(taskId, createTime);
-                CREATE INDEX IF NOT EXISTS idx_task_logs_bot ON task_logs(botId, createTime);
-                CREATE INDEX IF NOT EXISTS idx_messages_plan ON messages(planId, createTime);
                 CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(senderId, createTime);
                 CREATE INDEX IF NOT EXISTS idx_messages_bot ON messages(botId, createTime);
-                CREATE INDEX IF NOT EXISTS idx_bots_manager ON bots(managerId);
                 CREATE TABLE IF NOT EXISTS sessions (
                     userId TEXT NOT NULL,
                     sessionKey TEXT NOT NULL,
@@ -109,8 +64,6 @@ class DBase:
                 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(userId, status);
                 CREATE INDEX IF NOT EXISTS idx_sessions_key ON sessions(sessionKey);
                 CREATE INDEX IF NOT EXISTS idx_sessions_active ON sessions(status, lastActive);
-
-                CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee, status);
             """)
 
         self._initBots()
@@ -119,17 +72,17 @@ class DBase:
         bots = [
             ("openclaw", "ClawBot", "https://res.amemo.cn/openclaw.png", "main"),
             ("vega-punk", "慎思者", "https://res.amemo.cn/vega-punk.png", "user"),
-            ("plan-executor", "执行星使", "https://res.amemo.cn/executing-plans.png", "vega-punk"),
-            ("plan-builder", "规划谋士", "https://res.amemo.cn/planning-with-json.png", "vega-punk"),
-            ("branch-landing", "分支卫士", "https://res.amemo.cn/finishing-a-development-branch.png", "vega-punk"),
-            ("review-intake", "评审接引人", "https://res.amemo.cn/receiving-code-review.png", "vega-punk"),
-            ("review-request", "审阅使", "https://res.amemo.cn/requesting-code-review.png", "vega-punk"),
-            ("parallel-swarm", "并行大师", "https://res.amemo.cn/dispatching-parallel-agents.png", "vega-punk"),
-            ("task-dispatcher", "子代理官", "https://res.amemo.cn/subagent-driven-development.png", "vega-punk"),
-            ("root-cause", "系统调试师", "https://res.amemo.cn/systematic-debugging.png", "vega-punk"),
-            ("test-first", "测试驱动者", "https://res.amemo.cn/test-driven-development.png", "vega-punk"),
-            ("verify-gate", "验核先锋", "https://res.amemo.cn/verification-before-completion.png", "vega-punk"),
-            ("worktree-setup", "分支管家", "https://res.amemo.cn/using-git-worktrees.png", "vega-punk"),
+            ("plan-executor", "践行人", "https://res.amemo.cn/executing-plans.png", "vega-punk"),
+            ("plan-builder", "策画生", "https://res.amemo.cn/planning-with-json.png", "vega-punk"),
+            ("branch-landing", "司枝官", "https://res.amemo.cn/finishing-a-development-branch.png", "vega-punk"),
+            ("review-intake", "鉴微使", "https://res.amemo.cn/receiving-code-review.png", "vega-punk"),
+            ("review-request", "呈阅使", "https://res.amemo.cn/requesting-code-review.png", "vega-punk"),
+            ("parallel-swarm", "百炼使", "https://res.amemo.cn/dispatching-parallel-agents.png", "vega-punk"),
+            ("task-dispatcher", "分遣使", "https://res.amemo.cn/subagent-driven-development.png", "vega-punk"),
+            ("root-cause", "溯因官", "https://res.amemo.cn/systematic-debugging.png", "vega-punk"),
+            ("test-first", "先试官", "https://res.amemo.cn/test-driven-development.png", "vega-punk"),
+            ("verify-gate", "验契使", "https://res.amemo.cn/verification-before-completion.png", "vega-punk"),
+            ("worktree-setup", "筑枝使", "https://res.amemo.cn/using-git-worktrees.png", "vega-punk"),
             ("agent-browser", "浏览器精灵", "https://res.amemo.cn/agent-browser.png", "user"),
             ("algorithmic-art", "算法画师", "https://res.amemo.cn/algorithmic-art.png", "user"),
             ("brand-guidelines", "品牌管家", "https://res.amemo.cn/brand-guidelines.png", "user"),
@@ -213,118 +166,13 @@ class DBase:
     def deleteBot(self, botId: str):
         self.execute("UPDATE bots SET deleted = 1 WHERE botId = ?", (botId,))
 
-    def createPlan(self, name: str, description: str = None, assigneeIds: list = None) -> Dict[str, Any]:
-        now = int(time.time())
-        with self._conn() as conn:
-            cursor = conn.execute(
-                "INSERT INTO plans (name, description, assigneeIds, createTime, updateTime) VALUES (?, ?, ?, ?, ?)",
-                (name, description, json.dumps(assigneeIds) if assigneeIds else None, now, now)
-            )
-            return {"id": cursor.lastrowid, "name": name, "description": description, "assigneeIds": assigneeIds,
-                    "status": "draft", "progress": 0, "createTime": now, "updateTime": now}
-
-    def getPlan(self, planId: int) -> Optional[Dict[str, Any]]:
-        return self.fetchOne("SELECT * FROM plans WHERE id = ? AND deleted = 0", (planId,))
-
-    def getAllPlans(self, status: str = None) -> List[Dict[str, Any]]:
-        if status:
-            return self.fetchAll("SELECT * FROM plans WHERE status = ? AND deleted = 0 ORDER BY updateTime DESC", (status,))
-        return self.fetchAll("SELECT * FROM plans WHERE deleted = 0 ORDER BY updateTime DESC")
-
-    def updatePlan(self, planId: int, **kwargs):
-        fields = []
-        values = []
-        for k, v in kwargs.items():
-            fields.append(f"{k} = ?")
-            values.append(json.dumps(v) if isinstance(v, list) else v)
-        fields.append("updateTime = ?")
-        values.append(int(time.time()))
-        values.append(planId)
-        self.execute(f"UPDATE plans SET {', '.join(fields)} WHERE id = ?", tuple(values))
-
-    def deletePlan(self, planId: int):
-        self.execute("UPDATE plans SET deleted = 1 WHERE id = ?", (planId,))
-
-    def createTask(self, planId: int, title: str, assignee: str = None,
-                   description: str = None, dependsOn: str = None) -> Dict[str, Any]:
-        now = int(time.time())
-        with self._conn() as conn:
-            cursor = conn.execute(
-                "INSERT INTO tasks (planId, title, description, assignee, dependsOn, createTime, updateTime) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (planId, title, description, assignee, dependsOn, now, now)
-            )
-            return {"id": cursor.lastrowid, "planId": planId, "title": title, "assignee": assignee,
-                    "status": "pending", "dependsOn": dependsOn, "createTime": now, "updateTime": now}
-
-    def getTask(self, taskId: int) -> Optional[Dict[str, Any]]:
-        return self.fetchOne("SELECT * FROM tasks WHERE id = ? AND deleted = 0", (taskId,))
-
-    def getPlanTasks(self, planId: int) -> List[Dict[str, Any]]:
-        return self.fetchAll("SELECT * FROM tasks WHERE planId = ? AND deleted = 0 ORDER BY createTime", (planId,))
-
-    def getBotTasks(self, assignee: str, status: str = None) -> List[Dict[str, Any]]:
-        if status:
-            return self.fetchAll(
-                "SELECT * FROM tasks WHERE assignee = ? AND status = ? AND deleted = 0 ORDER BY updateTime DESC",
-                (assignee, status)
-            )
-        return self.fetchAll(
-            "SELECT * FROM tasks WHERE assignee = ? AND deleted = 0 ORDER BY updateTime DESC",
-            (assignee,)
-        )
-
-    def getPendingTasks(self, planId: int) -> List[Dict[str, Any]]:
-        return self.fetchAll(
-            "SELECT * FROM tasks WHERE planId = ? AND status = 'pending' AND deleted = 0 ORDER BY createTime",
-            (planId,)
-        )
-
-    def updateTask(self, taskId: int, **kwargs):
-        fields = []
-        values = []
-        for k, v in kwargs.items():
-            fields.append(f"{k} = ?")
-            values.append(v)
-        fields.append("updateTime = ?")
-        values.append(int(time.time()))
-        values.append(taskId)
-        self.execute(f"UPDATE tasks SET {', '.join(fields)} WHERE id = ?", tuple(values))
-
-    def deleteTask(self, taskId: int):
-        self.execute("UPDATE tasks SET deleted = 1 WHERE id = ?", (taskId,))
-
-    def addTaskLog(self, botId: str, taskId: int = None, content: str = '', type: str = 'progress'):
+    def addMessage(self, botId: str = None, senderId: str = '', role: str = 'user', content: str = ''):
         self.execute(
-            "INSERT INTO task_logs (botId, taskId, content, type) VALUES (?, ?, ?, ?)",
-            (botId, taskId, content, type)
+            "INSERT INTO messages (botId, senderId, role, content) VALUES (?, ?, ?, ?)",
+            (botId, senderId, role, content)
         )
 
-    def getTaskLogs(self, taskId: int = None, botId: str = None, limit: int = 50) -> List[Dict[str, Any]]:
-        if taskId:
-            return self.fetchAll(
-                "SELECT * FROM task_logs WHERE taskId = ? ORDER BY createTime DESC LIMIT ?",
-                (taskId, limit)
-            )
-        if botId:
-            return self.fetchAll(
-                "SELECT * FROM task_logs WHERE botId = ? ORDER BY createTime DESC LIMIT ?",
-                (botId, limit)
-            )
-        return []
-
-    def addMessage(self, planId: int = None, botId: str = None, senderId: str = '', role: str = 'user', content: str = ''):
-        self.execute(
-            "INSERT INTO messages (planId, botId, senderId, role, content) VALUES (?, ?, ?, ?, ?)",
-            (planId, botId, senderId, role, content)
-        )
-
-    def getMessages(self, planId: int = None, limit: int = 100) -> List[Dict[str, Any]]:
-        if planId:
-            return self.fetchAll(
-                "SELECT * FROM messages WHERE planId = ? AND deleted = 0 ORDER BY createTime ASC LIMIT ?",
-                (planId, limit)
-            )
+    def getMessages(self, limit: int = 100) -> List[Dict[str, Any]]:
         return self.fetchAll(
             "SELECT * FROM messages WHERE deleted = 0 ORDER BY createTime ASC LIMIT ?",
             (limit,)
@@ -342,11 +190,8 @@ class DBase:
                 msg['botAvatar'] = bot['avatar']
         return messages
 
-    def deleteMessages(self, planId: int = None):
-        if planId:
-            self.execute("UPDATE messages SET deleted = 1 WHERE planId = ?", (planId,))
-        else:
-            self.execute("UPDATE messages SET deleted = 1 WHERE 1")
+    def deleteMessages(self):
+        self.execute("UPDATE messages SET deleted = 1 WHERE 1")
 
     def createSession(self, userId: str, sessionKey: str) -> Dict[str, Any]:
         now = int(time.time())
