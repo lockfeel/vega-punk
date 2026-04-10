@@ -245,10 +245,10 @@ If BLOCKED, explain what's preventing completion.
 ## Review: Spec Compliance for Task <task_id>
 
 ## The Spec
-<relevant requirements from ~/.vega-punk/roadmap.json or spec file>
+relevant requirements from ~/.vega-punk/roadmap.json or spec file
 
 ## What was built
-<summary of changes from git diff or implementer report>
+summary of changes from git diff or implementer report
 
 ## Task
 Compare what was built against what the spec requires.
