@@ -54,6 +54,7 @@ class DBase:
                 CREATE INDEX IF NOT EXISTS idx_messages_bot ON messages(botId, createTime);
                 CREATE TABLE IF NOT EXISTS sessions (
                     userId TEXT NOT NULL,
+                    botId TEXT NOT NULL,
                     sessionKey TEXT NOT NULL,
                     status TEXT DEFAULT 'active',
                     createTime INTEGER DEFAULT (strftime('%s', 'now')),
@@ -61,10 +62,24 @@ class DBase:
                     deleted INTEGER DEFAULT 0
                 );
 
-                CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(userId, status);
-                CREATE INDEX IF NOT EXISTS idx_sessions_key ON sessions(sessionKey);
+                CREATE INDEX IF NOT EXISTS idx_sessions_user_bot ON sessions(userId, botId, status);
+                CREATE INDEX IF NOT EXISTS idx_sessions_key ON sessions(sessionKey, status, deleted);
                 CREATE INDEX IF NOT EXISTS idx_sessions_active ON sessions(status, lastActive);
             """)
+
+        self._migrateSessions()
+        self._initBots()
+
+    def _migrateSessions(self):
+        """如果 sessions 表缺少 botId 列，则自动迁移"""
+        try:
+            with self._conn() as conn:
+                cursor = conn.execute("PRAGMA table_info(sessions)")
+                columns = [row[1] for row in cursor.fetchall()]
+                if 'botId' not in columns:
+                    conn.execute("ALTER TABLE sessions ADD COLUMN botId TEXT DEFAULT 'openclaw'")
+        except Exception:
+            pass
 
         self._initBots()
 
@@ -194,20 +209,20 @@ class DBase:
     def deleteMessages(self):
         self.execute("UPDATE messages SET deleted = 1 WHERE 1")
 
-    def createSession(self, userId: str, sessionKey: str) -> Dict[str, Any]:
+    def createSession(self, userId: str, botId: str, sessionKey: str) -> Dict[str, Any]:
         now = int(time.time())
         with self._conn() as conn:
             conn.execute(
-                "INSERT INTO sessions (userId, sessionKey, createTime, lastActive) VALUES (?, ?, ?, ?)",
-                (userId, sessionKey, now, now)
+                "INSERT INTO sessions (userId, botId, sessionKey, createTime, lastActive) VALUES (?, ?, ?, ?, ?)",
+                (userId, botId, sessionKey, now, now)
             )
-        return {"userId": userId, "sessionKey": sessionKey, "status": "active",
+        return {"userId": userId, "botId": botId, "sessionKey": sessionKey, "status": "active",
                 "createTime": now, "lastActive": now}
 
-    def getSession(self, userId: str) -> Optional[Dict[str, Any]]:
+    def getSession(self, userId: str, botId: str) -> Optional[Dict[str, Any]]:
         return self.fetchOne(
-            "SELECT * FROM sessions WHERE userId = ? AND status = 'active' AND deleted = 0",
-            (userId,)
+            "SELECT * FROM sessions WHERE userId = ? AND botId = ? AND status = 'active' AND deleted = 0",
+            (userId, botId)
         )
 
     def getSessionByKey(self, sessionKey: str) -> Optional[Dict[str, Any]]:
@@ -215,10 +230,6 @@ class DBase:
             "SELECT * FROM sessions WHERE sessionKey = ? AND status = 'active' AND deleted = 0",
             (sessionKey,)
         )
-
-    def touchSession(self, userId: str):
-        now = int(time.time())
-        self.execute("UPDATE sessions SET lastActive = ? WHERE userId = ? AND status = 'active'", (now, userId))
 
     def touchSessionByKey(self, sessionKey: str):
         now = int(time.time())

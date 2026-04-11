@@ -44,7 +44,7 @@ async def lifespan(app):
         gatewayClient = OpenClawGatewayClient(url=cfg["url"], token=cfg["token"])
         try:
             await asyncio.wait_for(gatewayClient.connect(), timeout=30)
-            sessionManager = SessionManager(gatewayClient, idleTimeout=1800)
+            sessionManager = SessionManager(gatewayClient, db)
             await sessionManager.start()
             logging.info("[Vaga] OpenClaw 中间件已启动")
         except Exception as e:
@@ -238,6 +238,8 @@ async def chatClaw(websocket: WebSocket):
                 continue
 
             try:
+                if message == '/init-bot' and botId != 'openclaw':
+                    message = f'/{botId} 加载并激活这个SKILL，并根据这个SKILL的功能描述，给用户输出一段使用指南。'
                 if botId != 'openclaw':
                     message = f'/{botId} {message}'
                 await gatewayClient.sendChat(

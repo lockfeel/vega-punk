@@ -2,7 +2,7 @@ import asyncio
 import logging
 import threading
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -19,16 +19,13 @@ class Session:
     def touch(self):
         self.lastActive = datetime.now()
 
-    def isIdle(self, timeoutSeconds: int) -> bool:
-        return (datetime.now() - self.lastActive).total_seconds() > timeoutSeconds
-
 
 class SessionManager:
 
-    def __init__(self, gateway, idleTimeout: int = 1800):
+    def __init__(self, gateway, db, idleTimeout: int = 86400):
         self.gateway = gateway
+        self.db = db
         self.idleTimeout = idleTimeout
-        self._sessions: Dict[str, Session] = {}
         self._lock = threading.RLock()
         self._gcTask: Optional[asyncio.Task] = None
 
@@ -41,57 +38,59 @@ class SessionManager:
 
     async def getOrCreate(self, userId: str, botId: str = 'vega-punk') -> Session:
         with self._lock:
-            session = self._sessions.get(f'{userId}-{botId}')
-            if session is None:
-                if botId == 'openclaw': return self._sessions.get('openclaw')
-                sessionKey = f"agent:main:user-{userId}-{botId}"
-                try:
-                    await self.gateway.sendRequest("sessions.create", {
-                        "key": sessionKey
-                    })
-                except Exception as e:
-                    logger.warning(f"[Session] 创建失败: {e}")
+            dbRow = self.db.getSession(userId, botId)
+            if dbRow:
+                return Session(
+                    userId=dbRow['userId'],
+                    sessionKey=dbRow['sessionKey'],
+                    botId=dbRow['botId']
+                )
+            if botId == 'openclaw': return None
+            sessionKey = f"agent:main:user-{userId}-{botId}"
+            try:
+                await self.gateway.sendRequest("sessions.create", {
+                    "key": sessionKey
+                })
+            except Exception as e:
+                logger.warning(f"[Session] 创建失败: {e}")
 
-                session = Session(userId, sessionKey, botId)
-                self._sessions[f'{userId}-{botId}'] = session
-            session.touch()
-            return session
-
-    def active(self, userId: str, botId: str = 'vega-punk'):
-        with self._lock:
-            session = self._sessions.get(f'{userId}-{botId}')
-            if session:
-                session.touch()
+            self.db.createSession(userId=userId, botId=botId, sessionKey=sessionKey)
+            return Session(userId, sessionKey, botId)
 
     def activeBySession(self, sessionKey: str):
-        with self._lock:
-            for session in self._sessions.values():
-                if session.sessionKey == sessionKey:
-                    session.touch()
-                    break
+        self.db.touchSessionByKey(sessionKey)
 
     def getBySessionKey(self, sessionKey: str) -> Optional[Session]:
         with self._lock:
-            for session in self._sessions.values():
-                if session.sessionKey == sessionKey:
-                    session.touch()
-                    return session
-            session = Session(userId='openclaw', sessionKey=sessionKey, botId='openclaw')
-            self._sessions['openclaw'] = session
-            return session
+            dbRow = self.db.getSessionByKey(sessionKey)
+            if dbRow:
+                self.db.touchSessionByKey(sessionKey)
+                return Session(
+                    userId=dbRow['userId'],
+                    sessionKey=dbRow['sessionKey'],
+                    botId=dbRow['botId']
+                )
+            self.db.createSession(userId='openclaw', botId='openclaw', sessionKey=sessionKey)
+            return Session(userId='openclaw', sessionKey=sessionKey, botId='openclaw')
 
     async def get(self, userId: str, botId: str = 'vega-punk') -> Optional[Session]:
         with self._lock:
-            session = self._sessions.get(f"{userId}-{botId}")
-            if session: session.touch()
-            return session
+            dbRow = self.db.getSession(userId, botId)
+            if dbRow:
+                return Session(
+                    userId=dbRow['userId'],
+                    sessionKey=dbRow['sessionKey'],
+                    botId=dbRow['botId']
+                )
+            return None
 
     async def close(self, userId: str, botId: str = 'vega-punk'):
         with self._lock:
-            session = self._sessions.pop(f"{userId}-{botId}", None)
-            if session:
+            dbRow = self.db.getSession(userId, botId)
+            if dbRow:
                 try:
-                    await self.gateway.sendRequest("sessions.delete", {"key": session.sessionKey})
+                    await self.gateway.sendRequest("sessions.delete", {"key": dbRow['sessionKey']})
+                    self.db.closeSessionByKey(dbRow['sessionKey'])
                     logger.info(f"[Session] 关闭: {userId}")
                 except Exception as e:
                     logger.error(f"[Session] 关闭失败 {userId}: {e}")
@@ -100,15 +99,10 @@ class SessionManager:
         while True:
             try:
                 await asyncio.sleep(600)
-                idleSessions = []
-                with self._lock:
-                    for userId, session in list(self._sessions.items()):
-                        if session.isIdle(self.idleTimeout): idleSessions.append((userId, session))
-
-                for userId, session in idleSessions:
-                    logger.info(f"[Session] GC: 清理闲置会话 {userId}")
-                    await self.close(session.userId, session.botId)
-
+                idleSessions = self.db.getIdleSessions(self.idleTimeout)
+                for row in idleSessions:
+                    logger.info(f"[Session] GC: 清理闲置会话 {row['userId']}-{row['botId']}")
+                    await self.close(row['userId'], row['botId'])
             except asyncio.CancelledError:
                 break
             except Exception as e:
