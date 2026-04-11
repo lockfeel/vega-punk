@@ -36,7 +36,8 @@ class SessionManager:
     async def stop(self):
         if self._gcTask: self._gcTask.cancel()
 
-    async def getOrCreate(self, userId: str, botId: str = 'vega-punk') -> Session:
+    async def getOrCreate(self, userId: str, botId: str = 'vega-punk') -> Optional[Session]:
+        if not userId: return None
         with self._lock:
             dbRow = self.db.getSession(userId, botId)
             if dbRow:
@@ -70,19 +71,17 @@ class SessionManager:
                     sessionKey=dbRow['sessionKey'],
                     botId=dbRow['botId']
                 )
-            self.db.createSession(userId='openclaw', botId='openclaw', sessionKey=sessionKey)
-            return Session(userId='openclaw', sessionKey=sessionKey, botId='openclaw')
-
-    async def get(self, userId: str, botId: str = 'vega-punk') -> Optional[Session]:
-        with self._lock:
-            dbRow = self.db.getSession(userId, botId)
+            dbRow = self.db.getOpenclawSession()
             if dbRow:
+                if dbRow['sessionKey'] != sessionKey:
+                    self.db.updateSessionKey(userId='openclaw', botId='openclaw', sessionKey=sessionKey)
                 return Session(
                     userId=dbRow['userId'],
-                    sessionKey=dbRow['sessionKey'],
+                    sessionKey=sessionKey,
                     botId=dbRow['botId']
                 )
-            return None
+            self.db.createSession(userId='openclaw', botId='openclaw', sessionKey=sessionKey)
+            return Session(userId='openclaw', sessionKey=sessionKey, botId='openclaw')
 
     async def close(self, userId: str, botId: str = 'vega-punk'):
         with self._lock:

@@ -116,7 +116,6 @@ class DBase:
             ("pptx", "演示大师", "https://res.amemo.cn/pptx.png", "user"),
             ("docx", "文档大师", "https://res.amemo.cn/docx.png", "user"),
             ("xlsx", "表格圣手", "https://res.amemo.cn/xlsx.png", "user"),
-            ("chrome-cdp-skill", "浏览器驱动", "https://res.amemo.cn/chrome-cdp-icon.png", "user"),
         ]
         for botId, name, avatar, mid in bots:
             self.upsertBot(botId=botId, name=name, role="skill", avatar=avatar, managerId=mid)
@@ -194,6 +193,14 @@ class DBase:
             (limit,)
         )
 
+    def getRecentMessageContent(self, seconds: int = 10) -> List[str]:
+        cutoff = int(time.time()) - seconds
+        rows = self.fetchAll(
+            "SELECT content FROM messages WHERE createTime >= ? AND deleted = 0 ORDER BY createTime DESC",
+            (cutoff,)
+        )
+        return [r['content'] for r in rows if r.get('content')]
+
     def getBotMessages(self, botId: str, limit: int = 50) -> List[Dict[str, Any]]:
         messages = self.fetchAll(
             "SELECT * FROM messages WHERE botId = ? AND deleted = 0 ORDER BY createTime DESC LIMIT ?",
@@ -223,6 +230,18 @@ class DBase:
         return self.fetchOne(
             "SELECT * FROM sessions WHERE userId = ? AND botId = ? AND status = 'active' AND deleted = 0",
             (userId, botId)
+        )
+
+    def updateSessionKey(self, userId: str, botId: str, sessionKey: str):
+        now = int(time.time())
+        self.execute(
+            "UPDATE sessions SET sessionKey = ?, lastActive = ? WHERE userId = ? AND botId = ? AND status = 'active'",
+            (sessionKey, now, userId, botId)
+        )
+
+    def getOpenclawSession(self) -> Optional[Dict[str, Any]]:
+        return self.fetchOne(
+            "SELECT * FROM sessions WHERE userId = 'openclaw' AND botId = 'openclaw' AND status = 'active' AND deleted = 0",
         )
 
     def getSessionByKey(self, sessionKey: str) -> Optional[Dict[str, Any]]:

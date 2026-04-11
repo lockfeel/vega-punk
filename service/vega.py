@@ -3,10 +3,13 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 import uuid
 
 import uvicorn
+
+from service.utils.common_util import getSkillName
 
 rootDir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(f"{os.path.dirname(rootDir)}")
@@ -24,9 +27,6 @@ from gateway import (
     SessionManager,
     logger,
     getOpenclawConfig,
-    OutputFilter,
-    SecurityAudit,
-    RiskLevel,
 )
 
 gatewayClient = None
@@ -128,30 +128,34 @@ async def chatClaw(websocket: WebSocket):
         await websocket.send_json({"error": "OpenClaw 未就绪"})
         await websocket.close()
         return
-    currentSessionKey = None
-    accumulatedText = ""
-    savedRunIds = set()
+    accumulatedText = ''
 
     async def onChatEvent(payload: dict):
-        nonlocal currentSessionKey, accumulatedText
+        nonlocal accumulatedText
+        print(payload)
         runId = payload.get('runId')
         stream = payload.get('stream')
         phase = payload.get('data', {}).get('phase')
         eventSession = payload.get('sessionKey', '')
-
+        currSession = sessionManager.getBySessionKey(eventSession)
         botId = None
-        try:
-            session = sessionManager.getBySessionKey(eventSession)
-            if session:
-                botId = session.botId
-                sessionManager.activeBySession(eventSession)
-        except Exception:
-            pass
-
-        if stream == 'assistant':
+        if currSession:
+            botId = currSession.botId
+            sessionManager.activeBySession(eventSession)
+        data = payload.get('data', {})
+        if 'HEARTBEAT' in data.get('text', ''): return
+        if phase == 'end' and data.get('text', '') == '':
             try:
-                data = payload.get('data', {})
-                accumulatedText = data.get('text', '')
+                if accumulatedText.strip():
+                    sessionKey = payload.get('sessionKey', '')
+                    db.addMessage(botId=botId, senderId=sessionKey, role='assistant', content=accumulatedText)
+                    accumulatedText = ''
+                    return
+            except Exception as e:
+                logger.error(f"[WS] 发送 final 失败: {e}")
+        if stream == 'assistant' and phase is None:
+            accumulatedText = data.get('text', '')
+            try:
                 await websocket.send_json({
                     "type": "delta",
                     "runId": runId,
@@ -162,36 +166,25 @@ async def chatClaw(websocket: WebSocket):
                 })
             except Exception as e:
                 logger.error(f"[WS] 发送 delta 失败: {e}")
-
-        elif phase == 'end':
-            if runId and runId in savedRunIds:
-                return
-            if runId:
-                savedRunIds.add(runId)
-            try:
-                hasDangerous, dangerousCmds = OutputFilter.auditOutput(accumulatedText)
-                responseData = {
-                    "type": "final",
-                    "runId": runId,
-                    "sessionKey": payload.get('sessionKey'),
-                    "botId": botId,
-                    "content": accumulatedText,
-                    "state": "completed"
-                }
-                if hasDangerous:
-                    responseData["security_warning"] = {
-                        "detected": True,
-                        "commands": dangerousCmds[:3],
-                        "message": "⚠️ 检测到潜在危险命令，请确认安全后再执行"
-                    }
-                    logger.warning(f"[Security] AI 输出包含危险命令: {dangerousCmds}")
-                await websocket.send_json(responseData)
-
-                if accumulatedText.strip() and accumulatedText.strip() != "HEARTBEAT_OK":
-                    sessionKey = payload.get('sessionKey', '')
-                    db.addMessage(botId=botId, senderId=sessionKey, role='assistant', content=accumulatedText)
-            except Exception as e:
-                logger.error(f"[WS] 发送 final 失败: {e}")
+        if stream == 'item':
+            toolName = data.get('name') or data.get('tool')
+            phase = data.get('phase')
+            if toolName == 'read' and phase == 'start':
+                title = data.get('title', '')
+                if 'SKILL.md' in title:
+                    match = re.search(r'[~/\w.\-]+/skills/[^/]+/SKILL\.md', title)
+                    filePath = match.group(0) if match else ''
+                    skillName = getSkillName(filePath)
+                    logger.info(f"[Skill 调用] {skillName}")
+                    logger.info(f"[Skill 路径] {filePath}")
+                    await websocket.send_json({
+                        "type": "delta",
+                        "runId": runId,
+                        "sessionKey": payload.get('sessionKey'),
+                        "botId": skillName,
+                        "text": f"{skillName}正在为您工作",
+                        "delta": ""
+                    })
 
     gatewayClient.onEvent("agent", onChatEvent)
 
@@ -199,49 +192,26 @@ async def chatClaw(websocket: WebSocket):
         while True:
             data = await websocket.receive_text()
             msg = json.loads(data)
-
-            if msg.get('type') == 'ping':
-                if currentSessionKey:
-                    try:
-                        sessionManager.activeBySession(currentSessionKey)
-                    except Exception:
-                        pass
-                continue
-
             userId = msg.get('user')
             message = msg.get('text')
             botId = msg.get('botId', 'vega-punk')
+            session = await sessionManager.getOrCreate(userId, botId)
+            if msg.get('type') == 'ping':
+                if session: sessionManager.activeBySession(session.sessionKey)
+                continue
             if not userId or not message:
                 await websocket.send_json({"error": "缺少 user 或 message"})
                 continue
             if not gatewayClient.connected.is_set():
                 await websocket.send_json({"error": "OpenClaw未连接"})
                 continue
-
-            session = await sessionManager.getOrCreate(userId, botId)
             db.addMessage(botId=botId, senderId=userId, role='user', content=message)
-            riskLevel, riskReason = SecurityAudit.audit(message)
-            logger.info(f"[Security] user={userId}, risk={riskLevel.value}, reason={riskReason}")
-            if riskLevel == RiskLevel.CRITICAL:
-                await websocket.send_json({
-                    "type": "error",
-                    "error": f"🚫 指令被阻止: {riskReason}",
-                    "risk": "critical"
-                })
-                continue
-            if riskLevel == RiskLevel.HIGH:
-                await websocket.send_json({
-                    "type": "error",
-                    "error": f"⚠️ 高风险指令: {riskReason}",
-                    "risk": "high"
-                })
-                continue
-
             try:
                 if message == '/init-bot' and botId != 'openclaw':
                     message = f'/{botId} 加载并激活这个SKILL，并根据这个SKILL的功能描述，给用户输出一段使用指南。'
-                if botId != 'openclaw':
-                    message = f'/{botId} {message}'
+                else:
+                    if botId != 'openclaw':
+                        message = f'/{botId} {message}'
                 await gatewayClient.sendChat(
                     session.sessionKey,
                     message,
@@ -250,7 +220,6 @@ async def chatClaw(websocket: WebSocket):
             except Exception as e:
                 logger.error(f"[WS] 发送消息失败: {e}")
                 await websocket.send_json({"type": "error", "error": str(e)})
-
     except WebSocketDisconnect:
         logger.info("[WS] 客户端断开")
     except Exception as e:

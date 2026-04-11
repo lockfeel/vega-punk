@@ -11,6 +11,14 @@ import fitz
 from docx import Document
 
 
+def getSkillName(path: str) -> str | None:
+    match = re.search(r'/skills/([^/]+)/', path)
+    if match: return match.group(1)
+    match = re.search(r'skills/([^/]+)/', path)
+    if match: return match.group(1)
+    return None
+
+
 def getMillisecond():
     return int(time.time() * 1000)
 
