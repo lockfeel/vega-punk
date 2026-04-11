@@ -1113,12 +1113,12 @@
                         `;
                         document.getElementById('chatHistory').appendChild(msgRow);
                     }
-                    msgRow.querySelector('.msg-text').innerHTML = marked.parse(data.text);
+                    msgRow.querySelector('.msg-text').innerHTML = safeMarkdown(data.text);
                     scrollToBottom();
                 } else if (data.type === 'final') {
                     let msgRow = document.querySelector(`[data-runid="${data.runId}"]`);
                     if (msgRow) {
-                        msgRow.querySelector('.msg-text').innerHTML = marked.parse(data.content);
+                        msgRow.querySelector('.msg-text').innerHTML = safeMarkdown(data.content);
                         scrollToBottom();
                     }
                 }
@@ -1193,6 +1193,13 @@
         document.getElementById('chatHistory').appendChild(msgRow);
     }
 
+    function safeMarkdown(text) {
+        if (typeof marked !== 'undefined') {
+            return marked.parse(text);
+        }
+        return text.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+    }
+
     function appendBotMessageSilent(text, authorName, authorAvatar) {
         const msgRow = document.createElement('div');
         msgRow.className = 'message-row bot';
@@ -1202,9 +1209,10 @@
             </div>
             <div class="msg-content">
                 <span class="msg-author">${authorName || 'VegaPunk'}</span>
-                <div class="bubble"><button class="copy-btn" onclick="copyContent(this)"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button><div class="msg-text">${marked.parse(text)}</div></div>
+                <div class="bubble"><button class="copy-btn" onclick="copyContent(this)"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button><div class="msg-text"></div></div>
             </div>
         `;
+        msgRow.querySelector('.msg-text').innerHTML = safeMarkdown(text);
         document.getElementById('chatHistory').appendChild(msgRow);
     }
 

@@ -101,6 +101,7 @@ class DBase:
             ("pptx", "演示大师", "https://res.amemo.cn/pptx.png", "user"),
             ("docx", "文档大师", "https://res.amemo.cn/docx.png", "user"),
             ("xlsx", "表格圣手", "https://res.amemo.cn/xlsx.png", "user"),
+            ("chrome-cdp-skill", "浏览器驱动", "https://res.amemo.cn/chrome-cdp-icon.png", "user"),
         ]
         for botId, name, avatar, mid in bots:
             self.upsertBot(botId=botId, name=name, role="skill", avatar=avatar, managerId=mid)

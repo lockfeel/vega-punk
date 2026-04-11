@@ -1,0 +1,178 @@
+{
+  "version": 3,
+  "skills": {
+    "agent-browser": {
+      "source": "vercel-labs/agent-browser",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/vercel-labs/agent-browser.git",
+      "skillPath": "skills/agent-browser",
+      "skillFolderHash": "aaac8b657c76d8ed72d90c191a3a29711ad0c464",
+      "installedAt": "2026-03-22T03:40:00.000Z",
+      "updatedAt": "2026-04-11T23:45:00.000Z"
+    },
+    "algorithmic-art": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/anthropics/skills.git",
+      "skillPath": "skills/algorithmic-art",
+      "skillFolderHash": "dff6af81942be4bcb63194833a675066b9b9fee5",
+      "installedAt": "2026-03-29T10:01:48.000Z",
+      "updatedAt": "2026-04-11T23:45:00.000Z"
+    },
+    "brand-guidelines": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/anthropics/skills.git",
+      "skillPath": "skills/brand-guidelines",
+      "skillFolderHash": "6b6e62b85d97c943ed37c29ef6315a68b81903c1",
+      "installedAt": "2026-03-29T10:01:48.000Z",
+      "updatedAt": "2026-04-11T23:45:00.000Z"
+    },
+    "canvas-design": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/anthropics/skills.git",
+      "skillPath": "skills/canvas-design",
+      "skillFolderHash": "76889a307afcb7b014788979a6ff34b46d2c7448",
+      "installedAt": "2026-03-29T10:01:48.000Z",
+      "updatedAt": "2026-04-11T23:45:00.000Z"
+    },
+    "docx": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/anthropics/skills.git",
+      "skillPath": "skills/docx",
+      "skillFolderHash": "4615d6a8fc3dce74b0f987f7820b4d48416e2b25",
+      "installedAt": "2026-03-29T10:01:48.000Z",
+      "updatedAt": "2026-04-11T23:45:00.000Z"
+    },
+    "find-skills": {
+      "source": "vercel-labs/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/vercel-labs/skills.git",
+      "skillPath": "skills/find-skills",
+      "skillFolderHash": "5aafd1a88bb4dcd63a0e3bb361f80ff1e376379a",
+      "installedAt": "2026-03-20T11:45:00.000Z",
+      "updatedAt": "2026-04-11T23:45:00.000Z"
+    },
+    "flutter-lens": {
+      "source": "lockfeel/flutter-lens",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/lockfeel/flutter-lens.git",
+      "skillPath": "SKILL.md",
+      "skillFolderHash": "f91c42de698b04df67b416a072477232c06737f3",
+      "installedAt": "2026-03-20T11:45:00.000Z",
+      "updatedAt": "2026-04-11T23:45:00.000Z"
+    },
+    "frontend-design": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/anthropics/skills.git",
+      "skillPath": "skills/frontend-design",
+      "skillFolderHash": "0a74194120860cb43f6b3b7df573b21de63de20d",
+      "installedAt": "2026-03-20T11:45:00.000Z",
+      "updatedAt": "2026-04-11T23:45:00.000Z"
+    },
+    "internal-comms": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/anthropics/skills.git",
+      "skillPath": "skills/internal-comms",
+      "skillFolderHash": "d3db9b65b2feaba97c7e31fcbc7bc411f5b05c20",
+      "installedAt": "2026-03-29T10:01:48.000Z",
+      "updatedAt": "2026-04-11T23:45:00.000Z"
+    },
+    "mcp-builder": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/anthropics/skills.git",
+      "skillPath": "skills/mcp-builder",
+      "skillFolderHash": "63435c4f1a53caea0beace0542ae733b47eb0342",
+      "installedAt": "2026-03-29T10:01:48.000Z",
+      "updatedAt": "2026-04-11T23:45:00.000Z"
+    },
+    "pdf": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/anthropics/skills.git",
+      "skillPath": "skills/pdf",
+      "skillFolderHash": "e7b357f2ce6a55c60a40e2fd251b2e4efe0c7296",
+      "installedAt": "2026-03-29T10:01:48.000Z",
+      "updatedAt": "2026-04-11T23:45:00.000Z"
+    },
+    "pptx": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/anthropics/skills.git",
+      "skillPath": "skills/pptx",
+      "skillFolderHash": "bd06fbdd5892bd372df9147876221a076e4caac2",
+      "installedAt": "2026-03-29T10:01:48.000Z",
+      "updatedAt": "2026-04-11T23:45:00.000Z"
+    },
+    "self-improving-agent": {
+      "source": "zhaono1/agent-playbook",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/zhaono1/agent-playbook.git",
+      "skillPath": "skills/self-improving-agent",
+      "skillFolderHash": "a27361a225dc9fc2244675bd4b3e857e267d7bc2",
+      "installedAt": "2026-03-20T11:45:00.000Z",
+      "updatedAt": "2026-04-11T23:45:00.000Z"
+    },
+    "skill-creator": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/anthropics/skills.git",
+      "skillPath": "skills/skill-creator",
+      "skillFolderHash": "70eebf5afb16e944552e4b299345a0933bc0811e",
+      "installedAt": "2026-03-29T10:01:48.000Z",
+      "updatedAt": "2026-04-11T23:45:00.000Z"
+    },
+    "slack-gif-creator": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/anthropics/skills.git",
+      "skillPath": "skills/slack-gif-creator",
+      "skillFolderHash": "5502c84056a2438394fc695d75abc4a1a6f14e11",
+      "installedAt": "2026-03-29T10:01:48.000Z",
+      "updatedAt": "2026-04-11T23:45:00.000Z"
+    },
+    "theme-factory": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/anthropics/skills.git",
+      "skillPath": "skills/theme-factory",
+      "skillFolderHash": "d418bb3847a88b11712ae560c527930ee273896d",
+      "installedAt": "2026-03-29T10:01:48.000Z",
+      "updatedAt": "2026-04-11T23:45:00.000Z"
+    },
+    "ui-ux-pro-max": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill.git",
+      "skillPath": ".claude/skills/ui-ux-pro-max",
+      "skillFolderHash": "329fb6590622461868452beaff4be51f3450e0df",
+      "pluginName": "ui-ux-pro-max",
+      "installedAt": "2026-03-20T11:45:00.000Z",
+      "updatedAt": "2026-04-11T23:45:00.000Z"
+    },
+    "xlsx": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/anthropics/skills.git",
+      "skillPath": "skills/xlsx",
+      "skillFolderHash": "01a5f37b1579154c8c336d4f20a8d45e0897d3f5",
+      "installedAt": "2026-03-29T10:01:48.000Z",
+      "updatedAt": "2026-04-11T23:45:00.000Z"
+    },
+    "chrome-cdp-skill": {
+      "source": "pasky/chrome-cdp-skil",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/pasky/chrome-cdp-skill.git",
+      "skillPath": "skills/chrome-cdp",
+      "skillFolderHash": "faa6d0ce2f9b6b4c8b26fb51810825c86b6b0cdc",
+      "installedAt": "2026-03-29T10:01:48.000Z",
+      "updatedAt": "2026-04-11T23:45:00.000Z"
+    }
+  },
+  "dismissed": {}
+}

@@ -187,7 +187,7 @@ async def chatClaw(websocket: WebSocket):
                     logger.warning(f"[Security] AI 输出包含危险命令: {dangerousCmds}")
                 await websocket.send_json(responseData)
 
-                if accumulatedText.strip():
+                if accumulatedText.strip() and accumulatedText.strip() != "HEARTBEAT_OK":
                     sessionKey = payload.get('sessionKey', '')
                     db.addMessage(botId=botId, senderId=sessionKey, role='assistant', content=accumulatedText)
             except Exception as e:
@@ -238,8 +238,8 @@ async def chatClaw(websocket: WebSocket):
                 continue
 
             try:
-                if message == '/init-bot' and botId != 'openclaw':
-                    message = f'激活[{botId}]这个SKILL来处理用户的对话，必须严格遵守这条纪律。第一句请回复，我是XXX，有什么可以为您效劳！'
+                if botId != 'openclaw':
+                    message = f'/{botId} {message}'
                 await gatewayClient.sendChat(
                     session.sessionKey,
                     message,
