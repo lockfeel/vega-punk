@@ -33,6 +33,17 @@ gatewayClient = None
 sessionManager = None
 db = None
 
+# OpenClaw 内置命令（这些命令不做加工，直接透传）
+OPENCLAW_BUILTIN_COMMANDS = {
+    '/help', '/commands', '/tools', '/status', '/tasks', '/whoami', '/usage', '/models',
+    '/session', '/reset', '/new', '/compact', '/stop', '/restart',
+    '/skill', '/tts', '/context', '/btw', '/reasoning', '/think',
+    '/verbose', '/fast', '/model', '/queue',
+    '/subagents', '/agents', '/kill', '/steer', '/acp', '/focus', '/unfocus',
+    '/config', '/mcp', '/debug', '/allowlist', '/approve', '/activation',
+    '/send', '/elevated', '/exec', '/bash', '/webhook',
+}
+
 
 @asynccontextmanager
 async def lifespan(app):
@@ -205,10 +216,12 @@ async def chatClaw(websocket: WebSocket):
                 continue
             db.addMessage(botId=botId, senderId=userId, role='user', content=message)
             try:
-                if message == '/init-bot' and botId != 'openclaw':
-                    message = f'/{botId} 加载并激活这个SKILL，并根据这个SKILL的功能描述，给用户输出一段使用指南。'
-                else:
-                    if botId != 'openclaw':
+                cmd = message.split()[0].split(' ')[0].lower() if message else ''
+                isBuiltin = cmd in OPENCLAW_BUILTIN_COMMANDS
+                if not isBuiltin:
+                    if message == '/init-bot' and botId != 'openclaw':
+                        message = f'/{botId} 加载并激活这个SKILL，并根据这个SKILL的功能描述，给用户输出一段使用指南。'
+                    elif botId != 'openclaw':
                         message = f'/{botId} {message}'
                 await gatewayClient.sendChat(
                     session.sessionKey,

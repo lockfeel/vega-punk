@@ -120,7 +120,7 @@ class DBase:
     def upsertBot(self, botId: str, name: str, role: str = 'pm', avatar: str = None, managerId: str = None, status: str = None):
         self.execute(
             "INSERT INTO bots (botId, name, role, avatar, managerId, status) "
-            "VALUES (?, ?, ?, ?, ?, 'idle') "
+            "VALUES (?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(botId) DO UPDATE SET "
             "name=excluded.name, role=excluded.role, "
             "avatar=COALESCE(excluded.avatar, bots.avatar), "
