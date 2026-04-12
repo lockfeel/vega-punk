@@ -1,0 +1,1316 @@
+[
+  {
+    "name": "ClawBot",
+    "code": "openclaw",
+    "icon": "https://res.amemo.cn/openclaw.png",
+    "type": "main"
+  },
+  {
+    "name": "慎思者",
+    "code": "vega-punk",
+    "icon": "https://res.amemo.cn/vega-punk.png",
+    "type": "user"
+  },
+  {
+    "name": "践行人",
+    "code": "plan-executor",
+    "icon": "https://res.amemo.cn/executing-plans.png",
+    "type": "vega-punk"
+  },
+  {
+    "name": "策画生",
+    "code": "plan-builder",
+    "icon": "https://res.amemo.cn/planning-with-json.png",
+    "type": "vega-punk"
+  },
+  {
+    "name": "司枝官",
+    "code": "branch-landing",
+    "icon": "https://res.amemo.cn/finishing-a-development-branch.png",
+    "type": "vega-punk"
+  },
+  {
+    "name": "鉴微使",
+    "code": "review-intake",
+    "icon": "https://res.amemo.cn/receiving-code-review.png",
+    "type": "vega-punk"
+  },
+  {
+    "name": "呈阅使",
+    "code": "review-request",
+    "icon": "https://res.amemo.cn/requesting-code-review.png",
+    "type": "vega-punk"
+  },
+  {
+    "name": "百炼使",
+    "code": "parallel-swarm",
+    "icon": "https://res.amemo.cn/dispatching-parallel-agents.png",
+    "type": "vega-punk"
+  },
+  {
+    "name": "分遣使",
+    "code": "task-dispatcher",
+    "icon": "https://res.amemo.cn/subagent-driven-development.png",
+    "type": "vega-punk"
+  },
+  {
+    "name": "溯因官",
+    "code": "root-cause",
+    "icon": "https://res.amemo.cn/systematic-debugging.png",
+    "type": "vega-punk"
+  },
+  {
+    "name": "先试官",
+    "code": "test-first",
+    "icon": "https://res.amemo.cn/test-driven-development.png",
+    "type": "vega-punk"
+  },
+  {
+    "name": "验契使",
+    "code": "verify-gate",
+    "icon": "https://res.amemo.cn/verification-before-completion.png",
+    "type": "vega-punk"
+  },
+  {
+    "name": "筑枝使",
+    "code": "worktree-setup",
+    "icon": "https://res.amemo.cn/using-git-worktrees.png",
+    "type": "vega-punk"
+  },
+  {
+    "name": "浏览器精灵",
+    "code": "agent-browser",
+    "icon": "https://res.amemo.cn/agent-browser.png",
+    "type": "user"
+  },
+  {
+    "name": "算法画师",
+    "code": "algorithmic-art",
+    "icon": "https://res.amemo.cn/algorithmic-art.png",
+    "type": "user"
+  },
+  {
+    "name": "品牌管家",
+    "code": "brand-guidelines",
+    "icon": "https://res.amemo.cn/brand-guidelines.png",
+    "type": "user"
+  },
+  {
+    "name": "画布设计师",
+    "code": "canvas-design",
+    "icon": "https://res.amemo.cn/canvas-design.png",
+    "type": "user"
+  },
+  {
+    "name": "技能探知",
+    "code": "find-skills",
+    "icon": "https://res.amemo.cn/find-skills.png",
+    "type": "user"
+  },
+  {
+    "name": "Flutter透视",
+    "code": "flutter-lens",
+    "icon": "https://res.amemo.cn/flutter-lens.png",
+    "type": "user"
+  },
+  {
+    "name": "前端筑梦师",
+    "code": "frontend-design",
+    "icon": "https://res.amemo.cn/frontend-design.png",
+    "type": "user"
+  },
+  {
+    "name": "内宣使者",
+    "code": "internal-comms",
+    "icon": "https://res.amemo.cn/internal-comms.png",
+    "type": "user"
+  },
+  {
+    "name": "MCP建造师",
+    "code": "mcp-builder",
+    "icon": "https://res.amemo.cn/mcp-builder.png",
+    "type": "user"
+  },
+  {
+    "name": "自省者",
+    "code": "self-improving-agent",
+    "icon": "https://res.amemo.cn/self-improving-agent.png",
+    "type": "user"
+  },
+  {
+    "name": "技能锻造师",
+    "code": "skill-creator",
+    "icon": "https://res.amemo.cn/skill-creator.png",
+    "type": "user"
+  },
+  {
+    "name": "动态图匠",
+    "code": "slack-gif-creator",
+    "icon": "https://res.amemo.cn/slack-gif-creator.png",
+    "type": "user"
+  },
+  {
+    "name": "主题工厂",
+    "code": "theme-factory",
+    "icon": "https://res.amemo.cn/theme-factory.png",
+    "type": "user"
+  },
+  {
+    "name": "UI/UX极客",
+    "code": "ui-ux-pro-max",
+    "icon": "https://res.amemo.cn/ui-ux-pro-max.png",
+    "type": "user"
+  },
+  {
+    "name": "PDF圣手",
+    "code": "pdf",
+    "icon": "https://res.amemo.cn/pdf.png",
+    "type": "user"
+  },
+  {
+    "name": "演示大师",
+    "code": "pptx",
+    "icon": "https://res.amemo.cn/pptx.png",
+    "type": "user"
+  },
+  {
+    "name": "文档大师",
+    "code": "docx",
+    "icon": "https://res.amemo.cn/docx.png",
+    "type": "user"
+  },
+  {
+    "name": "表格圣手",
+    "code": "xlsx",
+    "icon": "https://res.amemo.cn/xlsx.png",
+    "type": "user"
+  },
+  {
+    "name": "人类学家",
+    "code": "academic-anthropologist",
+    "icon": "https://res.amemo.cn/academic.png",
+    "type": "academic"
+  },
+  {
+    "name": "地理学家",
+    "code": "academic-geographer",
+    "icon": "https://res.amemo.cn/academic.png",
+    "type": "academic"
+  },
+  {
+    "name": "历史学家",
+    "code": "academic-historian",
+    "icon": "https://res.amemo.cn/academic.png",
+    "type": "academic"
+  },
+  {
+    "name": "叙事学家",
+    "code": "academic-narratologist",
+    "icon": "https://res.amemo.cn/academic.png",
+    "type": "academic"
+  },
+  {
+    "name": "心理学家",
+    "code": "academic-psychologist",
+    "icon": "https://res.amemo.cn/academic.png",
+    "type": "academic"
+  },
+  {
+    "name": "品牌守护者",
+    "code": "design-brand-guardian",
+    "icon": "https://res.amemo.cn/design.png",
+    "type": "design"
+  },
+  {
+    "name": "图像提示词工程师",
+    "code": "design-image-prompt-engineer",
+    "icon": "https://res.amemo.cn/design.png",
+    "type": "design"
+  },
+  {
+    "name": "包容性视觉专家",
+    "code": "design-inclusive-visuals-specialist",
+    "icon": "https://res.amemo.cn/design.png",
+    "type": "design"
+  },
+  {
+    "name": "UI设计师",
+    "code": "design-ui-designer",
+    "icon": "https://res.amemo.cn/design.png",
+    "type": "design"
+  },
+  {
+    "name": "UX架构师",
+    "code": "design-ux-architect",
+    "icon": "https://res.amemo.cn/design.png",
+    "type": "design"
+  },
+  {
+    "name": "UX研究员",
+    "code": "design-ux-researcher",
+    "icon": "https://res.amemo.cn/design.png",
+    "type": "design"
+  },
+  {
+    "name": "视觉叙事师",
+    "code": "design-visual-storyteller",
+    "icon": "https://res.amemo.cn/design.png",
+    "type": "design"
+  },
+  {
+    "name": "趣味注入师",
+    "code": "design-whimsy-injector",
+    "icon": "https://res.amemo.cn/design.png",
+    "type": "design"
+  },
+  {
+    "name": "AI数据修复工程师",
+    "code": "engineering-ai-data-remediation-engineer",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "AI工程师",
+    "code": "engineering-ai-engineer",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "自主优化架构师",
+    "code": "engineering-autonomous-optimization-architect",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "后端架构师",
+    "code": "engineering-backend-architect",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "CMS开发者",
+    "code": "engineering-cms-developer",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "代码审查师",
+    "code": "engineering-code-reviewer",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "代码库引导工程师",
+    "code": "engineering-codebase-onboarding-engineer",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "数据工程师",
+    "code": "engineering-data-engineer",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "数据库优化师",
+    "code": "engineering-database-optimizer",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "DevOps自动化师",
+    "code": "engineering-devops-automator",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "邮件情报工程师",
+    "code": "engineering-email-intelligence-engineer",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "嵌入式固件工程师",
+    "code": "engineering-embedded-firmware-engineer",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "飞书集成开发者",
+    "code": "engineering-feishu-integration-developer",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "灯丝优化专家",
+    "code": "engineering-filament-optimization-specialist",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "前端开发者",
+    "code": "engineering-frontend-developer",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "Git工作流大师",
+    "code": "engineering-git-workflow-master",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "事故响应指挥官",
+    "code": "engineering-incident-response-commander",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "最小变更工程师",
+    "code": "engineering-minimal-change-engineer",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "移动应用构建师",
+    "code": "engineering-mobile-app-builder",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "快速原型师",
+    "code": "engineering-rapid-prototyper",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "安全工程师",
+    "code": "engineering-security-engineer",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "高级开发者",
+    "code": "engineering-senior-developer",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "软件架构师",
+    "code": "engineering-software-architect",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "Solidity合约工程师",
+    "code": "engineering-solidity-smart-contract-engineer",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "站点可靠性工程师",
+    "code": "engineering-sre",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "技术写手",
+    "code": "engineering-technical-writer",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "威胁检测工程师",
+    "code": "engineering-threat-detection-engineer",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "语音AI集成工程师",
+    "code": "engineering-voice-ai-integration-engineer",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "微信小程序开发者",
+    "code": "engineering-wechat-mini-program-developer",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "engineering"
+  },
+  {
+    "name": "财务主管",
+    "code": "finance-bookkeeper-controller",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "finance"
+  },
+  {
+    "name": "金融分析师",
+    "code": "finance-financial-analyst",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "finance"
+  },
+  {
+    "name": "财务规划分析师",
+    "code": "finance-fpa-analyst",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "finance"
+  },
+  {
+    "name": "投资研究员",
+    "code": "finance-investment-researcher",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "finance"
+  },
+  {
+    "name": "税务策略师",
+    "code": "finance-tax-strategist",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "finance"
+  },
+  {
+    "name": "Blender插件工程师",
+    "code": "blender-addon-engineer",
+    "icon": "https://res.amemo.cn/game-development.png",
+    "type": "game-development"
+  },
+  {
+    "name": "游戏音频工程师",
+    "code": "game-audio-engineer",
+    "icon": "https://res.amemo.cn/game-development.png",
+    "type": "game-development"
+  },
+  {
+    "name": "游戏设计师",
+    "code": "game-designer",
+    "icon": "https://res.amemo.cn/game-development.png",
+    "type": "game-development"
+  },
+  {
+    "name": "Godot游戏脚本师",
+    "code": "godot-gameplay-scripter",
+    "icon": "https://res.amemo.cn/game-development.png",
+    "type": "game-development"
+  },
+  {
+    "name": "Godot多人游戏工程师",
+    "code": "godot-multiplayer-engineer",
+    "icon": "https://res.amemo.cn/game-development.png",
+    "type": "game-development"
+  },
+  {
+    "name": "Godot着色器开发者",
+    "code": "godot-shader-developer",
+    "icon": "https://res.amemo.cn/game-development.png",
+    "type": "game-development"
+  },
+  {
+    "name": "关卡设计师",
+    "code": "level-designer",
+    "icon": "https://res.amemo.cn/game-development.png",
+    "type": "game-development"
+  },
+  {
+    "name": "叙事设计师",
+    "code": "narrative-designer",
+    "icon": "https://res.amemo.cn/game-development.png",
+    "type": "game-development"
+  },
+  {
+    "name": "Roblox角色创建师",
+    "code": "roblox-avatar-creator",
+    "icon": "https://res.amemo.cn/game-development.png",
+    "type": "game-development"
+  },
+  {
+    "name": "Roblox体验设计师",
+    "code": "roblox-experience-designer",
+    "icon": "https://res.amemo.cn/game-development.png",
+    "type": "game-development"
+  },
+  {
+    "name": "Roblox系统脚本师",
+    "code": "roblox-systems-scripter",
+    "icon": "https://res.amemo.cn/game-development.png",
+    "type": "game-development"
+  },
+  {
+    "name": "技术美术师",
+    "code": "technical-artist",
+    "icon": "https://res.amemo.cn/game-development.png",
+    "type": "game-development"
+  },
+  {
+    "name": "Unity架构师",
+    "code": "unity-architect",
+    "icon": "https://res.amemo.cn/game-development.png",
+    "type": "game-development"
+  },
+  {
+    "name": "Unity编辑器工具开发者",
+    "code": "unity-editor-tool-developer",
+    "icon": "https://res.amemo.cn/game-development.png",
+    "type": "game-development"
+  },
+  {
+    "name": "Unity多人游戏工程师",
+    "code": "unity-multiplayer-engineer",
+    "icon": "https://res.amemo.cn/game-development.png",
+    "type": "game-development"
+  },
+  {
+    "name": "Unity着色图艺术家",
+    "code": "unity-shader-graph-artist",
+    "icon": "https://res.amemo.cn/game-development.png",
+    "type": "game-development"
+  },
+  {
+    "name": "Unreal多人架构师",
+    "code": "unreal-multiplayer-architect",
+    "icon": "https://res.amemo.cn/game-development.png",
+    "type": "game-development"
+  },
+  {
+    "name": "Unreal系统工程师",
+    "code": "unreal-systems-engineer",
+    "icon": "https://res.amemo.cn/game-development.png",
+    "type": "game-development"
+  },
+  {
+    "name": "Unreal技术美术师",
+    "code": "unreal-technical-artist",
+    "icon": "https://res.amemo.cn/game-development.png",
+    "type": "game-development"
+  },
+  {
+    "name": "Unreal世界构建师",
+    "code": "unreal-world-builder",
+    "icon": "https://res.amemo.cn/game-development.png",
+    "type": "game-development"
+  },
+  {
+    "name": "智能搜索优化师",
+    "code": "marketing-agentic-search-optimizer",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "AI引用策略师",
+    "code": "marketing-ai-citation-strategist",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "应用商店优化师",
+    "code": "marketing-app-store-optimizer",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "百度SEO专员",
+    "code": "marketing-baidu-seo-specialist",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "B站内容策略师",
+    "code": "marketing-bilibili-content-strategist",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "图书合著师",
+    "code": "marketing-book-co-author",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "轮播增长引擎",
+    "code": "marketing-carousel-growth-engine",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "中国电商运营师",
+    "code": "marketing-china-ecommerce-operator",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "中国市场本地化策略师",
+    "code": "marketing-china-market-localization-strategist",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "内容创作者",
+    "code": "marketing-content-creator",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "跨境电商运营师",
+    "code": "marketing-cross-border-ecommerce",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "抖音策略师",
+    "code": "marketing-douyin-strategist",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "增长黑客",
+    "code": "marketing-growth-hacker",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "Instagram策展人",
+    "code": "marketing-instagram-curator",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "快手策略师",
+    "code": "marketing-kuaishou-strategist",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "LinkedIn内容创作者",
+    "code": "marketing-linkedin-content-creator",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "直播电商教练",
+    "code": "marketing-livestream-commerce-coach",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "播客策略师",
+    "code": "marketing-podcast-strategist",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "私域运营师",
+    "code": "marketing-private-domain-operator",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "Reddit社区建设者",
+    "code": "marketing-reddit-community-builder",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "SEO专员",
+    "code": "marketing-seo-specialist",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "短视频剪辑教练",
+    "code": "marketing-short-video-editing-coach",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "社交媒体策略师",
+    "code": "marketing-social-media-strategist",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "TikTok策略师",
+    "code": "marketing-tiktok-strategist",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "Twitter互动师",
+    "code": "marketing-twitter-engager",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "视频优化专员",
+    "code": "marketing-video-optimization-specialist",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "微信公众号运营",
+    "code": "marketing-wechat-official-account",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "微博策略师",
+    "code": "marketing-weibo-strategist",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "小红书专员",
+    "code": "marketing-xiaohongshu-specialist",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "知乎策略师",
+    "code": "marketing-zhihu-strategist",
+    "icon": "https://res.amemo.cn/marketing.png",
+    "type": "marketing"
+  },
+  {
+    "name": "广告审计师",
+    "code": "paid-media-auditor",
+    "icon": "https://res.amemo.cn/paid-media.png",
+    "type": "paid-media"
+  },
+  {
+    "name": "广告创意策略师",
+    "code": "paid-media-creative-strategist",
+    "icon": "https://res.amemo.cn/paid-media.png",
+    "type": "paid-media"
+  },
+  {
+    "name": "社交广告策略师",
+    "code": "paid-media-paid-social-strategist",
+    "icon": "https://res.amemo.cn/paid-media.png",
+    "type": "paid-media"
+  },
+  {
+    "name": "PPC策略师",
+    "code": "paid-media-ppc-strategist",
+    "icon": "https://res.amemo.cn/paid-media.png",
+    "type": "paid-media"
+  },
+  {
+    "name": "程序化广告购买师",
+    "code": "paid-media-programmatic-buyer",
+    "icon": "https://res.amemo.cn/paid-media.png",
+    "type": "paid-media"
+  },
+  {
+    "name": "搜索查询分析师",
+    "code": "paid-media-search-query-analyst",
+    "icon": "https://res.amemo.cn/paid-media.png",
+    "type": "paid-media"
+  },
+  {
+    "name": "广告追踪专员",
+    "code": "paid-media-tracking-specialist",
+    "icon": "https://res.amemo.cn/paid-media.png",
+    "type": "paid-media"
+  },
+  {
+    "name": "行为提示引擎",
+    "code": "product-behavioral-nudge-engine",
+    "icon": "https://res.amemo.cn/product.png",
+    "type": "product"
+  },
+  {
+    "name": "反馈综合器",
+    "code": "product-feedback-synthesizer",
+    "icon": "https://res.amemo.cn/product.png",
+    "type": "product"
+  },
+  {
+    "name": "产品经理",
+    "code": "product-manager",
+    "icon": "https://res.amemo.cn/product.png",
+    "type": "product"
+  },
+  {
+    "name": "冲刺优先级排序器",
+    "code": "product-sprint-prioritizer",
+    "icon": "https://res.amemo.cn/product.png",
+    "type": "product"
+  },
+  {
+    "name": "趋势研究员",
+    "code": "product-trend-researcher",
+    "icon": "https://res.amemo.cn/product.png",
+    "type": "product"
+  },
+  {
+    "name": "实验追踪师",
+    "code": "project-management-experiment-tracker",
+    "icon": "https://res.amemo.cn/project-management.png",
+    "type": "project-management"
+  },
+  {
+    "name": "Jira工作流管家",
+    "code": "project-management-jira-workflow-steward",
+    "icon": "https://res.amemo.cn/project-management.png",
+    "type": "project-management"
+  },
+  {
+    "name": "项目协调员",
+    "code": "project-management-project-shepherd",
+    "icon": "https://res.amemo.cn/project-management.png",
+    "type": "project-management"
+  },
+  {
+    "name": "工作室运营总监",
+    "code": "project-management-studio-operations",
+    "icon": "https://res.amemo.cn/project-management.png",
+    "type": "project-management"
+  },
+  {
+    "name": "工作室制作人",
+    "code": "project-management-studio-producer",
+    "icon": "https://res.amemo.cn/project-management.png",
+    "type": "project-management"
+  },
+  {
+    "name": "高级项目经理",
+    "code": "project-manager-senior",
+    "icon": "https://res.amemo.cn/project-management.png",
+    "type": "project-management"
+  },
+  {
+    "name": "客户关系策略师",
+    "code": "sales-account-strategist",
+    "icon": "https://res.amemo.cn/sales.png",
+    "type": "sales"
+  },
+  {
+    "name": "销售教练",
+    "code": "sales-coach",
+    "icon": "https://res.amemo.cn/sales.png",
+    "type": "sales"
+  },
+  {
+    "name": "交易策略师",
+    "code": "sales-deal-strategist",
+    "icon": "https://res.amemo.cn/sales.png",
+    "type": "sales"
+  },
+  {
+    "name": "需求挖掘教练",
+    "code": "sales-discovery-coach",
+    "icon": "https://res.amemo.cn/sales.png",
+    "type": "sales"
+  },
+  {
+    "name": "售前工程师",
+    "code": "sales-engineer",
+    "icon": "https://res.amemo.cn/sales.png",
+    "type": "sales"
+  },
+  {
+    "name": "外拓策略师",
+    "code": "sales-outbound-strategist",
+    "icon": "https://res.amemo.cn/sales.png",
+    "type": "sales"
+  },
+  {
+    "name": "销售外联专员",
+    "code": "sales-outreach",
+    "icon": "https://res.amemo.cn/sales.png",
+    "type": "sales"
+  },
+  {
+    "name": "销售管道分析师",
+    "code": "sales-pipeline-analyst",
+    "icon": "https://res.amemo.cn/sales.png",
+    "type": "sales"
+  },
+  {
+    "name": "提案策略师",
+    "code": "sales-proposal-strategist",
+    "icon": "https://res.amemo.cn/sales.png",
+    "type": "sales"
+  },
+  {
+    "name": "macOS图形工程师",
+    "code": "macos-spatial-metal-engineer",
+    "icon": "https://res.amemo.cn/spatial-computing.png",
+    "type": "spatial-computing"
+  },
+  {
+    "name": "终端集成专员",
+    "code": "terminal-integration-specialist",
+    "icon": "https://res.amemo.cn/spatial-computing.png",
+    "type": "spatial-computing"
+  },
+  {
+    "name": "visionOS空间工程师",
+    "code": "visionos-spatial-engineer",
+    "icon": "https://res.amemo.cn/spatial-computing.png",
+    "type": "spatial-computing"
+  },
+  {
+    "name": "XR座舱交互专员",
+    "code": "xr-cockpit-interaction-specialist",
+    "icon": "https://res.amemo.cn/spatial-computing.png",
+    "type": "spatial-computing"
+  },
+  {
+    "name": "XR沉浸式开发者",
+    "code": "xr-immersive-developer",
+    "icon": "https://res.amemo.cn/spatial-computing.png",
+    "type": "spatial-computing"
+  },
+  {
+    "name": "XR界面架构师",
+    "code": "xr-interface-architect",
+    "icon": "https://res.amemo.cn/spatial-computing.png",
+    "type": "spatial-computing"
+  },
+  {
+    "name": "应付账款代理",
+    "code": "accounts-payable-agent",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "智能体身份信任架构师",
+    "code": "agentic-identity-trust",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "智能体编排师",
+    "code": "agents-orchestrator",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "自动化治理架构师",
+    "code": "automation-governance-architect",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "区块链安全审计师",
+    "code": "blockchain-security-auditor",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "合规审计师",
+    "code": "compliance-auditor",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "企业培训设计师",
+    "code": "corporate-training-designer",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "客户服务代表",
+    "code": "customer-service",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "数据整合代理",
+    "code": "data-consolidation-agent",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "政府数字化售前顾问",
+    "code": "government-digital-presales-consultant",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "医疗客服专员",
+    "code": "healthcare-customer-service",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "医疗营销合规专员",
+    "code": "healthcare-marketing-compliance",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "酒店客户服务",
+    "code": "hospitality-guest-services",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "人力资源入职专员",
+    "code": "hr-onboarding",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "身份图谱操作员",
+    "code": "identity-graph-operator",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "语言翻译员",
+    "code": "language-translator",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "法律计费时间追踪",
+    "code": "legal-billing-time-tracking",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "法律客户接待",
+    "code": "legal-client-intake",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "法律文件审核",
+    "code": "legal-document-review",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "贷款专员助理",
+    "code": "loan-officer-assistant",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "LSP索引工程师",
+    "code": "lsp-index-engineer",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "房地产买卖助手",
+    "code": "real-estate-buyer-seller",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "招聘专员",
+    "code": "recruitment-specialist",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "报告分发代理",
+    "code": "report-distribution-agent",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "零售客户退货处理",
+    "code": "retail-customer-returns",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "销售数据提取代理",
+    "code": "sales-data-extraction-agent",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "首席运营官",
+    "code": "specialized-chief-of-staff",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "土木工程师",
+    "code": "specialized-civil-engineer",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "文化智能策略师",
+    "code": "specialized-cultural-intelligence-strategist",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "开发者倡导者",
+    "code": "specialized-developer-advocate",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "文档生成专家",
+    "code": "specialized-document-generator",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "法国咨询市场导航员",
+    "code": "specialized-french-consulting-market",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "韩国商业导航员",
+    "code": "specialized-korean-business-navigator",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "MCP构建器",
+    "code": "specialized-mcp-builder",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "模型QA专员",
+    "code": "specialized-model-qa",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "Salesforce架构师",
+    "code": "specialized-salesforce-architect",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "工作流架构师",
+    "code": "specialized-workflow-architect",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "留学顾问",
+    "code": "study-abroad-advisor",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "供应链策略师",
+    "code": "supply-chain-strategist",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "ZK管理员",
+    "code": "zk-steward",
+    "icon": "https://res.amemo.cn/specialized.png",
+    "type": "specialized"
+  },
+  {
+    "name": "分析报表专员",
+    "code": "support-analytics-reporter",
+    "icon": "https://res.amemo.cn/support.png",
+    "type": "support"
+  },
+  {
+    "name": "执行摘要生成器",
+    "code": "support-executive-summary-generator",
+    "icon": "https://res.amemo.cn/support.png",
+    "type": "support"
+  },
+  {
+    "name": "财务追踪器",
+    "code": "support-finance-tracker",
+    "icon": "https://res.amemo.cn/support.png",
+    "type": "support"
+  },
+  {
+    "name": "基础设施维护员",
+    "code": "support-infrastructure-maintainer",
+    "icon": "https://res.amemo.cn/support.png",
+    "type": "support"
+  },
+  {
+    "name": "法律合规检查员",
+    "code": "support-legal-compliance-checker",
+    "icon": "https://res.amemo.cn/support.png",
+    "type": "support"
+  },
+  {
+    "name": "支持响应专员",
+    "code": "support-support-responder",
+    "icon": "https://res.amemo.cn/support.png",
+    "type": "support"
+  },
+  {
+    "name": "无障碍审计员",
+    "code": "testing-accessibility-auditor",
+    "icon": "https://res.amemo.cn/testing.png",
+    "type": "testing"
+  },
+  {
+    "name": "API测试员",
+    "code": "testing-api-tester",
+    "icon": "https://res.amemo.cn/testing.png",
+    "type": "testing"
+  },
+  {
+    "name": "证据收集员",
+    "code": "testing-evidence-collector",
+    "icon": "https://res.amemo.cn/testing.png",
+    "type": "testing"
+  },
+  {
+    "name": "性能基准测试员",
+    "code": "testing-performance-benchmarker",
+    "icon": "https://res.amemo.cn/testing.png",
+    "type": "testing"
+  },
+  {
+    "name": "现实检查员",
+    "code": "testing-reality-checker",
+    "icon": "https://res.amemo.cn/testing.png",
+    "type": "testing"
+  },
+  {
+    "name": "测试结果分析员",
+    "code": "testing-test-results-analyzer",
+    "icon": "https://res.amemo.cn/testing.png",
+    "type": "testing"
+  },
+  {
+    "name": "工具评估员",
+    "code": "testing-tool-evaluator",
+    "icon": "https://res.amemo.cn/testing.png",
+    "type": "testing"
+  },
+  {
+    "name": "工作流优化师",
+    "code": "testing-workflow-optimizer",
+    "icon": "https://res.amemo.cn/testing.png",
+    "type": "testing"
+  },
+  {
+    "name": "CEO审视",
+    "code": "gstack-openclaw-ceo-review",
+    "icon": "https://res.amemo.cn/gstack.png",
+    "type": "gstack"
+  },
+  {
+    "name": "深度调研",
+    "code": "gstack-openclaw-investigate",
+    "icon": "https://res.amemo.cn/gstack.png",
+    "type": "gstack"
+  },
+  {
+    "name": "开放答疑",
+    "code": "gstack-openclaw-office-hours",
+    "icon": "https://res.amemo.cn/gstack.png",
+    "type": "gstack"
+  },
+  {
+    "name": "回顾复盘",
+    "code": "gstack-openclaw-retro",
+    "icon": "https://res.amemo.cn/gstack.png",
+    "type": "gstack"
+  }
+]
