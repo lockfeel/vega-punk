@@ -175,8 +175,6 @@ async def chatClaw(websocket: WebSocket):
                     match = re.search(r'[~/\w.\-]+/skills/[^/]+/SKILL\.md', title)
                     filePath = match.group(0) if match else ''
                     skillName = getSkillName(filePath)
-                    logger.info(f"[Skill 调用] {skillName}")
-                    logger.info(f"[Skill 路径] {filePath}")
                     await websocket.send_json({
                         "type": "delta",
                         "runId": runId,

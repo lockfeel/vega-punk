@@ -46,8 +46,18 @@ class SessionManager:
                     sessionKey=dbRow['sessionKey'],
                     botId=dbRow['botId']
                 )
-            if botId == 'openclaw': return None
-            sessionKey = f"agent:main:user-{userId}-{botId}"
+            if botId == 'openclaw':
+                dbRow = self.db.getOpenclawSession()
+                if dbRow:
+                    return Session(
+                        userId=dbRow['userId'],
+                        sessionKey=dbRow['sessionKey'],
+                        botId=dbRow['botId']
+                    )
+                self.db.createSession(userId='openclaw', botId='openclaw', sessionKey='agent:main:main')
+                return Session(userId='openclaw', sessionKey='agent:main:main', botId='openclaw')
+            else:
+                sessionKey = f"agent:main:user-{userId}-{botId}"
             try:
                 await self.gateway.sendRequest("sessions.create", {
                     "key": sessionKey
