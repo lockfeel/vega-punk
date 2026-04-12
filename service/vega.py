@@ -132,6 +132,25 @@ async def getMessages(request: Request):
     return JSONResponse({"messages": result})
 
 
+@app.post("/delete-chat")
+async def deleteChat(request: Request):
+    if not db or not sessionManager:
+        return JSONResponse({"error": "服务未就绪"}, status_code=503)
+    body = await request.json()
+    botId = body.get("botId")
+    if not botId:
+        return JSONResponse({"error": "缺少 botId"}, status_code=400)
+    db.clearMessagesByBotId(botId)
+    sessions = db.getSessionsByBotId(botId)
+    for row in sessions:
+        try:
+            await gatewayClient.sendRequest("sessions.delete", {"key": row['sessionKey']})
+        except Exception as e:
+            logger.error(f"[DeleteChat] 删除 session 失败 {row['sessionKey']}: {e}")
+        db.closeSessionByKey(row['sessionKey'])
+    return JSONResponse({"success": True, "botId": botId})
+
+
 @app.websocket("/chatClaw")
 async def chatClaw(websocket: WebSocket):
     await websocket.accept()

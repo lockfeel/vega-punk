@@ -190,6 +190,15 @@ class DBase:
     def deleteMessages(self):
         self.execute("UPDATE messages SET deleted = 1 WHERE 1")
 
+    def clearMessagesByBotId(self, botId: str):
+        self.execute("UPDATE messages SET deleted = 1 WHERE botId = ?", (botId,))
+
+    def getSessionsByBotId(self, botId: str) -> List[Dict[str, Any]]:
+        return self.fetchAll(
+            "SELECT * FROM sessions WHERE botId = ? AND deleted = 0",
+            (botId,)
+        )
+
     def createSession(self, userId: str, botId: str, sessionKey: str) -> Dict[str, Any]:
         now = int(time.time())
         with self._conn() as conn:

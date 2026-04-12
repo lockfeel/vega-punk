@@ -5,11 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>VAGA-PUNK</title>
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@300;400;500;600&family=Syne:wght@500;700&display=swap" rel="stylesheet">
-
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
@@ -187,14 +183,18 @@
             box-shadow: 0 0 15px var(--primary-glow);
         }
 
+        /* 全局图标尺寸 */
+        i.fa-solid {
+            font-size: 24px;
+        }
+
         .search-icon {
             position: absolute;
             left: 36px;
             top: 50%;
             transform: translateY(-50%);
             color: var(--text-muted);
-            width: 16px;
-            height: 16px;
+            font-size: 14px;
         }
 
         .list-items {
@@ -442,8 +442,8 @@
             background: transparent;
             border: 1px solid var(--border-subtle);
             color: var(--text-muted);
-            width: 40px;
-            height: 40px;
+            width: 44px;
+            height: 44px;
             border-radius: 12px;
             display: flex;
             align-items: center;
@@ -759,8 +759,8 @@
             background: transparent;
             border: none;
             color: var(--text-muted);
-            width: 32px;
-            height: 32px;
+            width: 36px;
+            height: 36px;
             border-radius: 8px;
             cursor: pointer;
             display: flex;
@@ -816,10 +816,307 @@
             box-shadow: 0 4px 15px var(--primary-glow);
         }
 
+        .send-btn i.fa-solid {
+            font-size: 18px;
+        }
+
         .send-btn:hover {
             background: #753bb8;
             transform: translateY(-2px);
             box-shadow: 0 6px 20px rgba(92, 46, 145, 0.6);
+        }
+
+        /* 命令选择框 */
+        .command-palette-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1000;
+            display: none;
+        }
+
+        .command-palette-overlay.visible {
+            display: block;
+        }
+
+        .command-palette {
+            position: absolute;
+            width: 520px;
+            max-height: 60vh;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-subtle);
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px var(--primary-glow);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            animation: paletteSlideIn 0.2s ease-out;
+        }
+
+        @keyframes paletteSlideIn {
+            from { opacity: 0; transform: translateY(10px) scale(0.97); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .command-palette-search {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .command-palette-search input {
+            width: 100%;
+            background: var(--bg-base);
+            border: 1px solid var(--border-subtle);
+            border-radius: 10px;
+            padding: 10px 14px;
+            color: var(--text-main);
+            font-family: inherit;
+            font-size: 0.95rem;
+        }
+
+        .command-palette-search input:focus {
+            outline: none;
+            border-color: var(--primary-purple);
+            box-shadow: 0 0 12px var(--primary-glow);
+        }
+
+        .command-palette-search input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .command-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .command-group-title {
+            font-family: 'Syne', sans-serif;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            padding: 8px 12px 4px;
+        }
+
+        .command-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .command-item:hover, .command-item.highlighted {
+            background: var(--bg-elevated);
+        }
+
+        .command-item.highlighted {
+            background: rgba(92, 46, 145, 0.2);
+            border: 1px solid var(--border-subtle);
+        }
+
+        .command-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: rgba(92, 46, 145, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--primary-purple);
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .command-item.highlighted .command-icon {
+            background: rgba(74, 222, 128, 0.15);
+            color: var(--secondary-green);
+        }
+
+        .command-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .command-name {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--text-main);
+            font-weight: 500;
+        }
+
+        .command-desc {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            margin-top: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .command-shortcut {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            background: var(--bg-base);
+            padding: 3px 8px;
+            border-radius: 6px;
+            border: 1px solid rgba(92, 46, 145, 0.2);
+            font-family: 'JetBrains Mono', monospace;
+            flex-shrink: 0;
+        }
+
+        .command-palette-footer {
+            padding: 10px 16px;
+            border-top: 1px solid var(--border-subtle);
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+        }
+
+        .command-palette-footer kbd {
+            background: var(--bg-base);
+            padding: 2px 6px;
+            border-radius: 4px;
+            border: 1px solid rgba(92, 46, 145, 0.2);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+        }
+
+        /* 删除确认弹框 */
+        .delete-confirm-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 2000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .delete-confirm-overlay.visible {
+            display: flex;
+        }
+
+        .delete-confirm-dialog {
+            width: 400px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border-subtle);
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(255, 80, 80, 0.1);
+            padding: 32px;
+            animation: dialogFadeIn 0.2s ease-out;
+        }
+
+        @keyframes dialogFadeIn {
+            from { opacity: 0; transform: scale(0.95) translateY(10px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+
+        .delete-confirm-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            color: #ef4444;
+            font-size: 24px;
+        }
+
+        .delete-confirm-title {
+            text-align: center;
+            font-family: 'Syne', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 8px;
+        }
+
+        .delete-confirm-message {
+            text-align: center;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            margin-bottom: 28px;
+        }
+
+        .delete-confirm-bot {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            background: var(--bg-base);
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-bottom: 24px;
+        }
+
+        .delete-confirm-bot img {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            object-fit: cover;
+        }
+
+        .delete-confirm-bot-name {
+            font-family: 'Syne', sans-serif;
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: var(--text-main);
+        }
+
+        .delete-confirm-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        .delete-cancel-btn, .delete-confirm-btn {
+            flex: 1;
+            padding: 12px;
+            border-radius: 12px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+        }
+
+        .delete-cancel-btn {
+            background: var(--bg-elevated);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-subtle);
+        }
+
+        .delete-cancel-btn:hover {
+            background: var(--bg-surface);
+            color: var(--text-main);
+        }
+
+        .delete-confirm-btn {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .delete-confirm-btn:hover {
+            background: rgba(239, 68, 68, 0.25);
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.2);
         }
     </style>
 </head>
@@ -834,27 +1131,27 @@
 
     <div class="nav-icons">
         <div class="nav-item active" id="navSessions">
-            <i data-lucide="message-square"></i>
+            <i class="fa-solid fa-message"></i>
         </div>
         <div class="nav-item" id="navBots">
-            <i data-lucide="bot"></i>
+            <i class="fa-solid fa-robot"></i>
         </div>
     </div>
 
     <div class="nav-bottom">
         <div class="nav-item">
-            <i data-lucide="bell"></i>
+            <i class="fa-solid fa-bell"></i>
         </div>
         <div class="nav-item">
-            <i data-lucide="settings"></i>
+            <i class="fa-solid fa-gear"></i>
         </div>
     </div>
 </nav>
 
 <aside class="session-list">
     <div class="search-container">
-        <i data-lucide="search" class="search-icon"></i>
-        <input type="text" class="search-bar" placeholder="Search sessions...">
+        <i class="fa-solid fa-magnifying-glass search-icon"></i>
+        <input type="text" class="search-bar" placeholder="搜索">
     </div>
 
     <div class="list-items">
@@ -873,7 +1170,7 @@
             </div>
         </div>
         <div class="header-actions">
-            <button class="action-btn"><i data-lucide="more-horizontal"></i></button>
+            <button class="action-btn"><i class="fa-solid fa-trash"></i></button>
         </div>
     </header>
 
@@ -886,21 +1183,54 @@
         <div class="chat-input-container">
             <div class="input-toolbar">
                 <input type="file" id="fileInput" style="display: none" accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.pdf,.txt,.json">
-                <button class="toolbar-btn" id="uploadBtn" title="上传文件"><i data-lucide="paperclip"></i></button>
-                <button class="toolbar-btn" id="imageBtn" title="上传图片"><i data-lucide="image"></i></button>
-                <button class="toolbar-btn" title="Code Snippet"><i data-lucide="code"></i></button>
+                <button class="toolbar-btn" id="uploadBtn" title="上传文件"><i class="fa-solid fa-paperclip"></i></button>
+                <button class="toolbar-btn" id="imageBtn" title="上传图片"><i class="fa-solid fa-image"></i></button>
                 <div style="flex:1"></div>
-                <button class="toolbar-btn" title="History"><i data-lucide="history"></i></button>
+                <button class="toolbar-btn" title="code-list"><i class="fa-solid fa-list"></i></button>
             </div>
             <div class="input-area">
                 <textarea id="messageInput" placeholder="输入消息 (Enter 发送, Shift+Enter 换行)..." rows="1"></textarea>
                 <button class="send-btn" id="sendBtn">
-                    <i data-lucide="send" style="width: 20px; height: 20px; transform: translateX(-2px) translateY(2px);"></i>
+                    <i class="fa-solid fa-paper-plane"></i>
                 </button>
             </div>
         </div>
     </div>
 </main>
+
+<!-- 命令选择框 -->
+<div class="command-palette-overlay" id="commandPaletteOverlay">
+    <div class="command-palette">
+        <div class="command-palette-search">
+            <input type="text" id="commandSearchInput" placeholder="输入命令名称搜索..." autocomplete="off">
+        </div>
+        <div class="command-list" id="commandList"></div>
+        <div class="command-palette-footer">
+            <span><kbd>↑</kbd> <kbd>↓</kbd> 导航</span>
+            <span><kbd>↵</kbd> 选择</span>
+            <span><kbd>Esc</kbd> 关闭</span>
+        </div>
+    </div>
+</div>
+
+<!-- 删除确认弹框 -->
+<div class="delete-confirm-overlay" id="deleteConfirmOverlay">
+    <div class="delete-confirm-dialog">
+        <div class="delete-confirm-icon">
+            <i class="fa-solid fa-trash"></i>
+        </div>
+        <div class="delete-confirm-title">删除对话记录</div>
+        <div class="delete-confirm-bot" id="deleteConfirmBotInfo">
+            <img src="" alt="">
+            <span class="delete-confirm-bot-name"></span>
+        </div>
+        <div class="delete-confirm-message">此操作将清空该机器人的所有聊天记录，<strong style="color:#ef4444;">不可撤销</strong>。</div>
+        <div class="delete-confirm-actions">
+            <button class="delete-cancel-btn" id="deleteCancelBtn">取消</button>
+            <button class="delete-confirm-btn" id="deleteConfirmBtn">确认删除</button>
+        </div>
+    </div>
+</div>
 
 <script>
 
@@ -910,6 +1240,160 @@
     let heartbeatTimer = null;
     let botsCache = {};
     const HEARTBEAT_INTERVAL = 30000;
+
+    // 命令数据
+    const openClawCommands = [
+        // 状态查询
+        { group: '状态查询', icon: 'fa-circle-question', name: '/help', desc: '显示可用命令列表' },
+        { group: '状态查询', icon: 'fa-terminal', name: '/commands', desc: '列出所有斜杠命令' },
+        { group: '状态查询', icon: 'fa-wrench', name: '/tools', desc: '列出可用的运行时工具' },
+        { group: '状态查询', icon: 'fa-signal', name: '/status', desc: '显示当前状态' },
+        { group: '状态查询', icon: 'fa-list-check', name: '/tasks', desc: '列出当前会话的后台任务' },
+        { group: '状态查询', icon: 'fa-user-secret', name: '/whoami', desc: '显示你的sender id' },
+        { group: '状态查询', icon: 'fa-chart-bar', name: '/usage', desc: '显示token使用量或成本统计' },
+        { group: '状态查询', icon: 'fa-microchip', name: '/models', desc: '列出模型提供商或模型' },
+        // 会话管理
+        { group: '会话管理', icon: 'fa-sliders', name: '/session', desc: '管理会话级设置（idle/max-age）' },
+        { group: '会话管理', icon: 'fa-rotate-right', name: '/reset', desc: '重置当前会话' },
+        { group: '会话管理', icon: 'fa-plus', name: '/new', desc: '开始新会话' },
+        { group: '会话管理', icon: 'fa-compress', name: '/compact', desc: '压缩会话上下文' },
+        { group: '会话管理', icon: 'fa-stop', name: '/stop', desc: '停止当前运行' },
+        { group: '会话管理', icon: 'fa-power-off', name: '/restart', desc: '重启OpenClaw' },
+        // 工具功能
+        { group: '工具功能', icon: 'fa-puzzle-piece', name: '/skill', desc: '按名称运行skill' },
+        { group: '工具功能', icon: 'fa-volume-high', name: '/tts', desc: '控制文字转语音' },
+        { group: '工具功能', icon: 'fa-brain', name: '/context', desc: '解释上下文如何构建和使用' },
+        { group: '工具功能', icon: 'fa-comment-dots', name: '/btw', desc: '提问而不改变后续会话上下文' },
+        { group: '工具功能', icon: 'fa-lightbulb', name: '/reasoning', desc: '切换推理可见性（on/off/stream）' },
+        { group: '工具功能', icon: 'fa-thought-bubble', name: '/think', desc: '设置思考级别' },
+        { group: '工具功能', icon: 'fa-file-lines', name: '/verbose', desc: '切换详细模式' },
+        { group: '工具功能', icon: 'fa-bolt', name: '/fast', desc: '切换快速模式' },
+        { group: '工具功能', icon: 'fa-robot', name: '/model', desc: '显示或设置模型' },
+        { group: '工具功能', icon: 'fa-queue', name: '/queue', desc: '调整队列设置' },
+        // 子Agent/多会话
+        { group: '子Agent', icon: 'fa-diagram-project', name: '/subagents', desc: '列出、终止、日志、生成、引导子agent' },
+        { group: '子Agent', icon: 'fa-users', name: '/agents', desc: '列出当前会话的thread-bound agents' },
+        { group: '子Agent', icon: 'fa-skull', name: '/kill', desc: '终止运行中的子agent' },
+        { group: '子Agent', icon: 'fa-paper-plane', name: '/steer', desc: '向运行中的子agent发送指引' },
+        { group: '子Agent', icon: 'fa-plug', name: '/acp', desc: '管理ACP会话和运行时选项' },
+        { group: '子Agent', icon: 'fa-crosshairs', name: '/focus', desc: '绑定当前channel到session target' },
+        { group: '子Agent', icon: 'fa-up-right-from-square', name: '/unfocus', desc: '移除channel绑定' },
+        // 配置管理
+        { group: '配置管理', icon: 'fa-gear', name: '/config', desc: '显示或设置配置值' },
+        { group: '配置管理', icon: 'fa-server', name: '/mcp', desc: '显示或设置MCP服务器' },
+        { group: '配置管理', icon: 'fa-bug', name: '/debug', desc: '设置运行时调试覆盖' },
+        { group: '配置管理', icon: 'fa-check-double', name: '/allowlist', desc: '列出/添加/删除白名单条目' },
+        { group: '配置管理', icon: 'fa-hand', name: '/approve', desc: '批准或拒绝exec请求' },
+        { group: '配置管理', icon: 'fa-toggle-on', name: '/activation', desc: '设置群组激活模式' },
+        { group: '配置管理', icon: 'fa-paper-plane', name: '/send', desc: '设置发送策略' },
+        { group: '配置管理', icon: 'fa-shield-halved', name: '/elevated', desc: '切换提升模式' },
+        { group: '配置管理', icon: 'fa-terminal', name: '/exec', desc: '设置本会话的exec默认配置' },
+        { group: '配置管理', icon: 'fa-code', name: '/bash', desc: '运行主机shell命令（仅主机）' },
+        // 插件相关
+        { group: '插件', icon: 'fa-bell', name: '/webhook', desc: '管理webhook' },
+    ];
+
+    let highlightedIndex = -1;
+    let filteredCommands = [];
+
+    function showCommandPalette() {
+        const overlay = document.getElementById('commandPaletteOverlay');
+        const palette = overlay.querySelector('.command-palette');
+        const searchInput = document.getElementById('commandSearchInput');
+        const commandsBtn = document.querySelector('[title="code-list"]');
+
+        // 计算按钮位置
+        const btnRect = commandsBtn.getBoundingClientRect();
+        const paletteWidth = 520;
+        const padding = 12;
+
+        // 面板右对齐于按钮右侧
+        let left = btnRect.right - paletteWidth;
+        // 确保不超出左边界
+        if (left < padding) left = padding;
+
+        // 面板底部对齐到按钮顶部，向上悬浮
+        palette.style.left = left + 'px';
+        palette.style.top = 'auto';
+        palette.style.bottom = (window.innerHeight - btnRect.top + padding) + 'px';
+
+        overlay.classList.add('visible');
+        searchInput.value = '';
+        highlightedIndex = -1;
+        filteredCommands = [...openClawCommands];
+        renderCommandList(filteredCommands);
+        setTimeout(() => searchInput.focus(), 50);
+    }
+
+    function hideCommandPalette() {
+        const overlay = document.getElementById('commandPaletteOverlay');
+        overlay.classList.remove('visible');
+    }
+
+    function renderCommandList(commands) {
+        const commandList = document.getElementById('commandList');
+        if (commands.length === 0) {
+            commandList.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:0.9rem;">没有找到匹配的命令</div>';
+            return;
+        }
+
+        let html = '';
+        let currentGroup = '';
+        commands.forEach((cmd, idx) => {
+            if (cmd.group !== currentGroup) {
+                currentGroup = cmd.group;
+                html += `<div class="command-group-title">${currentGroup}</div>`;
+            }
+            html += `
+                <div class="command-item ${idx === highlightedIndex ? 'highlighted' : ''}" data-index="${idx}">
+                    <div class="command-icon"><i class="fa-solid ${cmd.icon}"></i></div>
+                    <div class="command-info">
+                        <div class="command-name">${cmd.name}</div>
+                        <div class="command-desc">${cmd.desc}</div>
+                    </div>
+                </div>
+            `;
+        });
+        commandList.innerHTML = html;
+
+        commandList.querySelectorAll('.command-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const idx = parseInt(item.dataset.index);
+                selectCommand(filteredCommands[idx]);
+            });
+        });
+    }
+
+    function selectCommand(cmd) {
+        hideCommandPalette();
+        console.log('[UI] 选择命令:', cmd.name);
+        sendWebSocketMessage(cmd.name);
+    }
+
+    function filterCommands(query) {
+        const q = query.toLowerCase().trim();
+        if (!q) return [...openClawCommands];
+        return openClawCommands.filter(cmd =>
+            cmd.name.toLowerCase().includes(q) ||
+            cmd.desc.toLowerCase().includes(q) ||
+            cmd.group.toLowerCase().includes(q)
+        );
+    }
+
+    function highlightText(text, query) {
+        if (!query || !text) return text;
+        const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+        return text.replace(regex, '<mark style="background:rgba(74,222,128,0.25);color:var(--secondary-green);border-radius:2px;padding:0 2px;">$1</mark>');
+    }
+
+    function applyCurrentSearch() {
+        const searchBar = document.querySelector('.search-bar');
+        const query = searchBar ? searchBar.value.trim() : '';
+        if (activeChatsCache.length > 0) {
+            _renderSessionPanel(activeChatsCache, query);
+        }
+        _renderBotList(query);
+    }
 
     function checkAndInsertTimestamp() {
         const now = Date.now();
@@ -959,23 +1443,45 @@
         return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
     }
 
+    let activeChatsCache = [];
+
     function renderSessionPanel(activeChats) {
+        activeChatsCache = activeChats;
+        _renderSessionPanel(activeChats);
+    }
+
+    function _renderSessionPanel(activeChats, query) {
         const sessionPanel = document.getElementById('sessionPanel');
         activeBotsSet = new Set(activeChats.map(chat => chat.botId));
-        sessionPanel.innerHTML = activeChats.map((chat, idx) => `
+
+        let filtered = activeChats;
+        if (query) {
+            const q = query.toLowerCase();
+            filtered = activeChats.filter(chat =>
+                chat.name.toLowerCase().includes(q) ||
+                (chat.lastContent && chat.lastContent.toLowerCase().includes(q))
+            );
+        }
+
+        sessionPanel.innerHTML = filtered.map((chat, idx) => `
             <div class="list-item ${chat.botId === currentBot.botId ? 'active' : ''}" data-bot-id="${chat.botId}">
                 <div class="item-avatar">
                     <img src="${chat.avatar}" alt="${chat.name}" style="width:100%; border-radius:12px;">
                 </div>
                 <div class="item-content">
                     <div class="item-header">
-                        <span class="item-name">${chat.name}</span>
+                        <span class="item-name">${query ? highlightText(chat.name, query) : chat.name}</span>
                         <span class="item-time">${formatLastTime(chat.lastTime)}</span>
                     </div>
-                    <div class="item-preview">${chat.lastContent || '暂无消息'}</div>
+                    <div class="item-preview">${query ? highlightText(chat.lastContent || '暂无消息', query) : (chat.lastContent || '暂无消息')}</div>
                 </div>
             </div>
         `).join('');
+
+        if (filtered.length === 0 && query) {
+            sessionPanel.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:0.85rem;">没有匹配的会话</div>';
+        }
+
         sessionPanel.querySelectorAll('.list-item').forEach(item => {
             item.addEventListener('click', () => {
                 const botId = item.dataset.botId;
@@ -1017,11 +1523,15 @@
     }
 
     function renderBotList() {
+        _renderBotList();
+    }
+
+    function _renderBotList(query) {
         const botList = document.getElementById('botList');
         const bots = Object.values(botsCache);
         if (!bots.length) return;
 
-        // 按 status（分组名称）聚合，同一组内按 managerId 归类
+        // 按 status（分组名称）聚合
         const groups = {};
         bots.forEach(bot => {
             const desc = bot.status || '其他';
@@ -1029,32 +1539,61 @@
             groups[desc].push(bot);
         });
 
-        botList.innerHTML = Object.entries(groups).map(([desc, members]) => `
-            <div class="bot-group">
-                <div class="bot-group-header" data-group="${desc}">
-                    <span class="bot-group-title">${desc}</span>
-                    <div style="display:flex;align-items:center;">
-                        <span class="bot-group-count">${members.length}</span>
-                        <svg class="bot-group-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        let html = '';
+        let hasResults = false;
+
+        Object.entries(groups).forEach(([desc, members]) => {
+            let filteredMembers = members;
+            if (query) {
+                const q = query.toLowerCase();
+                filteredMembers = members.filter(bot =>
+                    bot.name.toLowerCase().includes(q) ||
+                    bot.botId.toLowerCase().includes(q) ||
+                    (bot.status && bot.status.toLowerCase().includes(q))
+                );
+            }
+            if (filteredMembers.length === 0) return;
+            hasResults = true;
+
+            html += `
+                <div class="bot-group">
+                    <div class="bot-group-header" data-group="${desc}">
+                        <span class="bot-group-title">${query ? highlightText(desc, query) : desc}</span>
+                        <div style="display:flex;align-items:center;">
+                            <span class="bot-group-count">${filteredMembers.length}</span>
+                            <svg class="bot-group-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                        </div>
+                    </div>
+                    <div class="bot-group-items" data-group="${desc}">
+                        ${filteredMembers.map(bot => `
+                            <div class="list-item" data-bot-id="${bot.botId}">
+                                <div class="item-avatar">
+                                    <img src="${bot.avatar}" alt="${bot.name}" style="width:100%; border-radius:12px;">
+                                </div>
+                                <div class="item-content">
+                                    <div class="item-header">
+                                        <span class="item-name">${query ? highlightText(bot.name, query) : bot.name}</span>
+                                    </div>
+                                    <div class="item-preview">${bot.botId}</div>
+                                </div>
+                            </div>
+                        `).join('')}
                     </div>
                 </div>
-                <div class="bot-group-items" data-group="${desc}">
-                    ${members.map(bot => `
-                        <div class="list-item" data-bot-id="${bot.botId}">
-                            <div class="item-avatar">
-                                <img src="${bot.avatar}" alt="${bot.name}" style="width:100%; border-radius:12px;">
-                            </div>
-                            <div class="item-content">
-                                <div class="item-header">
-                                    <span class="item-name">${bot.name}</span>
-                                </div>
-                                <div class="item-preview">${bot.botId}</div>
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>
-        `).join('');
+            `;
+        });
+
+        if (!hasResults && query) {
+            botList.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:0.85rem;">没有匹配的机器人</div>';
+        } else {
+            botList.innerHTML = html;
+        }
+
+        // 有搜索时自动展开所有组
+        if (query) {
+            botList.querySelectorAll('.bot-group-header').forEach(header => header.classList.add('open'));
+            botList.querySelectorAll('.bot-group-items').forEach(items => items.classList.add('open'));
+        }
 
         // 分组折叠/展开
         botList.querySelectorAll('.bot-group-header').forEach(header => {
@@ -1359,7 +1898,6 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
-        lucide.createIcons();
 
         const tx = document.getElementById('messageInput');
         tx.addEventListener('input', OnInput, false);
@@ -1394,6 +1932,121 @@
         loadMessages();
         document.getElementById('navSessions').addEventListener('click', () => showPanel('sessions'));
         document.getElementById('navBots').addEventListener('click', () => showPanel('bots'));
+
+        // 搜索栏 - 本地搜索机器人和会话
+        const searchBar = document.querySelector('.search-bar');
+        let searchDebounceTimer = null;
+        searchBar.addEventListener('input', () => {
+            clearTimeout(searchDebounceTimer);
+            searchDebounceTimer = setTimeout(() => {
+                applyCurrentSearch();
+            }, 150);
+        });
+
+        // 删除当前会话
+        const deleteBtn = document.querySelector('.action-btn');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', () => {
+                showDeleteConfirm();
+            });
+        }
+
+        function showDeleteConfirm() {
+            const overlay = document.getElementById('deleteConfirmOverlay');
+            const botInfo = document.getElementById('deleteConfirmBotInfo');
+            botInfo.querySelector('img').src = currentBot.avatar;
+            botInfo.querySelector('.delete-confirm-bot-name').textContent = currentBot.name;
+            overlay.classList.add('visible');
+        }
+
+        function hideDeleteConfirm() {
+            document.getElementById('deleteConfirmOverlay').classList.remove('visible');
+        }
+
+        document.getElementById('deleteCancelBtn').addEventListener('click', hideDeleteConfirm);
+
+        document.getElementById('deleteConfirmBtn').addEventListener('click', async () => {
+            hideDeleteConfirm();
+            await deleteCurrentChat();
+        });
+
+        document.getElementById('deleteConfirmOverlay').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) {
+                hideDeleteConfirm();
+            }
+        });
+
+        async function deleteCurrentChat() {
+            try {
+                const response = await fetch('/delete-chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ botId: currentBot.botId })
+                });
+                const result = await response.json();
+                console.log('[API] /delete-chat 响应:', result);
+                // 清空聊天历史
+                const chatHistory = document.getElementById('chatHistory');
+                chatHistory.innerHTML = '<div style="height: 20px;"></div>';
+                lastReplyTime = null;
+                // 刷新会话列表
+                await loadActiveChats();
+            } catch (error) {
+                console.error('[API] /delete-chat 请求失败:', error);
+            }
+        }
+
+        // 命令选择框
+        const commandsBtn = document.querySelector('[title="code-list"]');
+        if (commandsBtn) {
+            commandsBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showCommandPalette();
+            });
+        }
+
+        const commandSearchInput = document.getElementById('commandSearchInput');
+        commandSearchInput.addEventListener('input', (e) => {
+            filteredCommands = filterCommands(e.target.value);
+            highlightedIndex = -1;
+            renderCommandList(filteredCommands);
+        });
+
+        commandSearchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                highlightedIndex = Math.min(highlightedIndex + 1, filteredCommands.length - 1);
+                renderCommandList(filteredCommands);
+                scrollHighlightedIntoView();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                highlightedIndex = Math.max(highlightedIndex - 1, 0);
+                renderCommandList(filteredCommands);
+                scrollHighlightedIntoView();
+            } else if (e.key === 'Enter' && highlightedIndex >= 0) {
+                e.preventDefault();
+                selectCommand(filteredCommands[highlightedIndex]);
+            }
+        });
+
+        document.getElementById('commandPaletteOverlay').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) {
+                hideCommandPalette();
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                hideCommandPalette();
+            }
+        });
+
+        function scrollHighlightedIntoView() {
+            const highlighted = document.querySelector('.command-item.highlighted');
+            if (highlighted) {
+                highlighted.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            }
+        }
     });
 </script>
 </body>
