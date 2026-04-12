@@ -294,6 +294,69 @@
             display: block;
         }
 
+        .bot-group {
+            margin-bottom: 4px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(92, 46, 145, 0.15);
+        }
+
+        .bot-group-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 16px;
+            cursor: pointer;
+            border-radius: 12px;
+            transition: background 0.2s;
+            user-select: none;
+            min-height: 48px;
+        }
+
+        .bot-group-header:hover {
+            background: var(--bg-elevated);
+        }
+
+        .bot-group-title {
+            font-family: 'Syne', sans-serif;
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .bot-group-count {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            font-size: 0.75rem;
+            color: var(--secondary-green);
+            background: rgba(74, 222, 128, 0.12);
+            border-radius: 50%;
+            margin-right: 8px;
+            border: 1px solid rgba(74, 222, 128, 0.25);
+        }
+
+        .bot-group-chevron {
+            color: var(--text-muted);
+            width: 16px;
+            height: 16px;
+            transition: transform 0.2s;
+        }
+
+        .bot-group-header.open .bot-group-chevron {
+            transform: rotate(90deg);
+        }
+
+        .bot-group-items {
+            display: none;
+            padding: 0 4px;
+        }
+
+        .bot-group-items.open {
+            display: block;
+        }
+
         .session-panel {
             display: flex;
             flex-direction: column;
@@ -957,21 +1020,56 @@
         const botList = document.getElementById('botList');
         const bots = Object.values(botsCache);
         if (!bots.length) return;
-        botList.innerHTML = bots.map(bot => `
-            <div class="list-item" data-bot-id="${bot.botId}">
-                <div class="item-avatar">
-                    <img src="${bot.avatar}" alt="${bot.name}" style="width:100%; border-radius:12px;">
-                </div>
-                <div class="item-content">
-                    <div class="item-header">
-                        <span class="item-name">${bot.name}</span>
+
+        // 按 status（分组名称）聚合，同一组内按 managerId 归类
+        const groups = {};
+        bots.forEach(bot => {
+            const desc = bot.status || '其他';
+            if (!groups[desc]) groups[desc] = [];
+            groups[desc].push(bot);
+        });
+
+        botList.innerHTML = Object.entries(groups).map(([desc, members]) => `
+            <div class="bot-group">
+                <div class="bot-group-header" data-group="${desc}">
+                    <span class="bot-group-title">${desc}</span>
+                    <div style="display:flex;align-items:center;">
+                        <span class="bot-group-count">${members.length}</span>
+                        <svg class="bot-group-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                     </div>
-                    <div class="item-preview">${bot.botId}</div>
+                </div>
+                <div class="bot-group-items" data-group="${desc}">
+                    ${members.map(bot => `
+                        <div class="list-item" data-bot-id="${bot.botId}">
+                            <div class="item-avatar">
+                                <img src="${bot.avatar}" alt="${bot.name}" style="width:100%; border-radius:12px;">
+                            </div>
+                            <div class="item-content">
+                                <div class="item-header">
+                                    <span class="item-name">${bot.name}</span>
+                                </div>
+                                <div class="item-preview">${bot.botId}</div>
+                            </div>
+                        </div>
+                    `).join('')}
                 </div>
             </div>
         `).join('');
+
+        // 分组折叠/展开
+        botList.querySelectorAll('.bot-group-header').forEach(header => {
+            header.addEventListener('click', () => {
+                const desc = header.dataset.group;
+                const items = botList.querySelector(`.bot-group-items[data-group="${desc}"]`);
+                header.classList.toggle('open');
+                items.classList.toggle('open');
+            });
+        });
+
+        // bot 点击切换
         botList.querySelectorAll('.list-item').forEach(item => {
-            item.addEventListener('click', () => {
+            item.addEventListener('click', (e) => {
+                e.stopPropagation();
                 const botId = item.dataset.botId;
                 const bot = botsCache[botId];
                 if (bot) switchBot(bot);

@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import json
 import os
 import sqlite3
 import time
@@ -84,41 +85,13 @@ class DBase:
         self._initBots()
 
     def _initBots(self):
-        bots = [
-            ("openclaw", "ClawBot", "https://res.amemo.cn/openclaw.png", "main"),
-            ("vega-punk", "慎思者", "https://res.amemo.cn/vega-punk.png", "user"),
-            ("plan-executor", "践行人", "https://res.amemo.cn/executing-plans.png", "vega-punk"),
-            ("plan-builder", "策画生", "https://res.amemo.cn/planning-with-json.png", "vega-punk"),
-            ("branch-landing", "司枝官", "https://res.amemo.cn/finishing-a-development-branch.png", "vega-punk"),
-            ("review-intake", "鉴微使", "https://res.amemo.cn/receiving-code-review.png", "vega-punk"),
-            ("review-request", "呈阅使", "https://res.amemo.cn/requesting-code-review.png", "vega-punk"),
-            ("parallel-swarm", "百炼使", "https://res.amemo.cn/dispatching-parallel-agents.png", "vega-punk"),
-            ("task-dispatcher", "分遣使", "https://res.amemo.cn/subagent-driven-development.png", "vega-punk"),
-            ("root-cause", "溯因官", "https://res.amemo.cn/systematic-debugging.png", "vega-punk"),
-            ("test-first", "先试官", "https://res.amemo.cn/test-driven-development.png", "vega-punk"),
-            ("verify-gate", "验契使", "https://res.amemo.cn/verification-before-completion.png", "vega-punk"),
-            ("worktree-setup", "筑枝使", "https://res.amemo.cn/using-git-worktrees.png", "vega-punk"),
-            ("agent-browser", "浏览器精灵", "https://res.amemo.cn/agent-browser.png", "user"),
-            ("algorithmic-art", "算法画师", "https://res.amemo.cn/algorithmic-art.png", "user"),
-            ("brand-guidelines", "品牌管家", "https://res.amemo.cn/brand-guidelines.png", "user"),
-            ("canvas-design", "画布设计师", "https://res.amemo.cn/canvas-design.png", "user"),
-            ("find-skills", "技能探知", "https://res.amemo.cn/find-skills.png", "user"),
-            ("flutter-lens", "Flutter透视", "https://res.amemo.cn/flutter-lens.png", "user"),
-            ("frontend-design", "前端筑梦师", "https://res.amemo.cn/frontend-design.png", "user"),
-            ("internal-comms", "内宣使者", "https://res.amemo.cn/internal-comms.png", "user"),
-            ("mcp-builder", "MCP建造师", "https://res.amemo.cn/mcp-builder.png", "user"),
-            ("self-improving-agent", "自省者", "https://res.amemo.cn/self-improving-agent.png", "user"),
-            ("skill-creator", "技能锻造师", "https://res.amemo.cn/skill-creator.png", "user"),
-            ("slack-gif-creator", "动态图匠", "https://res.amemo.cn/slack-gif-creator.png", "user"),
-            ("theme-factory", "主题工厂", "https://res.amemo.cn/theme-factory.png", "user"),
-            ("ui-ux-pro-max", "UI/UX极客", "https://res.amemo.cn/ui-ux-pro-max.png", "user"),
-            ("pdf", "PDF圣手", "https://res.amemo.cn/pdf.png", "user"),
-            ("pptx", "演示大师", "https://res.amemo.cn/pptx.png", "user"),
-            ("docx", "文档大师", "https://res.amemo.cn/docx.png", "user"),
-            ("xlsx", "表格圣手", "https://res.amemo.cn/xlsx.png", "user"),
-        ]
-        for botId, name, avatar, mid in bots:
-            self.upsertBot(botId=botId, name=name, role="skill", avatar=avatar, managerId=mid)
+        skillsJson = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "skills.json")
+        if not os.path.isfile(skillsJson):
+            return
+        with open(skillsJson, "r", encoding="utf-8") as f:
+            skills = json.load(f)
+        for skill in skills:
+            self.upsertBot(botId=skill["code"], name=skill["name"], role="skill", avatar=skill.get("icon"), managerId=skill.get("type"), status=skill.get("desc"))
 
     @contextmanager
     def _conn(self):
@@ -144,15 +117,16 @@ class DBase:
             rows = conn.execute(sql, params).fetchall()
             return _rowsToDicts(rows)
 
-    def upsertBot(self, botId: str, name: str, role: str = 'pm', avatar: str = None, managerId: str = None):
+    def upsertBot(self, botId: str, name: str, role: str = 'pm', avatar: str = None, managerId: str = None, status: str = None):
         self.execute(
             "INSERT INTO bots (botId, name, role, avatar, managerId, status) "
             "VALUES (?, ?, ?, ?, ?, 'idle') "
             "ON CONFLICT(botId) DO UPDATE SET "
             "name=excluded.name, role=excluded.role, "
             "avatar=COALESCE(excluded.avatar, bots.avatar), "
-            "managerId=excluded.managerId",
-            (botId, name, role, avatar, managerId)
+            "managerId=excluded.managerId, "
+            "status=excluded.status",
+            (botId, name, role, avatar, managerId, status)
         )
 
     def getBot(self, botId: str) -> Optional[Dict[str, Any]]:
