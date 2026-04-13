@@ -15,6 +15,8 @@ Guide completion of development work by presenting clear options and handling ch
 
 **Announce at start:** "I'm using the branch-landing skill to complete this work."
 
+**File locations:** When this document says "state file", it means `~/.vega-punk/vega-punk-state.json`. All vega-punk runtime files reside in `~/.vega-punk/`.
+
 **Document format:** This document combines pseudocode (exact logic, branching, state transitions) with natural language prompts (intent, principles, constraints). Both carry equal authority. Pseudocode defines WHAT to do and WHEN; prompts define WHY and HOW. Execute pseudocode as mandatory workflow rules, not optional illustrations. 
 
 ## Pre-Execution Gate
@@ -24,17 +26,22 @@ BEGIN STATE_VALIDATION_GATE
     /* Validate current branch state */
     current_branch = git branch --show-current
 
+    IF current_branch is empty (detached HEAD):
+        TELL: "[branch-landing] You're in detached HEAD state. Cannot complete from here."
+        ASK: "Check out a branch first? (git checkout <branch>)"
+        STOP
+
     IF current_branch is "main" OR "master":
         TELL: "[branch-landing] You're on {current_branch}. This is unusual."
         ASK: "Are you sure you want to complete from {current_branch}? This could affect the main branch."
 
     /* Try to find worktree_path */
-    IF ~/.vega-punk/vega-punk-state.json exists:
+    IF state file exists:
         IF worktree_path field missing:
             /* Try to find worktree from git */
             worktree_path = git worktree list | grep current_branch | parse path
             IF worktree_path found:
-                ADD worktree_path to ~/.vega-punk/vega-punk-state.json
+                ADD worktree_path to state file
                 TELL: "[branch-landing] Found worktree at {worktree_path} via git."
             ELSE:
                 /* Not in a worktree — might be inline execution */
@@ -44,7 +51,7 @@ BEGIN STATE_VALIDATION_GATE
             /* Worktree was removed — find from git */
             worktree_path = git worktree list | grep current_branch | parse path
             IF worktree_path found:
-                UPDATE worktree_path in ~/.vega-punk/vega-punk-state.json
+                UPDATE worktree_path in state file
             ELSE:
                 worktree_path = null
                 TELL: "[branch-landing] Worktree was removed. Skipping cleanup."
@@ -64,18 +71,22 @@ BEGIN BRANCH_LANDING_PROCESS
         REPORT: "Tests failing (<N> failures). Must fix before completing."
         STOP — do NOT proceed
 
-    /* Step 1b: Summarize Changes */
+    /* Step 2: Summarize Changes */
     git diff --stat <base>..HEAD
     COUNT: files changed, lines added/removed
     IDENTIFY: new files, deleted files, modified files
     FLAG: any migration files, config changes, dependency updates
 
-    /* Step 2: Determine Base Branch */
-    base = git merge-base HEAD main || git merge-base HEAD master
-    IF base NOT found:
+    /* Step 3: Determine Base Branch */
+    base_commit = git merge-base HEAD main || git merge-base HEAD master
+    IF base_commit NOT found:
         ASK: "This branch splits from main - is that correct?"
+    /* Determine the actual base branch name (not commit hash) */
+    base_branch = "main"  /* default */
+    IF "master" branch exists AND "main" does NOT:
+        base_branch = "master"
 
-    /* Step 3: Present Options */
+    /* Step 4: Present Options */
     OUTPUT exactly:
         "Implementation complete.
          Summary: <N> files changed, +<added>/-<removed> lines.
@@ -83,7 +94,7 @@ BEGIN BRANCH_LANDING_PROCESS
 
          What would you like to do?
 
-         1. Merge back to <base-branch> locally
+         1. Merge back to <base_branch> locally
             — auto-verifies tests on merged result, rolls back if broken
          2. Push and create a Pull Request
             — preserves branch + worktree for iterative review
@@ -95,11 +106,22 @@ BEGIN BRANCH_LANDING_PROCESS
          Which option?"
     WAIT for user choice
 
-    /* Step 4: Execute Choice */
+    /* Step 5: Execute Choice */
     CASE 1 (Merge Locally):
-        git checkout <base-branch>
+        git checkout base_branch
         git pull
-        git merge <feature-branch>
+        git merge feature_branch
+
+        /* Handle merge conflicts */
+        IF merge has conflicts:
+            REPORT: "Merge has conflicts in: <conflicted files>"
+            PRESENT options:
+                a. "Abort merge and keep branch as-is" — git merge --abort, GOTO CASE 3
+                b. "I'll resolve conflicts manually" — PAUSE, wait for user to resolve, then continue below
+            IF user chose a: STOP
+            IF user chose b:
+                WAIT until `git diff --check` passes (no conflict markers)
+                git add -A && git commit (no --no-verify)
 
         /* Post-merge test verification + auto-fix */
         RUN test command on merged result
@@ -117,6 +139,7 @@ BEGIN BRANCH_LANDING_PROCESS
                     - Integration gap between feature and main? → check test error messages
                 IF fixable automatically (conflict markers, missing import):
                     FIX the issue
+                    PRESENT diff to user for review before committing  /* never auto-commit fixes silently */
                     RE-RUN test command
                     IF still failing:
                         REPORT: "Auto-fix didn't resolve all issues. Rolling back merge."
@@ -134,12 +157,46 @@ BEGIN BRANCH_LANDING_PROCESS
                 RECORD: merge is clean, pre-existing failures unchanged
 
         IF tests pass:
-            git branch -d <feature-branch>
+            /* Safe branch deletion with fallback */
+            ATTEMPT git branch -d feature_branch
+            IF fails (branch not fully merged per git's heuristics):
+                WARN: "git branch -d refused — branch may have diverged. Use -D to force delete?"
+                ASK user before using -D
         GOTO STEP 6
 
     CASE 2 (Push and Create PR):
-        git push -u origin <feature-branch>
-        gh pr create --title "<title>" --body "<summary + test plan>"
+        /* Check gh CLI availability */
+        IF `gh` command NOT available OR `gh auth status` fails:
+            WARN: "[branch-landing] gh CLI not available or not authenticated."
+            PRESENT fallback options:
+                a. "Push branch only (I'll create PR manually)" — git push -u origin feature_branch
+                b. "Keep branch as-is (I'll handle everything)" — GOTO CASE 3 behavior
+            IF user chose a:
+                REPORT: "Branch pushed to origin. Create PR manually at the remote."
+                STOP
+            IF user chose b:
+                STOP
+
+        /* Check if remote branch already exists and has diverged */
+        IF remote branch feature_branch already exists:
+            LOCAL_AHEAD = git rev-list origin/feature_branch..HEAD --count
+            REMOTE_AHEAD = git rev-list HEAD..origin/feature_branch --count
+            IF REMOTE_AHEAD > 0:
+                WARN: "[branch-landing] Remote branch has diverged (remote +{REMOTE_AHEAD}, local +{LOCAL_AHEAD})."
+                ASK: "Force push, rebase first, or abort?"
+                IF user says "force push": git push --force-with-lease -u origin feature_branch
+                IF user says "rebase": git rebase origin/feature_branch → then push
+                ELSE: STOP
+            ELSE:
+                /* Remote behind or same — safe push */
+                git push -u origin feature_branch
+        ELSE:
+            git push -u origin feature_branch
+
+        /* Create PR with structured description */
+        PR_TITLE = "<concise summary from Step 2>"
+        PR_BODY = build from template (see PR Description Template section)
+        gh pr create --title PR_TITLE --body PR_BODY
         REPORT branch/PR location
         DO NOT cleanup worktree
         STOP
@@ -150,22 +207,34 @@ BEGIN BRANCH_LANDING_PROCESS
         STOP
 
     CASE 4 (Discard):
-        CONFIRM: "This will permanently delete: Branch <name>, All commits: <list>, Worktree at <path>. Type 'discard' to confirm."
+        /* Check for uncommitted changes first */
+        IF git status has uncommitted changes:
+            REPORT: "Working directory has uncommitted changes: <list>"
+            ASK: "Commit, stash, or proceed with discard (changes will be lost)?"
+            IF user says "commit": git add -A && git commit
+            IF user says "stash": git stash
+            IF user says "proceed": CONTINUE (changes lost)
+            ELSE: STOP — abort discard
+
+        CONFIRM: "This will permanently delete: Branch <name>, All commits unique to this branch: <list>. Type 'discard' to confirm."
         WAIT for exact "discard"
         IF confirmed:
-            git checkout <base-branch>
-            git branch -D <feature-branch>
+            git checkout base_branch
+            git branch -D feature_branch
             GOTO STEP 6
 
-    /* Step 5: Notify Vega-Punk (if applicable) */
-    IF ~/.vega-punk/vega-punk-state.json exists:
+    /* Step 6: Notify Vega-Punk (if applicable) */
+    IF state file exists:
         CASE Option 1 succeeded:
             UPDATE state = "DONE", completion_method = "merged"
+        CASE Option 2 (PR created):
+            UPDATE state = "REVIEW", completion_method = "pr", pr_url = "<url>"
+        CASE Option 3 (Keep as-is):
+            UPDATE state = "PAUSED", completion_method = "kept", notes = "Branch preserved at user request"
         CASE Option 4 confirmed:
             UPDATE state = "DONE", completion_method = "discarded"
-        /* Options 2 and 3: do NOT update state */
 
-    /* Step 6: Cleanup Worktree (Options 1 and 4 only) */
+    /* Step 7: Cleanup Worktree (Options 1 and 4 only) */
     IF user_choice IN [1, 4]:
         IF state has worktree_path:
             worktree_path = read from state
@@ -180,12 +249,12 @@ END
 
 ## Quick Reference
 
-| Option | Merge | Push | Keep Worktree | Cleanup Branch |
-|--------|-------|------|---------------|----------------|
-| 1. Merge locally | ✓ | - | - | ✓ |
-| 2. Create PR | - | ✓ | ✓ | - |
-| 3. Keep as-is | - | - | ✓ | - |
-| 4. Discard | - | - | - | ✓ (force) |
+| Option | Merge | Push | Keep Worktree | Cleanup Branch | State Update | Rollback on Failure |
+|--------|-------|------|---------------|----------------|--------------|---------------------|
+| 1. Merge locally | ✓ | - | - | ✓ | DONE/merged | Abort merge → keep branch |
+| 2. Create PR | - | ✓ | ✓ | - | REVIEW/pr | N/A (push failure → report) |
+| 3. Keep as-is | - | - | ✓ | - | PAUSED/kept | N/A |
+| 4. Discard | - | - | - | ✓ (force) | DONE/discarded | Uncommitted changes check first |
 
 ## Common Mistakes
 
