@@ -39,6 +39,21 @@ task-dispatcher does NOT:
 - Review code aesthetics (it ensures correctness, not beauty)
 ```
 
+## Task Criticality
+
+A task is **critical** if any of these conditions apply:
+- Other tasks depend on it via `depends_on`
+- It implements a core/required feature (not optional/nice-to-have)
+- The roadmap marks it with `"critical": true`
+- Its failure would invalidate downstream work
+
+A task is **non-critical** if:
+- No other tasks depend on it
+- It implements an optional/nice-to-have feature
+- Its failure does not block other tasks
+
+**How to determine:** Check `depends_on` graph (structural) + roadmap `"critical"` field (semantic). If ambiguous, treat as critical — escalation is cheaper than a broken pipeline.
+
 ## Task Lifecycle State Machine
 
 Every task follows this state machine. No task may skip states or transition backwards except via explicit rollback.
@@ -64,12 +79,12 @@ State meanings:
 - SPEC_REVIEW:     Spec compliance reviewer is evaluating
 - QUALITY_REVIEW:  Code quality reviewer is evaluating
 - FIX_IMPLEMENTING: Implementer is fixing review issues (returns to review after)
-- COMPLETED:       All reviews passed, task is done
+- COMPLETED:       All reviews passed, changes committed
 - FAILED:          Unrecoverable — logged to progress.json
 ```
 
 **Re-dispatch limits:**
-- IMPLEMENTING → re-dispatch for BLOCKED/NEEDS_CONTEXT: **max 2 times** (3 total attempts)
+- IMPLEMENTING → re-dispatch for BLOCKED/NEEDS_CONTEXT/TIMEOUT: **max 2 times** (3 total attempts)
 - FIX_IMPLEMENTING → re-dispatch for review failure: follows review cycle limits (spec: 3, quality: 2)
 - On limit exhaustion → mark FAILED, log to progress.json, continue if non-critical
 
@@ -100,6 +115,20 @@ BEGIN STATE_VALIDATION_GATE
         IF step has no target_files OR target_files is empty:
             FAIL: "[task-dispatcher] Step {step.id} has no target_files. Every step must specify which files to create/modify."
             EXIT
+
+    /* Validate code field references are plausible */
+    FOR each step in each phase:
+        IF step.code references a file path that does NOT exist in the worktree:
+            IF step is creating a new file (target_files includes it):
+                PASS — new file, reference is expected
+            ELSE:
+                WARN: "[task-dispatcher] Step {step.id} code references {path} which does not exist. Implementer may report BLOCKED."
+
+    /* Validate dependency graph acyclicity */
+    BUILD dependency graph from all steps' depends_on fields
+    IF graph has cycle:
+        FAIL: "[task-dispatcher] Circular dependency detected: {cycle_path}. Fix roadmap before dispatching."
+        EXIT
 
     /* Setup worktree */
     IF ~/.vega-punk/vega-punk-state.json exists:
@@ -164,7 +193,7 @@ END
 
 ### Step 1: Read Plan & Build Dependency Graph
 
-Read `~/.vega-punk/roadmap.json` — extract all phases and steps with full context. Build a task dependency graph from `depends_on` fields.
+Read `~/.vega-punk/roadmap.json` — extract all phases and steps with full context. Build a task dependency graph from `depends_on` fields. Determine criticality for each task (see Task Criticality section).
 
 **Build batch plan via topological sort:**
 1. Collect all steps across all phases, each with their `depends_on` references
@@ -183,7 +212,8 @@ Read `~/.vega-punk/roadmap.json` — extract all phases and steps with full cont
      "completed_batches": [],
      "partial_batches": [],
      "batch_progress": {},
-     "git_commit_map": {}
+     "git_commit_map": {},
+     "task_criticality": { "1_1": true, "1_2": false }
    }
    ```
 
@@ -199,100 +229,152 @@ Set up `addBlockedBy` dependencies between TaskCreate entries to mirror the `dep
 
 For each batch (by batch_id order) in the batch plan:
 
-1. **Verify batch is next in order:** Only proceed if `completed_batches` contains all prior batch_ids. This enables session-resume after interruption.
+#### 3.1 Verify batch order
+Only proceed if `completed_batches` contains all prior batch_ids. This enables session-resume after interruption.
 
-2. **Check batch_progress for partial completion** (session resume):
-   ```
-   IF batch_progress[batch_id] exists:
-       stage = batch_progress[batch_id].stage
-       tasks_done = batch_progress[batch_id].tasks_done || []
-       /* Validate worktree consistency before resuming */
-       RUN: git -C <worktree_path> status --porcelain
-       IF uncommitted changes exist from previous session:
-           COMMIT with message: "WIP: resuming session, preserving partial work"
-       /* Resume from the exact stage, do NOT re-dispatch completed tasks */
-       GOTO stage with tasks_done context
-   ```
+#### 3.2 Resume from partial completion (if applicable)
+```
+IF batch_progress[batch_id] exists:
+    stage = batch_progress[batch_id].stage
+    tasks_done = batch_progress[batch_id].tasks_done || []
+    /* Validate worktree consistency before resuming */
+    RUN: git -C <worktree_path> status --porcelain
+    IF uncommitted changes exist from previous session:
+        COMMIT with message: "WIP: resuming session, preserving partial work"
+    /* Resume from the exact stage, do NOT re-dispatch completed tasks */
+    GOTO stage with tasks_done context
+```
 
-3. **Check dependencies:** Only dispatch tasks whose `depends_on` steps are all `"completed"`.
+#### 3.3 Check dependencies
+Only dispatch tasks whose `depends_on` steps are all `"completed"`.
 
-4. **Classify each task type** before dispatching:
-   - If task involves **bug fix, crash, error, or unexpected behavior** → include `root-cause` skill instructions in the implementer prompt
-   - If task involves **new feature, behavior change, or refactoring** → include `test-first` skill instructions (RED-GREEN-REFACTOR) in the implementer prompt
+#### 3.4 Classify task type
+- If task involves **bug fix, crash, error, or unexpected behavior** → include `root-cause` skill instructions in the implementer prompt
+- If task involves **new feature, behavior change, or refactoring** → include `test-first` skill instructions (RED-GREEN-REFACTOR) in the implementer prompt
 
-5. **Evaluate parallelism strategy:**
-   - IF current batch has ≥ 2 tasks AND all tasks have ZERO mutual depends_on AND tasks target disjoint file sets → use **parallel dispatch** (send multiple Agent tool calls in a single message — this is the correct way to achieve parallel execution)
-     - **WARN:** "target_files are disjoint, but watch for implicit conflicts (shared imports, config files, module-level changes)"
-     - After parallel implementers complete: check for git conflicts in worktree, resolve before proceeding to review
-   - ELSE → dispatch implementer subagents sequentially (one Agent tool call per message)
-   - **NEVER** dispatch multiple implementation subagents in parallel **within the same task** (conflicts on shared files)
+#### 3.5 Evaluate parallelism strategy
+- IF current batch has ≥ 2 tasks AND all tasks have ZERO mutual depends_on AND tasks target disjoint file sets → use **parallel dispatch** (send multiple Agent tool calls in a single message)
+  - **WARN:** "target_files are disjoint, but watch for implicit conflicts (shared imports, config files, module-level changes)"
+- ELSE → dispatch implementer subagents sequentially (one Agent tool call per message)
+- **NEVER** dispatch multiple implementation subagents in parallel **within the same task** (conflicts on shared files)
 
-6. **Dispatch implementer subagents** for all tasks in this batch. Each subagent gets its own task-specific prompt (see Prompt Templates below). For parallel dispatch, send all Agent tool calls in one message.
-   - **Timeout:** IF implementer does not return within reasonable time, TREAT as BLOCKED with details "implementer timeout". FOLLOW BLOCKED handling path.
-   - **Re-dispatch limit:** Max 2 re-dispatches for BLOCKED/NEEDS_CONTEXT per task (3 total attempts). On exhaustion → mark FAILED.
+#### 3.6 Dispatch implementer subagents
+For all tasks in this batch, each subagent gets its own task-specific prompt (see Prompt Templates). For parallel dispatch, send all Agent tool calls in one message.
+- **Timeout:** IF implementer does not return within reasonable time, TREAT as BLOCKED with details "implementer timeout". FOLLOW BLOCKED handling path.
+- **Re-dispatch limit:** Max 2 re-dispatches for BLOCKED/NEEDS_CONTEXT per task (3 total attempts). On exhaustion → mark FAILED.
 
-7. **Collect implementer results** — wait for all implementers to finish. For each task:
-   - Read `.task-status-<task_id>.json` from the **worktree root** (use `worktree_path` from `~/.vega-punk/vega-punk-state.json`)
-   - **If status file does not exist:** treat as BLOCKED with details "Implementer did not write status file. Check subagent output for clues."
-   - **If status file is invalid JSON:** treat as BLOCKED with details "Status file corrupted: {raw content}"
-   - **Handle implementer status** (see Handling Implementer Status) — fix or re-dispatch as needed.
-   - **Record progress:** Update `batch_progress[batch_id].tasks_done` with completed task IDs
+#### 3.7 Collect implementer results
+Wait for all implementers to finish. For each task:
+- Read `.task-status-<task_id>.json` from the **worktree root** (use `worktree_path` from `~/.vega-punk/vega-punk-state.json`)
+- **If status file does not exist:** treat as BLOCKED with details "Implementer did not write status file."
+- **If status file is invalid JSON:** treat as BLOCKED with details "Status file corrupted: {raw content}"
+- **Handle implementer status** (see Handling Implementer Status) — fix or re-dispatch as needed.
 
-8. **Dispatch spec reviewer subagents** — the **implementer subagent that built the feature** is responsible for fixing issues found in review. Re-dispatch the same implementer with the review findings appended to its prompt. Reviewer reviews again. Max 3 cycles (see Review Error Recovery).
-   - **Record progress:** Update `batch_progress[batch_id].stage = "spec_review_done"` when all spec reviews pass
-
-9. **Dispatch code quality reviewer subagents** — same fix responsibility: the **implementer subagent** fixes issues, reviewer re-reviews. Max 2 cycles (see Review Error Recovery).
-   - **Record progress:** Update `batch_progress[batch_id].stage = "code_quality_review_done"` when all quality reviews pass
-
-10. **Git commit per task** — after each task passes both reviews, commit its changes:
-    ```
-    IN worktree:
-    git add <task's target_files>
-    git commit -m "<task_id>: <task_action> — reviews passed"
-    ```
-    Record commit hash in `git_commit_map[task_id]` inside `~/.vega-punk/vega-punk-state.json`. This enables surgical rollback if a later task fails.
-
-11. **Mark batch completion** — determine batch status:
-    ```
-    IF all tasks in batch passed reviews:
-        Mark all tasks complete via TaskUpdate
-        Append batch_id to completed_batches
-        CLEAR batch_progress[batch_id]
-    ELSE IF only non-critical tasks failed (all critical tasks passed):
-        IF zero tasks passed (all non-critical failed):
-            /* Empty batch serves no purpose — block and escalate */
-            BLOCK batch
-            ESCALATE: "All tasks in batch {batch_id} failed (non-critical). No value in proceeding."
-            ASK user for direction
+**After all implementers complete — scope audit:**
+```
+FOR each task in batch:
+    RUN: git -C <worktree_path> diff --name-only
+    actual_changed = files in diff output
+    expected_changed = task's target_files
+    out_of_scope = actual_changed - expected_changed
+    IF out_of_scope is NOT empty:
+        TELL: "[task-dispatcher] Scope creep detected for task {task_id}: files modified outside target_files: {out_of_scope}"
+        IF out_of_scope files are test files for the task's target_files:
+            PASS — test files are expected
+        ELSE IF out_of_scope files are config/build files required by the task:
+            NOTE and proceed — but verify these changes don't break other tasks
         ELSE:
-            Mark passed tasks complete
-            Mark failed tasks as failed
-            Append batch_id to completed_batches
-            APPEND batch_id to partial_batches
-            LOG failures to ~/.vega-punk/progress.json
-            CLEAR batch_progress[batch_id]
-            /* WARNING: downstream tasks must NOT depend on failed tasks */
-    ELSE:
-        /* Critical task failed — do NOT proceed */
+            REVERT out_of_scope files: git -C <worktree_path> checkout -- <out_of_scope files>
+            RE-DISPATCH implementer with stricter scope constraint
+```
+
+**Parallel dispatch — merge conflict detection:**
+```
+IF this was a parallel dispatch batch:
+    RUN: git -C <worktree_path> diff --check
+    IF merge conflict markers found:
+        IDENTIFY which tasks touched the conflicting files
+        ROLLBACK the later task's changes (use git_commit_map or checkout)
+        RE-DISPATCH the rolled-back task SEQUENTIALLY (after the other task is committed)
+        WARN: "Parallel dispatch caused conflicts. Re-dispatching {task_id} sequentially."
+```
+
+**Record progress:** Update `batch_progress[batch_id].tasks_done` with completed task IDs. Update `batch_progress[batch_id].stage = "implementing_done"`.
+
+#### 3.8 Spec compliance review
+Dispatch spec reviewer subagents. The **implementer subagent that built the feature** is responsible for fixing issues. Re-dispatch implementer with review findings. Max 3 cycles (see Review Error Recovery).
+- **Record progress:** Update `batch_progress[batch_id].stage = "spec_review_done"` when all spec reviews pass
+
+#### 3.9 Code quality review
+Dispatch code quality reviewer subagents. Same fix responsibility: **implementer** fixes, reviewer re-reviews. Max 2 cycles (see Review Error Recovery).
+- **Record progress:** Update `batch_progress[batch_id].stage = "code_quality_review_done"` when all quality reviews pass
+
+#### 3.10 Git commit per task
+After each task passes both reviews, commit its changes:
+```
+IN worktree:
+git add <task's target_files> <any test files for those targets>
+git commit -m "<task_id>: <task_action> — reviews passed"
+```
+Record commit hash in `git_commit_map[task_id]`. Update `batch_progress[batch_id].tasks_committed` with task ID.
+
+#### 3.11 Mark batch completion
+```
+IF all tasks in batch passed reviews:
+    Mark all tasks complete via TaskUpdate
+    Append batch_id to completed_batches
+    CLEAR batch_progress[batch_id]
+ELSE IF only non-critical tasks failed (all critical tasks passed):
+    IF zero tasks passed (all non-critical failed):
         BLOCK batch
-        LOG to ~/.vega-punk/progress.json
-        ESCALATE to user
-    ```
+        ESCALATE: "All tasks in batch {batch_id} failed (non-critical). No value in proceeding."
+        ASK user for direction
+    ELSE:
+        Mark passed tasks complete
+        Mark failed tasks as failed
+        Append batch_id to completed_batches
+        APPEND batch_id to partial_batches
+        LOG failures to ~/.vega-punk/progress.json
+        CLEAR batch_progress[batch_id]
+        /* WARNING: downstream tasks must NOT depend on failed tasks */
+ELSE:
+    /* Critical task failed — do NOT proceed */
+    BLOCK batch
+    LOG to ~/.vega-punk/progress.json
+    ESCALATE to user
+```
 
-12. **Invoke `verify-gate` via Skill tool** — confirm all tasks passed their reviews and verification checks before proceeding to the next batch.
-    - **If verify-gate invocation fails** (tool error, not test failure):
-        LOG: "verify-gate invocation failed: {error}"
-        ASK user: "Cannot run verification. Proceed manually or fix the issue?"
-    - **If verify-gate passes:** proceed to next batch.
-    - **If verify-gate fails:** log failure to `~/.vega-punk/progress.json`. Attempt fix:
-      1. Re-dispatch implementer for the failing task(s) with verify-gate output as context
-      2. Re-run verify-gate (max 2 attempts)
-      3. If still failing → mark task as failed, ESCALATE to user with full failure context
-      4. Do NOT proceed to next batch until current batch passes verify-gate
+#### 3.12 Verify-gate
+Invoke `verify-gate` via Skill tool — confirm all tasks passed their reviews and verification checks before proceeding to the next batch.
+- **If verify-gate invocation fails** (tool error, not test failure):
+    LOG: "verify-gate invocation failed: {error}"
+    ASK user: "Cannot run verification. Proceed manually or fix the issue?"
+- **If verify-gate passes:** proceed to next batch.
+- **If verify-gate fails:** log failure to `~/.vega-punk/progress.json`. Attempt fix:
+  1. Re-dispatch implementer for the failing task(s) with verify-gate output as context
+  2. Re-run verify-gate (max 2 attempts)
+  3. If still failing → mark task as failed, ESCALATE to user with full failure context
+  4. Do NOT proceed to next batch until current batch passes verify-gate
 
-### Step 4: Final Code Review
+### Step 4: Final Diff Audit + Code Review
 
-Invoke the `review-request` skill via Skill tool. Pass the full git range from first to last commit.
+Before invoking review-request, perform a diff audit to ensure all changes are expected:
+```
+RUN: git -C <worktree_path> diff --stat <first_commit>..HEAD
+total_changed = count of changed files
+expected_changed = union of all tasks' target_files + test files
+
+IF total_changed is much larger than expected:
+    WARN: "More files changed than expected. Possible scope creep across tasks."
+    LIST the unexpected files
+    CHECK if they're legitimate (test files, config, generated files)
+
+IF total_changed is 0:
+    FAIL: "No changes detected across all tasks. Implementation may not have written any files."
+    ESCALATE to user
+```
+
+Then invoke `review-request` via Skill tool. Pass the full git range from first to last commit.
 
 **If review-request invocation fails:**
 - LOG the failure
@@ -327,6 +409,8 @@ BEGIN ROLLBACK
         git -C <worktree_path> reset --soft <commit_before_batch>
         /* --soft preserves changes as staged, allowing selective re-application */
         LOG: "Soft-reset batch {batch_id} to pre-batch state"
+        CLEAR git_commit_map entries for tasks in this batch
+        CLEAR batch_progress[batch_id]
         ESCALATE to user for direction on re-approach
 END
 ```
@@ -334,6 +418,7 @@ END
 **When to rollback:**
 - Critical task failed after all retries exhausted → rollback that task's commit
 - Parallel dispatch created merge conflicts that can't be resolved → rollback the conflicting tasks
+- Scope creep detected and implementer re-dispatch didn't fix it → rollback out-of-scope changes
 - User requests rollback explicitly
 
 **When NOT to rollback:**
@@ -348,7 +433,7 @@ BEGIN HANDLE_IMPLEMENTER_STATUS
     redispatch_count[task_id] = redispatch_count.get(task_id, 0) + 1
 
     CASE DONE:
-        PROCEED to spec compliance review
+        PROCEED to scope audit (Step 3.7 scope check)
 
     CASE DONE_WITH_CONCERNS:
         READ concerns before proceeding
@@ -444,6 +529,9 @@ Build each prompt inline. Do NOT reference external template files — construct
 
 ## Constraints
 - Write ONLY the files specified below. Do NOT modify other files.
+  - Exception: you MAY create test files for your target files (e.g., target_file.test.js)
+  - Exception: you MAY modify config/build files if the task requires it (e.g., adding a new route to a router config)
+  - Any file outside these exceptions must NOT be touched — report BLOCKED if you think you need to.
 - Verify your work by running the relevant tests before reporting done.
 - Report the actual test output (command, exit code, pass/fail counts) — not "tests should pass".
 - If the code field is empty or unclear, report BLOCKED with what's missing.
@@ -495,12 +583,14 @@ IMPORTANT: You MUST write this file even if you encounter an error — write { "
 ## Changed files for reference
 <list of file paths from git diff>
 
+## Worktree path (read source files for full context)
+<worktree_path>
+
 ## Task
 Compare what was built against what the spec requires.
 Check every requirement has a corresponding implementation.
-For each requirement, verify it in the actual code (not just the diff summary).
-Read the actual source files in the worktree if you need more context beyond the diff.
-Report: PASS (with evidence: which lines satisfy which requirements) or FAIL (with specific gaps: spec says X, built Y, missing at file:line).
+For each requirement, verify it in the actual code — read the source files in the worktree if the diff doesn't provide enough context.
+Report: PASS (with evidence: which file:line satisfies which requirement) or FAIL (with specific gaps: spec says X, built Y, missing at file:line).
 ```
 
 ### Code Quality Reviewer Prompt
@@ -510,7 +600,7 @@ Report: PASS (with evidence: which lines satisfy which requirements) or FAIL (wi
 
 ## Context
 - Project: <project_name>
-- Worktree: <worktree_path>
+- Worktree path (read source files for full context): <worktree_path>
 - Files changed: <list from git diff>
 
 ## Full diff
@@ -532,10 +622,10 @@ Mark severity: Critical / Important / Minor.
 ### Fix Dispatch Prompt (re-dispatch implementer to fix review issues)
 
 ```
-## Fix Task: <task_id> - Review Issues
+## Fix Task: <task_id> - <review_type> Review Issues
 
 ## Context
-- You previously implemented this task. A reviewer found issues.
+- You previously implemented this task. A <review_type: "spec compliance" OR "code quality"> reviewer found issues.
 - Project: <project_name>
 - Branch: <branch_name>
 - Worktree: <worktree_path>
@@ -563,6 +653,16 @@ If the original task was a new feature, behavior change, or refactoring:
 3. Verify all existing tests still pass
 4. Do NOT add changes beyond what the review requires
 
+## Fix strategy varies by review type
+
+If this is a SPEC COMPLIANCE fix:
+- The implementation doesn't match the spec — add missing behavior or correct wrong behavior
+- Focus on making the code do what the spec says, nothing more
+
+If this is a CODE QUALITY fix:
+- The implementation matches the spec but has quality issues — improve without changing behavior
+- Focus on the specific issues flagged, do NOT refactor unrelated code
+
 ## What to do
 Fix ALL issues listed in the review findings. Do NOT introduce new changes beyond what the review requires.
 While fixing, verify you do NOT break any spec requirement listed in the original spec above.
@@ -587,7 +687,7 @@ BEGIN REVIEW_RECOVERY
         IF reviewer passes:
             BREAK → proceed to code quality review
         IF cycle <= 2:
-            RE-DISPATCH implementer with Fix Dispatch Prompt → wait for fix → RE-REVIEW
+            RE-DISPATCH implementer with Fix Dispatch Prompt (review_type: "spec compliance") → wait for fix → RE-REVIEW
         IF cycle == 3:
             /* Spec itself may be ambiguous — escalate */
             ESCALATE: "spec says X, implementer built Y, who's right?"
@@ -599,7 +699,7 @@ BEGIN REVIEW_RECOVERY
         IF reviewer passes:
             BREAK → task complete
         IF cycle == 1:
-            RE-DISPATCH implementer with Fix Dispatch Prompt → wait for fix → RE-REVIEW
+            RE-DISPATCH implementer with Fix Dispatch Prompt (review_type: "code quality") → wait for fix → RE-REVIEW
         IF cycle == 2:
             /* Implementer misunderstanding pattern — escalate */
             ESCALATE with conflicting perspectives
@@ -636,8 +736,8 @@ File location: `~/.vega-punk/progress.json`
 ```
 
 - Created on first write, appended to on subsequent events
-- `event` values: `task_failed`, `task_blocked`, `batch_verify_failed`, `escalation`, `rollback`
-- `resolution` values: `skipped_non_critical`, `escalated_to_user`, `user_resolved`, `retried`, `rolled_back`
+- `event` values: `task_failed`, `task_blocked`, `batch_verify_failed`, `escalation`, `rollback`, `scope_creep`
+- `resolution` values: `skipped_non_critical`, `escalated_to_user`, `user_resolved`, `retried`, `rolled_back`, `scope_reverted`
 - Controller reads this at session resume to understand past failures
 - **Maintenance:** When `entries` exceeds `max_entries` (100), remove oldest entries to maintain the limit
 
@@ -649,7 +749,7 @@ Stored inside `~/.vega-punk/vega-punk-state.json` under key `batch_progress`. En
 {
   "batch_progress": {
     "1": {
-      "stage": "implementing|spec_review_done|code_quality_review_done",
+      "stage": "implementing|implementing_done|spec_review_done|code_quality_review_done",
       "tasks_done": ["1_1", "1_2"],
       "tasks_failed": [],
       "tasks_committed": ["1_1"]
@@ -658,7 +758,7 @@ Stored inside `~/.vega-punk/vega-punk-state.json` under key `batch_progress`. En
 }
 ```
 
-- `stage` values: `"implementing"`, `"spec_review_done"`, `"code_quality_review_done"`
+- `stage` values: `"implementing"`, `"implementing_done"`, `"spec_review_done"`, `"code_quality_review_done"`
 - `tasks_committed`: task IDs whose changes have been git-committed (for rollback targeting)
 - On session resume: read `batch_progress[batch_id]`, GOTO the stage, skip already-done tasks
 - Cleared when batch completes (all tasks pass or batch is marked partial/failed)
@@ -677,7 +777,26 @@ Stored inside `~/.vega-punk/vega-punk-state.json` under key `git_commit_map`. Ma
 ```
 
 - Written when a task's changes are committed (Step 3.10)
+- Cleared for a batch when that batch is rolled back
 - Used by Rollback Strategy to revert specific tasks without affecting others
+
+## task_criticality Schema
+
+Stored inside `~/.vega-punk/vega-punk-state.json` under key `task_criticality`. Records whether each task is critical for pipeline flow decisions.
+
+```json
+{
+  "task_criticality": {
+    "1_1": true,
+    "1_2": false,
+    "2_1": true
+  }
+}
+```
+
+- Determined at Step 1 (see Task Criticality section for rules)
+- Used at Step 3.11 to decide batch completion behavior
+- A task with `depends_on` incoming edges from other tasks is automatically critical
 
 ## Common Failures
 
@@ -685,11 +804,12 @@ Stored inside `~/.vega-punk/vega-punk-state.json` under key `git_commit_map`. Ma
 |-------|----------|----------------|
 | Task complete | Status file: DONE + spec review PASS + quality review PASS + git committed | Implementer reports "done" |
 | Batch complete | All tasks pass reviews + verify-gate PASS | All tasks dispatched |
-| Spec compliant | Reviewer PASS with evidence (which lines satisfy which requirements) | Implementer says "matches spec" |
-| Ready to land | Final review PASS + final verify-gate PASS | All batches complete |
-| Parallel safe | target_files disjoint + no implicit conflicts + post-merge check | target_files disjoint alone |
+| Spec compliant | Reviewer PASS with evidence (which file:line satisfies which requirement) | Implementer says "matches spec" |
+| Ready to land | Diff audit clean + final review PASS + final verify-gate PASS | All batches complete |
+| Parallel safe | target_files disjoint + no implicit conflicts + post-merge conflict check | target_files disjoint alone |
 | Session resumable | batch_progress written after each stage + git commits preserved | completed_batches alone |
 | Rollback possible | git_commit_map populated + commits per task | Single monolithic commit |
+| Scope clean | git diff --name-only matches target_files (+ test files) | Implementer stayed "mostly" in scope |
 
 ## Red Flags
 
@@ -702,6 +822,7 @@ Stored inside `~/.vega-punk/vega-punk-state.json` under key `git_commit_map`. Ma
 - Proceeding to next batch if verify-gate fails
 - Dispatching dependent tasks in parallel (violates depends_on ordering)
 - Proceeding when all tasks in a batch failed (even if non-critical)
+- Skipping scope audit after implementer completes (scope creep = unreviewed changes)
 
 ### Quality Risks (may cause incorrect results)
 - Letting implementer self-review replace actual review (both are needed)
@@ -709,8 +830,10 @@ Stored inside `~/.vega-punk/vega-punk-state.json` under key `git_commit_map`. Ma
 - Skipping review loops (reviewer found issues = implementer fixes = review again)
 - Fix Dispatch without discipline injection (same rigor as initial dispatch)
 - Fix Dispatch without original spec (may fix review but break spec compliance)
+- Fix Dispatch without review_type distinction (spec fix ≠ quality fix strategy)
 - Parallel dispatch with only target_files check (implicit conflicts: shared imports, config, module-level changes)
 - Skipping git commit per task (no rollback capability if later task fails)
+- Committing all batch changes as one commit (lose surgical rollback granularity)
 
 ### Efficiency Traps (not fatal but waste resources)
 - Making subagent read plan file (provide full text instead — paste verbatim)
@@ -718,6 +841,7 @@ Stored inside `~/.vega-punk/vega-punk-state.json` under key `git_commit_map`. Ma
 - Re-dispatching completed tasks on session resume (use batch_progress instead)
 - Ignoring subagent questions (answer before letting them proceed)
 - Infinite re-dispatch loops (enforce max 2 re-dispatches per task)
+- Skipping diff audit before final review (may waste review-request invocation on scope creep)
 
 ## Integration
 
@@ -725,7 +849,7 @@ Stored inside `~/.vega-punk/vega-punk-state.json` under key `git_commit_map`. Ma
 - `worktree-setup` — invoke in Pre-Execution Gate before dispatching any tasks
 - `root-cause` — inject discipline into implementer prompts for bug fix tasks
 - `test-first` — inject discipline into implementer prompts for feature/refactor tasks
-- `parallel-swarm` — decision skill for parallelism evaluation (Step 3); provides independence check and prompt construction principles, not dispatch mechanics
+- `parallel-swarm` — decision skill for parallelism evaluation (Step 3.5); provides independence check and prompt construction principles, not dispatch mechanics
 - `verify-gate` — invoke at Step 3.12 after each batch passes reviews, and at Step 5 before landing
 - `review-request` — invoke at Step 4 for final code review
 - `branch-landing` — invoke at Step 6 after all tasks complete
@@ -746,46 +870,51 @@ Stored inside `~/.vega-punk/vega-punk-state.json` under key `git_commit_map`. Ma
 - `plan-executor` — use for inline sequential execution instead of subagent dispatch
 
 **Session resume:**
-- On session restart, read `~/.vega-punk/vega-punk-state.json` for `batch_plan`, `completed_batches`, `batch_progress`, and `git_commit_map`
+- On session restart, read `~/.vega-punk/vega-punk-state.json` for `batch_plan`, `completed_batches`, `batch_progress`, `git_commit_map`, and `task_criticality`
 - Resume from the first incomplete batch
 - If `batch_progress[batch_id]` exists, resume from the recorded stage, skip already-done tasks
 - Validate worktree consistency: commit any uncommitted partial work before resuming
 - Read `~/.vega-punk/progress.json` for past failures to avoid repeating them
+- Re-read roadmap.json to confirm it hasn't been modified since last session
 
 ## Example Workflow
 
 ```
-You: [Pre-Execution Gate: validate roadmap, invoke worktree-setup, record baseline_failure_count]
-[worktree created, baseline tests pass]
+You: [Pre-Execution Gate]
+  - Validate roadmap.json (phases, tasks, target_files, code references, acyclicity)
+  - Invoke worktree-setup
+  - Record baseline_failure_count
+  - Clean stale .task-status-*.json files
 
-You: [Read ~/.vega-punk/roadmap.json → build dependency graph → topological sort into batches]
-[Store batch_plan to ~/.vega-punk/vega-punk-state.json with batch_progress: {}, git_commit_map: {}]
-[Create TaskCreate entries for each task, set addBlockedBy from depends_on]
+You: [Step 1: Build dependency graph + batch plan + task_criticality]
+  - Store to ~/.vega-punk/vega-punk-state.json: batch_plan, batch_progress: {}, git_commit_map: {}, task_criticality
+
+You: [Step 2: Create TaskCreate entries with addBlockedBy]
 
 For each batch in batch_plan:
-  1. Verify completed_batches contains all prior batch_ids (enables session resume)
-  2. Check batch_progress for partial completion — resume from stage if exists
-     Validate worktree consistency: commit uncommitted partial work
-  3. Classify each task: bug fix → root-cause discipline, feature/refactor → test-first
-  4. Dispatch implementers: parallel (multiple Agent calls in one message) or sequential
-     WARN on parallel: "watch for implicit conflicts"
-     Check for merge conflicts after parallel implementers complete
-  5. Wait for all, read .task-status-*.json from worktree root (fallback: treat missing as BLOCKED)
-     Handle timeout: treat as BLOCKED if implementer hangs
-     Enforce re-dispatch limit: max 2 re-dispatches (3 total attempts)
-  6. Handle status (DONE → review, NEEDS_CONTEXT → re-dispatch, BLOCKED → assess, MISSING → re-dispatch)
-  7. Dispatch spec reviewers (with FULL git diff, not summaries) → if FAIL: re-dispatch implementer with Fix Prompt (includes original spec + discipline) → re-review (max 3 cycles)
-     Record: batch_progress[batch_id].stage = "spec_review_done"
-  8. Dispatch code quality reviewers (with FULL git diff + file access) → if FAIL: re-dispatch implementer with Fix Prompt (includes original spec + discipline) → re-review (max 2 cycles)
-     Record: batch_progress[batch_id].stage = "code_quality_review_done"
-  9. Git commit per task: commit target_files, record hash in git_commit_map
-  10. Determine batch completion: all pass → complete; non-critical fail → partial (unless ALL failed); critical fail → block
-      Clear batch_progress[batch_id] on batch completion
-  11. Invoke verify-gate via Skill tool → if FAIL: fix and retry (max 2), then escalate
-  12. Next batch
 
-After all tasks:
-  You: [Invoke review-request via Skill tool]
-  You: [Invoke verify-gate via Skill tool — final mechanical check]
-  You: [Invoke branch-landing via Skill tool]
+  [3.1] Verify completed_batches contains all prior batch_ids
+  [3.2] Check batch_progress — resume from stage if exists (commit uncommitted partial work first)
+  [3.3] Check dependencies — only dispatch if depends_on all completed
+  [3.4] Classify: bug fix → root-cause, feature/refactor → test-first
+  [3.5] Parallelism: ≥2 independent disjoint tasks → parallel (WARN: implicit conflicts)
+  [3.6] Dispatch implementers (parallel or sequential). Enforce re-dispatch limit: max 2.
+  [3.7] Collect results + scope audit:
+        - Read .task-status-*.json (missing = BLOCKED)
+        - Scope audit: git diff --name-only vs target_files → revert out-of-scope
+        - Parallel conflict detection: git diff --check → rollback + sequential re-dispatch
+        - Record: batch_progress.stage = "implementing_done"
+  [3.8] Spec reviewers (with FULL git diff + worktree path) → Fix Prompt (review_type: "spec compliance") → max 3 cycles
+        - Record: batch_progress.stage = "spec_review_done"
+  [3.9] Code quality reviewers (with FULL git diff + worktree path) → Fix Prompt (review_type: "code quality") → max 2 cycles
+        - Record: batch_progress.stage = "code_quality_review_done"
+  [3.10] Git commit per task → record hash in git_commit_map + tasks_committed
+  [3.11] Batch completion: all pass → complete; non-critical fail → partial (unless ALL failed); critical fail → block
+  [3.12] Invoke verify-gate → if FAIL: fix + retry (max 2) → escalate
+         → next batch
+
+After all batches:
+  [Step 4] Diff audit: git diff --stat first..HEAD → check total vs expected → review-request
+  [Step 5] verify-gate — final mechanical check
+  [Step 6] branch-landing
 ```

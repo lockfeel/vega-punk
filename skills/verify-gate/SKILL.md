@@ -4,6 +4,12 @@ description: Use when about to claim work is complete, fixed, or passing, before
 categories: ["code-quality"]
 triggers: ["verify gate", "verify this batch", "verify completion", "check verification"]
 user-invocable: true
+parameters:
+  - name: caller
+    type: enum
+    values: [task-dispatcher, plan-executor, review-request, standalone]
+    default: standalone
+    description: Identifies which skill or context invoked verify-gate, used to determine failure handling behavior
 ---
 
 # Verification Before Completion
@@ -16,15 +22,19 @@ Claiming work is complete without verification is unreliable — evidence before
 
 **Violating the letter of this rule is violating the spirit of this rule.**
 
-**Document format:** This document combines pseudocode (exact logic, branching, state transitions) with natural language prompts (intent, principles, constraints). Both carry equal authority. Pseudocode defines WHAT to do and WHEN; prompts define WHY and HOW. Execute pseudocode as mandatory workflow rules, not optional illustrations. 
+**Document format:** This document combines pseudocode (exact logic, branching, state transitions) with natural language prompts (intent, principles, constraints). Both carry equal authority. Pseudocode defines WHAT to do and WHEN; prompts define WHY and HOW. Execute pseudocode as mandatory workflow rules, not optional illustrations.
 
 ## Pre-Execution Gate
 
 ```
 BEGIN STATE_VALIDATION_GATE
+    /* Ensure result storage directory exists */
+    IF ~/.vega-punk/ does not exist:
+        CREATE ~/.vega-punk/
+        TELL: "[verify-gate] Created ~/.vega-punk/ for verification results"
+
     /* Identify verification commands from project context */
     IF ~/.vega-punk/roadmap.json exists:
-        /* Check if there are verification targets in current step/phase */
         current_step = ~/.vega-punk/roadmap.json current_step
         IF current_step has verify field:
             verification_target = current_step.verify
@@ -37,12 +47,11 @@ BEGIN STATE_VALIDATION_GATE
         TELL: "[verify-gate] No verification commands detected in project config."
         ASK: "What should I verify? (1) tests, (2) build, (3) lint, (4) specific check"
 
-    /* Check for previous verification results */
+    /* Previous results are HISTORICAL ONLY — never use as evidence */
     IF ~/.vega-punk/verify-result.json exists:
         last_result = read ~/.vega-punk/verify-result.json
-        IF last_result.passed == true AND last_result.timestamp < 5 minutes ago:
-            TELL: "[verify-gate] Previous verification passed {time} ago. Re-verifying for freshness."
-            /* Still re-run — iron law requires fresh evidence */
+        TELL: "[verify-gate] Previous verification exists but is not fresh evidence. Re-running."
+        /* Iron Law: ALWAYS re-run. No exceptions. No cache. */
 END
 ```
 
@@ -54,6 +63,8 @@ NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE
 
 If you haven't run the verification command in this message, you cannot claim it passes.
 
+**No caching. No freshness windows. No shortcuts. Previous results are historical records only.**
+
 ## The Gate Function
 
 ```
@@ -61,10 +72,16 @@ BEFORE claiming any status or expressing satisfaction:
 
 1. IDENTIFY: What command proves this claim?
 2. RUN: Execute the FULL command (fresh, complete)
+   - DEFAULT_TIMEOUT = 300 seconds
+   - IF project config specifies longer timeout: use that
+   - IF timeout exceeded:
+     REPORT: "[verify-gate] Command timed out after {timeout}s"
+     WRITE result: { passed: false, failures: ["timeout after {timeout}s"] }
+     RETURN failure
 3. READ: Full output, check exit code, count failures
 4. VERIFY: Does output confirm the claim?
-   - If NO: Write verification result, state actual status with evidence
-   - If YES: Write verification result, state claim WITH evidence
+   - IF NO: Write verification result, state actual status with evidence
+   - IF YES: Write verification result, state claim WITH evidence
 5. ONLY THEN: Make the claim
 
 Skip any step = unverified claim, not a verified result
@@ -75,18 +92,51 @@ Skip any step = unverified claim, not a verified result
 After running verification, write a structured result so the calling skill can act on it:
 
 ```
-WRITE ~/.vega-punk/verify-result.json (same directory as ~/.vega-punk/roadmap.json and ~/.vega-punk/vega-punk-state.json):
-{
-  "timestamp": "<ISO8601>",
-  "command": "<command that was run>",
-  "exit_code": <0 or non-zero>,
-  "output_summary": "<first 200 chars of output>",
-  "passed": true|false,
-  "failures": ["<specific failure descriptions if any>"]
-}
+IF ~/.vega-punk/verify-result.json does not exist:
+    WRITE ~/.vega-punk/verify-result.json with initial array:
+    [
+      {
+        "timestamp": "<ISO8601>",
+        "command": "<command that was run>",
+        "exit_code": <0 or non-zero>,
+        "output_summary": "<failure-related lines, or last 500 chars if no failures>",
+        "passed": true|false,
+        "failures": ["<specific failure descriptions if any>"],
+        "caller": "<caller parameter value>"
+      }
+    ]
+
+IF ~/.vega-punk/verify-result.json already exists:
+    READ existing array
+    APPEND new result entry to the array
+    WRITE the complete updated array
 ```
 
-If ~/.vega-punk/verify-result.json already exists, append to an array instead of overwriting.
+**Always use array format** — even for the first entry.
+
+**output_summary extraction rule:**
+- IF command passed: last 500 characters of output
+- IF command failed: all lines containing `FAIL`, `Error`, `error`, `FAILED`, or ` AssertionError`, plus up to 2 lines of context after each match. If no such lines found, fall back to last 500 characters.
+
+## Multi-Command Verification
+
+When multiple verification commands are needed (e.g., test + lint + build):
+
+```
+IF multiple verification commands needed:
+    RUN commands in parallel WHERE safe
+    /* Safe to parallelize: lint + type-check + test (independent)
+       NOT safe to parallelize: build then test (sequential dependency) */
+    AGGREGATE results into single verify-result entry:
+    {
+        "command": "<cmd1> && <cmd2> && <cmd3>",
+        "exit_code": <0 if ALL passed, non-zero otherwise>,
+        "output_summary": "<combined failure lines from all commands>",
+        "passed": true IF ALL commands passed ELSE false,
+        "failures": ["<union of all failures from all commands>"]
+    }
+    REPORT per-command results, THEN aggregate verdict
+```
 
 ## Verification Failure Handling
 
@@ -97,26 +147,34 @@ BEGIN VERIFY_FAILURE
         RETURN control to caller
 
     IF verification failed:
+        /* Detect environment vs code failures */
+        IF output contains "connection refused" OR "database not found" OR "ECONNREFUSED" OR "service unavailable":
+            REPORT: "[verify-gate] Verification failed due to ENVIRONMENT issue, not code."
+            SUGGEST: "Check if required services (database, API, etc.) are running."
+            /* Still write result as failed, but flag environment issue */
+            ADD to failures: "[ENVIRONMENT] <specific connection/service error>"
+
         REPORT: "Verification FAILED: <command> — <N> failures"
         LIST each failure with evidence
 
-        CASE caller is task-dispatcher (batch mode):
+        IF caller == "task-dispatcher":
             DO NOT advance to next batch
             MARK current batch as "verification_failed"
             RETURN control to caller for fix-and-retry
-            /* Max 3 verify-gate invocations per batch.
-               If still failing: mark task failed, log to progress.json, escalate if critical */
 
-        CASE caller is plan-executor (step mode):
+        IF caller == "plan-executor":
             DO NOT mark step as complete
             RETURN control to caller (STEP_MACHINE handles retry logic)
-            /* STEP_MACHINE retries up to 3 attempts. On 3rd failure: marks step "failed", asks user */
 
-        CASE caller is standalone (direct invocation):
+        IF caller == "review-request":
+            DO NOT mark review as passed
+            RETURN control to caller for fix-and-reverify
+
+        IF caller == "standalone":
             ASK: "Verification failed. What would you like to do?
                   (1) I'll fix it and re-verify
-                   (2) Show me the details
-                   (3) Proceed anyway (not recommended)"
+                  (2) Show me the details
+                  (3) Proceed anyway (not recommended)"
             FOLLOW user direction
 END
 ```
@@ -125,12 +183,14 @@ END
 
 verify-gate itself does not fix — it only reports. The **caller** is responsible for fixing and re-invoking:
 
-| Caller | Who fixes | Max retries | On exhaustion |
-|--------|-----------|-------------|---------------|
-| task-dispatcher | Implementer subagent (same task) | 3 verify-gate invocations | Mark task failed, log to ~/.vega-punk/progress.json, escalate if critical |
+| Caller | Who fixes | Max retry cycles | On exhaustion |
+|--------|-----------|-----------------|---------------|
+| task-dispatcher | Implementer subagent (same task) | 3 retry cycles per verification type | Mark task failed, log to ~/.vega-punk/progress.json, escalate if critical |
 | plan-executor | Current session (STEP_MACHINE) | 3 step attempts | Mark step failed, ask user |
 | review-request | Implementer fixes flagged issues | 2 review cycles | Escalate disagreement to user |
 | standalone | Current session or user | User-directed | Follow user choice |
+
+**Retry cycle definition:** 1 retry cycle = fix attempt → invoke verify-gate → pass or fail. The initial verification does NOT count as a retry cycle.
 
 **Retry flow:** verify-gate fails → caller fixes → caller re-invokes verify-gate → pass or retry again. Never auto-escalate retries — the caller controls the loop.
 
@@ -145,6 +205,9 @@ verify-gate itself does not fix — it only reports. The **caller** is responsib
 | Regression test works | Red-green cycle verified | Test passes once |
 | Agent completed | VCS diff shows changes | Agent reports "success" |
 | Requirements met | Line-by-line checklist | Tests passing |
+| Migration works | Migration command: exit 0 | Schema looks right |
+| API contract valid | Contract test passes | Manual review |
+| No regressions | Full suite green | Only changed-file tests |
 
 ## Red Flags - STOP
 
@@ -169,6 +232,7 @@ verify-gate itself does not fix — it only reports. The **caller** is responsib
 | "I'm tired" | Exhaustion ≠ excuse |
 | "Partial check is enough" | Partial proves nothing |
 | "Different words so rule doesn't apply" | Spirit over letter |
+| "It passed 5 minutes ago" | Stale evidence = no evidence |
 
 ## Key Patterns
 
@@ -176,12 +240,6 @@ verify-gate itself does not fix — it only reports. The **caller** is responsib
 ```
 [Run test command] → [See: 34/34 pass] → "All tests pass"
 NOT: "Should pass now" / "Looks correct"
-```
-
-**Regression tests (TDD Red-Green):**
-```
-Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
-NOT: "I've written a regression test" (without red-green verification)
 ```
 
 **Build:**
@@ -201,6 +259,8 @@ NOT: "Tests pass, phase complete"
 Agent reports success → Check VCS diff → Verify changes → Report actual state
 NOT: Trust agent report
 ```
+
+**Note:** TDD Red-Green regression verification (revert fix → verify test fails → restore → verify test passes) is outside verify-gate's scope. That workflow belongs to the `test-first` skill. verify-gate only validates command-level pass/fail.
 
 ## How to Identify the Right Command
 
@@ -222,6 +282,7 @@ verify-gate is a **command-level verifier**. It runs test/lint/build commands an
 - Make architectural judgments (it only checks pass/fail of commands)
 - Review code quality, naming, architecture, or design patterns (that's `review-request`)
 - Check spec compliance (that's the task-dispatcher's spec compliance review)
+- Perform TDD Red-Green regression cycles (that's `test-first`)
 
 **Boundary with review-request:**
 - verify-gate: "Do the tests pass? Does the build succeed?" (binary, command-level)
@@ -247,8 +308,9 @@ verify-gate is a **command-level verifier**. It runs test/lint/build commands an
 ## Integration
 
 **Called by:**
-- **task-dispatcher** — Step 3.7 after each batch passes spec + code quality reviews
-- **plan-executor** — verification rules are defined inline in Step 2a (verify-gate principles apply)
+- **task-dispatcher** — after each batch passes spec + code quality reviews
+- **plan-executor** — verification rules are defined inline in step execution (verify-gate principles apply)
+- **review-request** — after code quality issues are addressed, before marking review as passed
 - **Any skill** before making success claims
 
 **Does NOT call other skills** — verify-gate is a terminal verification step. It returns control to the caller.

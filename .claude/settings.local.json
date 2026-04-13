@@ -25,7 +25,8 @@
       "Bash:mkfs:*",
       "Bash:dd:*",
       "Bash:chmod:777",
-      "Bash:chmod:000"
+      "Bash:chmod:000",
+      "/"
     ]
   }
 }
