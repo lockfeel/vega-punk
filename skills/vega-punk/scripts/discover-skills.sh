@@ -1,13 +1,9 @@
 #!/usr/bin/env bash
-# Discover all registered skills across all sources.
-# Outputs a JSON array of skill objects with name, description, and source.
-# Run from repo root: bash scripts/discover-skills.sh
 
 set -euo pipefail
 
-OUTPUT="${1:-}"  # optional: output file path, defaults to stdout
+OUTPUT="${1:-}"
 
-# Use node or python3 for JSON assembly (macOS-safe, no grep -P)
 json_engine() {
   if command -v node &>/dev/null; then
     echo "node"
@@ -27,17 +23,13 @@ fi
 TMPFILE=$(mktemp)
 trap 'rm -f "$TMPFILE"' EXIT
 
-# ── 1. System skills (from main SKILL.md dependency table) ───
-# Extract all **skill-name** references from the Skill Dependencies section
 if [[ -f "SKILL.md" ]]; then
-  # Get everything under "## Skill Dependencies" to end of file
   awk '/^## Skill Dependencies/{found=1; next} found' SKILL.md | \
     grep -o '\*\*[a-z][a-z0-9_-]*\*\*' | sed 's/\*\*//g' | sort -u | while read -r name; do
     echo "$name	external system skill	system	-" >> "$TMPFILE"
   done
 fi
 
-# ── 3. Platform skills (all known directories) ───────────────
 platform_dirs=(
   "$HOME/.claude/skills"
   "$HOME/.openclaw/skills"
@@ -55,7 +47,6 @@ for dir in "${platform_dirs[@]}"; do
   done
 done
 
-# ── 4. Assemble JSON (deduplicate by name, prefer local > system > platform) ──
 if [[ ! -s "$TMPFILE" ]]; then
   echo "[]"
 else
@@ -94,7 +85,6 @@ print(json.dumps(list(seen.values()), indent=2, ensure_ascii=False))
   fi
 fi
 
-# Write to file if specified
 if [[ -n "$OUTPUT" ]]; then
   if [[ "$ENGINE" == "node" ]]; then
     node -e "

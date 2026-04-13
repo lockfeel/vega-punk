@@ -113,11 +113,24 @@ BEGIN GlobalGuards
     ON entering SCAN:   INCREMENT scan_depth
     ON entering CLARIFY: RESET scan_depth = 0
 
+    /* Per-phase intermediate data cleanup — prevent unbounded growth */
+    /* After each phase completes, compress its intermediate data to 1-sentence summary */
+    ON transitioning FROM SCAN:
+        COMPRESS domain_considerations → keep only { skill_name: { key_blockers: [], assumptions: [] } }
+        /* Remove raw output, keep only structured conclusions */
+
+    ON transitioning FROM DESIGN_QA OR SPEC_QA:
+        COMPRESS expert_findings → keep only { skill_name: { verdict: pass/fail, top_3_risks: [] } }
+        /* Remove detailed commentary, keep verdict + top risks */
+
+    ON transitioning FROM REVIEW:
+        COMPRESS expert_validation → keep only { skill_name: { verdict: pass/fail, top_3_issues: [] } }
+
     /* Compaction — prevents unbounded state file growth */
     /* Apply when context is under pressure: long conversations, many retries, or large state */
-    IF qa.retries > 2 OR transition_count > 12:
-        PRESERVE: state, task, context, selected_skills, scope, requirements, design, dependencies, spec_path, phase_skill_mapping
-        COMPRESS qa → { retries: N, last_feedback: "<summary>", status: "FAIL" }
+    IF qa.retries > 2 OR transition_count > 8:
+        PRESERVE: state, task, context, selected_skills, scope, requirements, design, dependencies, spec_path, phase_skill_mapping, expert_contexts
+        COMPRESS qa → { retries: N, last_feedback: "<summary>", status: "FAIL|PASS|CONDITIONAL_PASS" }
         COMPRESS any oversized field not in preserve list → 1-sentence summary
 END
 ```
@@ -149,24 +162,24 @@ If user asks "where are we?" or "how much left?", print current state and remain
 
 | State        | FULL Path     | CONDENSED Path |
 |--------------|---------------|----------------|
-| ROUTE        | 9 states left | 3 states left  |
-| SCAN         | 8             | —              |
-| CLARIFY      | 7             | —              |
-| DESIGN       | 6             | —              |
-| DESIGN_QA    | 5             | —              |
-| DEPENDENCIES | 4             | —              |
-| SPEC         | 3             | —              |
-| SPEC_QA      | 2             | —              |
+| ROUTE        | 10 states left| 3 states left  |
+| SCAN         | 9             | —              |
+| CLARIFY      | 8             | —              |
+| DESIGN       | 7             | —              |
+| DESIGN_QA    | 6             | —              |
+| DEPENDENCIES | 5             | —              |
+| SPEC         | 4             | —              |
+| SPEC_QA      | 3             | —              |
 | CONDENSED    | 3             | 3              |
 | HANDOFF      | 2             | 2              |
 | REVIEW       | 1             | 1              |
 
 **Two execution modes:**
 
-| Mode          | Steps                             | When                                      | State File | Skill Check |
-|---------------|-----------------------------------|-------------------------------------------|------------|-------------|
-| **CONDENSED** | Minimal spec → Approval → Handoff | Small changes, single features, fast-path | Required   | Full SCAN   |
-| **FULL**      | All 9 states                      | Large/multi-step tasks, ambiguous scope   | Required   | Full SCAN   |
+| Mode          | Steps                             | When                                      | State File | Skill Check | Context Strategy |
+|---------------|-----------------------------------|-------------------------------------------|------------|-------------|-----------------|
+| **CONDENSED** | Minimal spec → Approval → Handoff | Small changes, single features, fast-path | Required   | Full SCAN   | Blockers only   |
+| **FULL**      | All 10 states                     | Large/multi-step tasks, ambiguous scope   | Required   | Full SCAN   | Cache + reuse   |
 
 CONDENSED skips DESIGN, DESIGN_QA, DEPENDENCIES, SPEC, SPEC_QA. 4 states remain: CONDENSED → HANDOFF → REVIEW → DONE.
 
@@ -180,9 +193,17 @@ These are rules. Do not treat them as suggestions.
 
 Do NOT execute anything — write code, scaffold projects, generate documents, create designs, produce content, modify configurations, invoke any implementation skill, or take any implementation action — until the design has been presented and the user has approved it. This applies to EVERY task regardless of perceived simplicity. A todo list, a single-function utility, a config change, a document, a presentation, a data analysis — all of them. The design can be short (a few sentences for truly simple projects via CONDENSED mode), but you MUST present it and get approval.
 
-### 2. The 1% Rule: When in Doubt, Invoke
+### 2. Semantic Skill Matching
 
-If there is even a 1% chance a skill might apply to what you are doing, you MUST invoke it. This is not negotiable. This is not optional. You cannot rationalize your way out of this. If an invoked skill turns out to be wrong for the situation, you don't need to use it — but you must check.
+Skills are matched by **semantic relevance**, not fuzzy "1% chance". A skill is invoked only when the AI judges it applies based on `skill.name` + `skill.description`:
+
+| Step | What happens |
+|------|-------------|
+| **Discover** | `discover-skills.sh` returns `{ name, description, source, path }` for all installed skills |
+| **Match** | AI reads each skill's `name` + `description` and judges: "Does this skill apply to the user's task?" |
+| **Auto-add** | Hard-coded rules add `test-first` (code tasks), `verify-gate` (fast mode), `root-cause` (bug tasks) |
+
+If the skill's description does NOT mention the task domain, **do NOT invoke the skill**.
 
 ### 3. Instruction Priority
 
@@ -333,7 +354,7 @@ BEGIN ROUTE
        - state = DONE, EXIT
 
     3. **Creative/Implementation** — build, fix, modify, design, create:
-       - CHECK for relevant skills (1% Rule)
+       - CHECK for relevant skills (signal-driven matching)
        - MERGE INTO STATE_FILE: { "state": "SCAN", "task": "<user request>", "scan_depth": 0, "transition_count": 1 }
        - Enter SCAN
 
@@ -365,30 +386,65 @@ BEGIN SCAN
     /* 2. check project context */
     READ files, docs, recent commits
 
-    /* 3. skill routing */
+    /* 3. skill discovery — semantic matching on name + description */
     IF scan_depth >= 3:
         SKIP skill routing
     ELSE:
+        /* Step A: Discover available skills */
         RUN bash scripts/discover-skills.sh
-        IF script fails or not found:
-            FALLBACK: scan registered skills from system prompt skill list
-            MATCH task against built-in skill descriptions
-            IF fallback matched 0 skills:
-                TELL: "No skills matched. This may be a new domain. Proceeding without skill guidance."
-        ELSE:
-            MATCH task against skill descriptions
-        SELECT ALL relevant skills + note execution order
+        IF exit code == 1 (hard failure — no JSON runtime):
+            TELL: "[SCAN] Skill discovery failed — no JSON runtime available. Proceeding without skill guidance."
+            PARSE system prompt skill list as fallback → available_skills
+        IF exit code == 2 (partial success):
+            PROCEED with discovered skills + note warnings in context
+        IF exit code == 0 (success):
+            PARSE JSON output → available_skills
 
-    /* 4. invoke skills for guidance (NOT implementation) */
+        /* Step B: Semantic matching — AI decides which skills match */
+        /* Available fields per skill: { name, description, source, path } */
+        /* Match user task intent against skill.name + skill.description semantically */
+        matched_skills = []
+        FOR EACH skill IN available_skills:
+            /* Check: does this skill's description say it applies to this task? */
+            /* The AI reads skill.name + skill.description and judges relevance */
+            IF skill APPLIES TO task_intent:
+                ADD skill.name TO matched_skills
+
+        /* Step C: Auto-add rules (hard-coded, always fire) */
+        IF mode == "fast" AND "verify-gate" NOT IN matched_skills:
+            ADD "verify-gate" TO matched_skills
+        IF task involves code AND "test-first" NOT IN matched_skills:
+            ADD "test-first" TO matched_skills
+        IF message contains bug keywords AND "root-cause" NOT IN matched_skills:
+            ADD "root-cause" TO matched_skills
+
+        /* Step D: Deduplicate */
+        DEDUP matched_skills by name
+
+    /* 4. invoke skills for guidance (NOT implementation) — ONE-TIME cache */
+    domain_considerations = {}
+    expert_contexts = {}
     FOR EACH selected skill:
         INVOKE skill via Skill tool
         /* Guidance mode only — do NOT execute implementation steps from the skill */
         /* Use skill output to populate context, scope, and selected_skills fields */
+        /* Also extract: what ambiguities in this skill's domain would block a good solution? */
+        EXTRACT domain-specific considerations from skill output
+        IF ambiguities identified:
+            domain_considerations[skill.name] = { inputs_needed, ambiguities, considerations }
+        /* CRITICAL: cache the skill's expertise summary, NOT the full SKILL.md */
+        expert_contexts[skill.name] = {
+            expertise_domains: <what this skill knows>,
+            quality_standards: <what "good" looks like in this domain>,
+            common_pitfalls: <typical mistakes to avoid>
+        }
 
     /* state write */
     MERGE INTO STATE_FILE:
         state = "CLARIFY"
         ADD: context, scope
+        ADD: domain_considerations (if populated by step 4)
+        ADD: expert_contexts (if populated — used by QA/REVIEW instead of re-invoking skills)
         ADD: selected_skills = {
             "planner": "plan-builder",
             "executor": <inferred from skill types — execution-oriented skills → "task-dispatcher" or "plan-executor">,
@@ -408,18 +464,44 @@ END
 
 **Announce:** "Entering CLARIFY..."
 
-**Purpose:** Extract requirements — purpose, constraints, success criteria — one question at a time.
+**Purpose:** Extract requirements — purpose, constraints, success criteria — one question at a time. **Skill-driven:** selected skills are activated as domain experts to identify what needs clarification; vega-punk synthesizes their expertise into user-facing questions.
 
 ```
 BEGIN CLARIFY
+    /* 0. Skill-driven clarification — activate matched skills as domain experts */
+    IF selected_skills NOT empty AND domain_considerations NOT IN STATE_FILE:
+        /* Skills were already invoked in SCAN for guidance */
+        /* Now ask each skill: "What ambiguities in your domain would block a good solution?" */
+        FOR EACH skill_name IN selected_skills:
+            INVOKE skill_name via Skill tool (if not already in context)
+            ASK skill: "Based on the user's task, what domain-specific dimensions need clarification?"
+            EXTRACT: required_inputs, key_ambiguities, expert_considerations
+            COLLECT INTO: domain_considerations[skill_name] = { inputs, ambiguities, considerations }
+
+    /* 1. Check if requirements are already clear */
     IF purpose, constraints, and success criteria are clear:
         TELL: "Requirements are clear. Moving to design."
         EXTRACT purpose, constraints, success from request + SCAN context
         GOTO DESIGN
 
-    /* enforce ONE-question-at-a-time: AI must NOT batch multiple questions */
+    /* 2. Build question pool from skill expertise + vega-punk fallback */
+    IF domain_considerations NOT empty:
+        BUILD question_pool FROM domain_considerations
+        CLASSIFY questions:
+            - BLOCKERS: "would block a quality solution" — must ask (platform, auth, data model, core API)
+            - PREFERENCES: "affects implementation style" — can assume (colors, animation, naming)
+        PRIORITIZE: BLOCKERS first, then PREFERENCES if time allows
+        DEDUP overlapping questions across skills
+        /* NOTE: PREFERENCES can be assumed if user says "you decide" or doesn't answer */
+    ELSE:
+        question_pool = []
+
+    /* 3. Enforce ONE-question-at-a-time: AI must NOT batch multiple questions */
     IF more_than_one clarifying_dimension exists:
-        ASK single question: "Most critical unknown" → prefer multiple choice
+        IF question_pool NOT empty:
+            ASK single question from question_pool → prefer multiple choice
+        ELSE:
+            ASK single question: "Most critical unknown" → prefer multiple choice
         WAIT for answer before asking next
 
         /* Check user's answer — match the first row that applies: */
@@ -430,7 +512,10 @@ BEGIN CLARIFY
         | "you decide" (just this one) | Document assumption for THIS dimension → If all remaining can be reasonably assumed: same action as row above → Else: ASK next most critical question |
 
     ELSE:
-        ASK single clarifying question → prefer multiple choice
+        IF question_pool NOT empty:
+            ASK single question from question_pool → prefer multiple choice
+        ELSE:
+            ASK single clarifying question → prefer multiple choice
         FOCUS on: purpose, constraints, success criteria
         WAIT for answer
 
@@ -448,6 +533,7 @@ BEGIN CLARIFY
     MERGE INTO STATE_FILE:
         state = "DESIGN"
         ADD: requirements = { purpose, constraints, success }
+        ADD: domain_considerations (if populated)
         RESET: scan_depth = 0
         INCREMENT: transition_count
 END
@@ -521,14 +607,30 @@ END
 
 **Trigger:** State is DESIGN_QA.
 
-**Announce:** "Entering DESIGN_QA... awaiting expert review + user secondary review"
+**Announce:** "Entering DESIGN_QA... invoking expert review + user confirmation"
 
-**Purpose:** Validate design quality through structured self-review and user confirmation.
+**Purpose:** Validate design quality through skill-driven expert review and user confirmation.
 
 ```
 BEGIN DESIGN_QA
     LOOP design_qa_retries ≤ 3:
-        /* Layer 1: Structured Self-Review */
+        /* Layer 1: Expert Review — prefer cached contexts, re-invoke only if needed */
+        IF expert_contexts NOT empty:
+            /* Use SCAN-cached expertise — no need to reload full SKILL.md */
+            FOR EACH skill_name IN expert_contexts:
+                REVIEW design against expert_contexts[skill_name]:
+                    - expertise_domains: does design align with this skill's domain?
+                    - quality_standards: does design meet quality bar?
+                    - common_pitfalls: does design avoid known mistakes?
+                COLLECT: expert_findings[skill_name] = { passed, risks, recommendations }
+        ELSE IF selected_skills NOT empty:
+            /* Fallback: no cached context, re-invoke skills */
+            FOR EACH skill_name IN selected_skills:
+                INVOKE skill_name via Skill tool (if not already in context)
+                ASK skill: "Review this design against your domain expertise. What risks, gaps, or anti-patterns do you see?"
+                COLLECT: expert_findings[skill_name] = { passed, risks, recommendations }
+
+        /* Layer 2: Structured Self-Review (cross-cutting, not domain-specific) */
         CHECK:
             - Architecture: separation of concerns? units independent?
             - Technology choices: tools justified? simpler alternative?
@@ -536,27 +638,51 @@ BEGIN DESIGN_QA
             - Error handling: what happens when each external call fails?
             - Edge cases: top 3 ways this could break in production?
             - Scope creep: unrequested features? remove them.
+        MERGE self-review results with expert_findings
         IF any fail:
             FIX failures inline
             RE-RUN self-review
 
-        /* Layer 2: User Secondary Review */
-        PRESENT findings: passed / fixed / remaining risks
+        /* Layer 3: User Secondary Review — present expert + self-review findings */
+        PRESENT summary:
+            - Expert review: [which skills reviewed, what passed, what risks flagged]
+            - Self-review: [passed / fixed / remaining risks]
+            - Bottom line: recommendation (proceed / proceed-with-conditions / redesign)
         WAIT for user decision
 
         MATCH user response:
         CASE PASS:
-            UPDATE qa = { "design_status": "PASS", "design_retries": N }
+            UPDATE qa = { "design_status": "PASS", "design_retries": N, "expert_review": expert_findings }
             MERGE INTO STATE_FILE: state = "DEPENDENCIES"
             EXIT
+        CASE CONDITIONAL_PASS:
+            /* User approves overall direction but needs specific changes */
+            RECORD conditions: [list of must-fix items]
+            IF conditions are specific and actionable:
+                FIX conditions in design inline
+                IF all conditions resolved:
+                    UPDATE qa = { "design_status": "PASS", "design_retries": N, "expert_review": expert_findings, "conditional_fixes": conditions }
+                    MERGE INTO STATE_FILE: state = "DEPENDENCIES"
+                    EXIT
+                ELSE:
+                    INCREMENT design_qa_retries
+                    UPDATE qa = { "design_status": "FAIL", "design_retries": design_qa_retries, "design_feedback": "Conditional fixes not resolved: [remaining]", "expert_review": expert_findings }
+                    MERGE INTO STATE_FILE: state = "DESIGN"
+                    EXIT
+            ELSE:
+                /* Conditions are too vague — treat as FAIL */
+                INCREMENT design_qa_retries
+                UPDATE qa = { "design_status": "FAIL", "design_retries": design_qa_retries, "design_feedback": "<summary>", "expert_review": expert_findings }
+                MERGE INTO STATE_FILE: state = "DESIGN"
+                EXIT
         CASE FAIL:
             INCREMENT design_qa_retries
-            UPDATE qa = { "design_status": "FAIL", "design_retries": design_qa_retries, "design_feedback": "<summary>" }
+            UPDATE qa = { "design_status": "FAIL", "design_retries": design_qa_retries, "design_feedback": "<summary>", "expert_review": expert_findings }
             MERGE INTO STATE_FILE: state = "DESIGN"
             EXIT (↩ to DESIGN for fix, then re-enter DESIGN_QA)
 
     /* retries exhausted */
-    TELL: "[vega-punk] I've hit the retry limit. Please review manually and tell me how to proceed."
+    TELL: "[vega-punk] I've hit the retry limit. Expert review findings: [summary]. Please review manually and tell me how to proceed."
     STAY in DESIGN_QA
 END
 ```
@@ -625,12 +751,26 @@ BEGIN SPEC
             RESET qa.spec_retries = 0
         CLEAR qa.spec_status
 
+    /* 0. Skill-driven spec enrichment — let experts dictate spec sections */
+    IF expert_contexts NOT empty:
+        FOR EACH skill_name IN expert_contexts:
+            DERIVE required spec sections from expert_contexts[skill_name]:
+                - expertise_domains → what sections must exist
+                - quality_standards → what acceptance criteria to include
+                - common_pitfalls → what constraints/edge cases to document
+            COLLECT INTO: spec_sections[skill_name] = { required_sections, acceptance_criteria, constraints }
+
     /* 1. write spec file */
     WRITE SPEC_DIR/YYYY-MM-DD-<topic>-design.md
     REQUIRED sections:
         Goal, Architecture, Components, Interfaces,
         Data Flow, Error Handling, Testing Plan, Dependency Graph,
         Skill Mapping
+    IF spec_sections NOT empty:
+        MERGE spec_sections into spec — add skill-specific sections
+        e.g. UI skills → add "Responsive Breakpoints", "Interaction States", "Animation Specs"
+        e.g. test-first → add "Test Coverage Targets", "Boundary Cases"
+        e.g. security skills → add "Auth Flow", "Data Protection"
 
     /* Skill Mapping — required section in spec document */
     /* For EACH implementation phase/component, specify: */
@@ -671,14 +811,30 @@ END
 
 **Trigger:** State is SPEC_QA.
 
-**Announce:** "Entering SPEC_QA... awaiting expert review + user secondary review"
+**Announce:** "Entering SPEC_QA... invoking expert review + user confirmation"
 
-**Purpose:** Validate spec completeness, consistency, and implementability.
+**Purpose:** Validate spec completeness, consistency, and implementability through skill-driven expert review and user confirmation.
 
 ```
 BEGIN SPEC_QA
     LOOP spec_qa_retries ≤ 3:
-        /* Layer 1: Structured Self-Review */
+        /* Layer 1: Expert Review — prefer cached contexts, re-invoke only if needed */
+        IF expert_contexts NOT empty:
+            /* Use SCAN-cached expertise — no need to reload full SKILL.md */
+            FOR EACH skill_name IN expert_contexts:
+                REVIEW spec against expert_contexts[skill_name]:
+                    - expertise_domains: does spec cover this domain's essentials?
+                    - quality_standards: is spec detailed enough for quality implementation?
+                    - common_pitfalls: does spec leave room for known mistakes?
+                COLLECT: expert_findings[skill_name] = { passed, gaps, ambiguities, recommendations }
+        ELSE IF selected_skills NOT empty:
+            /* Fallback: no cached context, re-invoke skills */
+            FOR EACH skill_name IN selected_skills:
+                INVOKE skill_name via Skill tool (if not already in context)
+                ASK skill: "Review this spec against your domain expertise. Is it complete, implementable, and unambiguous? What's missing or vague?"
+                COLLECT: expert_findings[skill_name] = { passed, gaps, ambiguities, recommendations }
+
+        /* Layer 2: Structured Self-Review (cross-cutting, not domain-specific) */
         CHECK:
             - Completeness: every section implementable? No TBD, TODO, vague statements?
             - Consistency: any contradictions? dependency graph matches architecture?
@@ -687,31 +843,55 @@ BEGIN SPEC_QA
             - Dependency accuracy: serial justified? anything parallelizable marked serial?
             - Scope discipline: unrequested features? remove them.
             - Skill Mapping: every phase has at least one skill assigned? skills actually exist?
+        MERGE self-review results with expert_findings
         IF any fail:
             FIX failures inline
             RE-RUN self-review
 
-        /* Layer 2: User Secondary Review */
-        PRESENT findings: passed / fixed / remaining risks
+        /* Layer 3: User Secondary Review — present expert + self-review findings */
+        PRESENT summary:
+            - Expert review: [which skills reviewed, what passed, what gaps flagged]
+            - Self-review: [passed / fixed / remaining risks]
+            - Bottom line: recommendation (proceed / proceed-with-conditions / redesign)
         WAIT for user decision
 
         MATCH user response:
         CASE PASS:
-            UPDATE qa = { "spec_status": "PASS", "spec_retries": N }
+            UPDATE qa = { "spec_status": "PASS", "spec_retries": N, "expert_review": expert_findings }
             MERGE INTO STATE_FILE: state = "HANDOFF"
             EXIT
+        CASE CONDITIONAL_PASS:
+            /* User approves overall spec but needs specific changes */
+            RECORD conditions: [list of must-fix items]
+            IF conditions are specific and actionable:
+                FIX conditions in spec inline
+                IF all conditions resolved:
+                    UPDATE qa = { "spec_status": "PASS", "spec_retries": N, "expert_review": expert_findings, "conditional_fixes": conditions }
+                    MERGE INTO STATE_FILE: state = "HANDOFF"
+                    EXIT
+                ELSE:
+                    INCREMENT spec_qa_retries
+                    UPDATE qa = { "spec_status": "FAIL", "spec_retries": spec_qa_retries, "spec_feedback": "Conditional fixes not resolved: [remaining]", "expert_review": expert_findings }
+                    MERGE INTO STATE_FILE: state = "SPEC"
+                    EXIT
+            ELSE:
+                /* Conditions are too vague — treat as FAIL */
+                INCREMENT spec_qa_retries
+                UPDATE qa = { "spec_status": "FAIL", "spec_retries": spec_qa_retries, "spec_feedback": "<summary>", "expert_review": expert_findings }
+                MERGE INTO STATE_FILE: state = "SPEC"
+                EXIT (↩ to SPEC for fix, then re-enter SPEC_QA)
         CASE FAIL:
             INCREMENT spec_qa_retries
             /* Check if feedback indicates design-level issue */
             IF spec_feedback contains "architecture" OR "wrong pattern" OR "fundamental" OR "design problem":
                 MERGE INTO STATE_FILE: state = "DESIGN"
             ELSE:
-                UPDATE qa = { "spec_status": "FAIL", "spec_retries": spec_qa_retries, "spec_feedback": "<summary>" }
+                UPDATE qa = { "spec_status": "FAIL", "spec_retries": spec_qa_retries, "spec_feedback": "<summary>", "expert_review": expert_findings }
                 MERGE INTO STATE_FILE: state = "SPEC"
             EXIT (↩ to SPEC for fix, or DESIGN for fundamental issue, then re-enter SPEC_QA)
 
     /* retries exhausted */
-    TELL: "[vega-punk] I've hit the retry limit. Please review manually and tell me how to proceed."
+    TELL: "[vega-punk] I've hit the retry limit. Expert review findings: [summary]. Please review manually and tell me how to proceed."
     STAY in SPEC_QA
 END
 ```
@@ -728,9 +908,23 @@ END
 
 ```
 BEGIN CONDENSED
-    /* 0. extract requirements (CONDENSED bypasses CLARIFY) */
+    /* 0. extract requirements — skill-driven (CONDENSED bypasses CLARIFY) */
+    IF selected_skills NOT empty AND domain_considerations NOT IN STATE_FILE:
+        FOR EACH skill_name IN selected_skills:
+            INVOKE skill_name via Skill tool (if not already in context)
+            EXTRACT domain-specific ambiguities → domain_considerations[skill_name]
+
     EXTRACT purpose, constraints, success criteria from user request + SCAN context (if available)
-    IF any dimension unclear → ASK one question, prefer multiple choice
+    IF domain_considerations NOT empty:
+        BUILD question_pool FROM domain_considerations
+        CLASSIFY questions:
+            - BLOCKERS: "would block a quality solution" (e.g., platform, auth method, data model)
+            - PREFERENCES: "affects implementation style" (e.g., color scheme, animation, tech preference)
+        ASK only BLOCKER questions (max 2) → prefer multiple choice
+        FOR PREFERENCES → make reasonable assumptions and document them
+        IF any BLOCKER dimension still unclear after 2 questions → ASK one more
+    ELSE:
+        IF any dimension unclear → ASK one question, prefer multiple choice
 
     /* 1. minimal spec */
     WRITE: What, Why, How (3 sentences max)
@@ -838,7 +1032,9 @@ BEGIN HANDOFF
            "alternatives": string[]         // alternative executors identified during SCAN
          },
          "worktree_path": string|null,      // set by worktree-setup if isolation needed
-         "context": object|null             // project context from SCAN
+         "context": object|null,             // project context from SCAN
+         "domain_considerations": object,    // { skill_name: { inputs, ambiguities, considerations } } — extracted by skills during CLARIFY
+         "expert_contexts": object           // { skill_name: { expertise_domains, quality_standards, common_pitfalls } } — cached in SCAN, used by QA/REVIEW
        }
     */
 
@@ -856,9 +1052,9 @@ END
 
 **Trigger:** State is REVIEW with `execution_result` present.
 
-**Announce:** "Entering REVIEW..."
+**Announce:** "Entering REVIEW... invoking expert validation"
 
-**Purpose:** Validate execution against requirements. Decide: done, iterate, or redesign.
+**Purpose:** Validate execution against requirements through skill-driven expert review. Decide: done, iterate, or redesign.
 
 ```
 BEGIN REVIEW
@@ -871,9 +1067,33 @@ BEGIN REVIEW
         CASE (2) redesign → Archive ROADMAP_FILE → GOTO DESIGN, EXIT
         CASE (3) new task → APPLY Post-Completion Cleanup → GOTO ROUTE, EXIT
 
+    /* Layer 1: Expert Validation — prefer cached contexts, re-invoke only if needed */
+    expert_validation = {}
+    IF expert_contexts NOT empty:
+        /* Use SCAN-cached expertise — no need to reload full SKILL.md */
+        FOR EACH skill_name IN expert_contexts:
+            REVIEW execution_result against expert_contexts[skill_name]:
+                - quality_standards: does result meet the skill's quality bar?
+                - common_pitfalls: does result fall into known mistakes?
+                - expertise_domains: does result cover all essentials in this domain?
+            COLLECT: expert_validation[skill_name] = { passed, issues, recommendations }
+    ELSE IF selected_skills NOT empty:
+        /* Fallback: no cached context, re-invoke skills */
+        FOR EACH skill_name IN selected_skills:
+            INVOKE skill_name via Skill tool (if not already in context)
+            ASK skill: "Review the execution result against the original requirements and your domain expertise. Did the implementation meet quality standards? What's missing, broken, or suboptimal?"
+            COLLECT: expert_validation[skill_name] = { passed, issues, recommendations }
+
+    /* Layer 2: Compare against requirements */
     READ execution_result from STATE_FILE
     COMPARE against requirements.success
-    PRESENT summary to user
+    MERGE expert_validation into review analysis
+
+    /* Layer 3: Present summary to user */
+    PRESENT summary:
+        - Requirements check: [which success criteria met / not met]
+        - Expert validation: [which skills reviewed, pass/fail per skill, key issues]
+        - Overall verdict: success / partial / failed
 
     /* capture satisfaction BEFORE routing — always ask, never skip */
     RECORD user_satisfaction: "satisfied" / "neutral" / "dissatisfied"
@@ -886,23 +1106,25 @@ BEGIN REVIEW
     WRITE COUNTERS_FILE: { "consecutive_dissatisfied_count": value }
 
     /* Find the matching row — check in order, stop at first match */
+    /* expert_validation informs the classification */
 
     | # | Condition | Message to user | Recommend |
     |---|-----------|-----------------|-----------|
-    | 1 | success + verification passed + satisfied | "All criteria met." | DONE (auto-complete) |
-    | 2 | success + verification passed + dissatisfied | "Criteria met but you're not happy — what's missing?" | CLARIFY |
-    | 3 | success + verification failed | "Implementer reported success but verification failed." | DESIGN |
-    | 4a | partial + missing indicates unclear requirements ("ambiguous spec", "unclear requirement") | "Partially done — requirements were unclear." | CLARIFY |
-    | 4b | partial + missing indicates design gap ("architecture issue", "wrong pattern", "component missing") | "Partially done — design gap detected." | DESIGN |
-    | 4c | partial + unclear cause | "Partially done." | DESIGN |
-    | 5a | failed + notes indicate requirement ambiguity ("ambiguous", "unclear requirement", "spec contradiction", "missing spec") | "Execution failed due to unclear requirements." | CLARIFY |
-    | 5b | failed + notes indicate architectural issue ("architecture", "wrong pattern", "fundamental", "wrong approach", "redesign") | "Execution failed due to design problem." | DESIGN |
-    | 5c | failed + generic (no clear type) | "Execution failed." | DESIGN |
+    | 1 | success + verification passed + expert validation passed + satisfied | "All criteria met. Expert review: no issues flagged." | DONE (auto-complete) |
+    | 2 | success + verification passed + expert flagged concerns + satisfied | "Criteria met. Expert flagged: [summary]. Acceptable?" | DONE (if user confirms) or DESIGN |
+    | 3 | success + verification passed + dissatisfied | "Criteria met but you're not happy — what's missing?" | CLARIFY |
+    | 4 | success + verification failed | "Implementer reported success but verification failed." | DESIGN |
+    | 5a | partial + missing indicates unclear requirements ("ambiguous spec", "unclear requirement") | "Partially done — requirements were unclear." | CLARIFY |
+    | 5b | partial + missing indicates design gap ("architecture issue", "wrong pattern", "component missing") | "Partially done — design gap detected." | DESIGN |
+    | 5c | partial + unclear cause | "Partially done." | DESIGN |
+    | 6a | failed + notes indicate requirement ambiguity ("ambiguous", "unclear requirement", "spec contradiction", "missing spec") | "Execution failed due to unclear requirements." | CLARIFY |
+    | 6b | failed + notes indicate architectural issue ("architecture", "wrong pattern", "fundamental", "wrong approach", "redesign") | "Execution failed due to design problem." | DESIGN |
+    | 6c | failed + generic (no clear type) | "Execution failed." | DESIGN |
 
     /* Rule 1 is the only auto-complete path — skip user confirmation */
     IF matched rule 1: MERGE INTO STATE_FILE: { "state": "DONE" }, EXIT
 
-    /* For rules 2-9: tell the message, then ask user to confirm or override */
+    /* For rules 2-12: tell the message, then ask user to confirm or override */
     TELL: [Message from matched row]
 
     IF consecutive_dissatisfied_count >= 3:
@@ -985,6 +1207,10 @@ BEGIN RECOVERY
         state = CLARIFY
         TELL: "Design context was lost. Let me re-clarify the requirements."
 
+    CASE state == DESIGN_QA OR state == SPEC_QA AND expert_contexts missing:
+        /* cached expertise lost — will fall back to re-invoking skills */
+        PROCEED from current state (QA layers have fallback to re-invoke skills)
+
     CASE state == HANDOFF OR state == REVIEW AND spec_path file missing:
         /* spec was never written or deleted */
         IF design AND dependencies fields present:
@@ -1043,16 +1269,16 @@ END
 | "This is too simple to need a design"      | Use CONDENSED, don't skip                                                  |
 | "I'll just do this one thing first"        | Check the state machine BEFORE acting                                      |
 | "Let me explore the codebase first"        | SCAN handles context gathering                                             |
-| "This doesn't need a formal skill"         | If a skill exists, invoke it                                               |
+| "This doesn't need a formal skill"         | Check description — if it doesn't mention your task, you're right. Don't invoke. |
 | "The skill is overkill"                    | Use CONDENSED, not nothing                                                 |
 | "Dependencies are obvious"                 | Write them down. "Obvious" causes merge conflicts                          |
-| "This is just a simple question"           | Questions are tasks. Check skills.                                         |
+| "This is just a simple question"           | Questions are tasks. Check skill descriptions.                             |
 | "I need more context first"                | Skill check comes BEFORE clarification                                     |
-| "Let me gather information first"          | Skills tell you HOW to gather information                                  |
-| "I remember this skill"                    | Skills evolve. Read the current version.                                   |
-| "This doesn't count as a task"             | Action = task. Check skills.                                               |
-| "I know what that means"                   | Knowing the concept ≠ invoking the skill                                   |
-| "This feels productive"                    | Undisciplined action wastes time. Skills prevent this.                     |
+| "Let me gather information first"          | Skill descriptions tell you HOW — if applicable                          |
+| "I remember this skill"                    | Skills evolve. Read the current description.                               |
+| "This doesn't count as a task"             | Action = task. Check skill descriptions.                                   |
+| "I know what that means"                   | Knowing the concept ≠ description matches your task                        |
+| "This feels productive"                    | Undisciplined action wastes time. Read descriptions before invoking.       |
 | "This is just a draft, we'll polish later" | No drafts. First output IS the final output.                               |
 | "I'll ask all my questions at once"        | CLARIFY enforces one question at a time. Batch questions = batch confusion |
 | "This bug needs the full flow"             | Fast mode exists — prod down → CONDENSED, diagnose → FULL                  |
@@ -1066,11 +1292,21 @@ END
 - **One question at a time** — Don't overwhelm.
 - **YAGNI ruthlessly** — Remove unrequested features.
 - **Follow existing patterns** — Targeted improvements only. No unrelated refactoring.
-- **Skill orchestration** — Match each phase to the right professional skill: SCAN → domain experts, ROUTE → root-cause, HANDOFF → plan-builder. Find all relevant skills per phase, decide execution order from context — don't follow fixed chains.
+- **Skill orchestration** — Discover skills via script, read name + description, judge semantic relevance. No signal/table matching needed.
 
 ## Skill Trigger Reference
 
-Skills vega-punk directly invokes:
+### Discovery
+
+`discover-skills.sh` scans platform dirs + project-local skills → outputs `{ name, description, source, path }`.
+This is the **only** source of available skills. No external registry.
+
+### Matching
+
+The AI judges each skill's relevance by reading `name` + `description` against the user's task intent.
+Auto-add rules always fire: fast mode → `verify-gate`, code → `test-first`, bug → `root-cause`.
+
+### Direct Invokes (vega-punk calls these explicitly)
 
 | Skill            | When    | How                                                                                   |
 |------------------|---------|---------------------------------------------------------------------------------------|
@@ -1078,15 +1314,15 @@ Skills vega-punk directly invokes:
 | **worktree-setup** | HANDOFF | task needs isolation (multi-file changes, feature branch)                           |
 | **plan-builder** | HANDOFF | via Skill tool — NOT trigger phrase                                                   |
 
-All other skills (test-first, verify-gate, domain experts) are either routed during SCAN or added to `skills_to_apply` for the executor to invoke.
+All other skills are matched by semantic reading of name + description during SCAN, or added via auto-add rules. Skills whose descriptions do not match the task are NOT invoked.
 
-> ### ⚠ How to choose skills — CRITICAL
-> 1. Run `discover-skills.sh` — get the full registry
-> 2. Match task intent against each skill's description and trigger conditions
-> 3. Select all relevant skills (1% Rule). Decide execution order from context — no fixed chains
-> 4. Trust your judgment
+> ### How to choose skills — SEMANTIC MATCHING
+> 1. `discover-skills.sh` returns all skills with `{ name, description, source, path }`
+> 2. For each skill: read name + description, judge if it applies to the user's task
+> 3. Add auto-add skills: test-first (code), verify-gate (fast mode), root-cause (bug)
+> 4. No match = no invoke. No "1% chance" rule.
 
-> ### ⚠ How to invoke skills — NON-NEGOTIABLE
+> ### How to invoke skills — NON-NEGOTIABLE
 > 1. **Use the `Skill` tool directly** — do NOT rely on trigger phrase matching
 > 2. Trigger phrases ("I'm using the X skill to...") are deprecated — they were unreliable
 > 3. The `Skill` tool guarantees the skill's full SKILL.md is loaded into context
