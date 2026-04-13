@@ -15,6 +15,8 @@ You delegate tasks to specialized agents with isolated context. By precisely cra
 
 **Role:** parallel-swarm is the decision skill for parallelization. It answers: "Should these tasks run in parallel?" and "How do I structure their prompts?" The caller (task-dispatcher or manual workflow) owns dispatch table management, subagent lifecycle, and result collection.
 
+**Document format:** This document combines pseudocode (exact logic, branching, state transitions) with natural language prompts (intent, principles, constraints). Both carry equal authority. Pseudocode defines WHAT to do and WHEN; prompts define WHY and HOW. Execute pseudocode as mandatory workflow rules, not optional illustrations. 
+
 ## Pre-Execution Gate
 
 ```

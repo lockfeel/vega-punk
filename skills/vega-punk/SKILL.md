@@ -15,8 +15,13 @@ hooks:
 
 **Boundary:** vega-punk owns design and routing. After HANDOFF, plan-builder takes execution — reads the state file, generates the roadmap, manages implementation. vega-punk stays in REVIEW to validate results against requirements.
 
-**State file:** `~/.vega-punk/vega-punk-state.json`.
-**Spec directory:** `~/.vega-punk/specs/`.
+**Constants:**
+- `STATE_FILE` = `~/.vega-punk/vega-punk-state.json`
+- `SPEC_DIR` = `~/.vega-punk/specs/`
+- `ROADMAP_FILE` = `~/.vega-punk/roadmap.json`
+- `COUNTERS_FILE` = `~/.vega-punk/vega-punk-counters.json`
+- `FINDINGS_FILE` = `~/.vega-punk/findings.json`
+- `PROGRESS_FILE` = `~/.vega-punk/progress.json`
 
 For **OpenClaw** and **Claude Code**, the workspace is always `~/.vega-punk/` — state, specs, roadmap, and all runtime files live there.
 
@@ -34,54 +39,71 @@ See [State Machine](#state-machine) for full flow details.
 
 ## How State Works
 
-**State file:** `~/.vega-punk/vega-punk-state.json`.
+**Document format:** This document combines pseudocode (exact logic, branching, state transitions) with natural language prompts (intent, principles, constraints). Both carry equal authority. Pseudocode defines WHAT to do and WHEN; prompts define WHY and HOW. Execute pseudocode as mandatory workflow rules, not optional illustrations.
+
+**GOTO semantics:** `GOTO <STATE>` = `MERGE INTO STATE_FILE { state: "<STATE>" }` then exit current block. The state file is always written before control transfers. `EXIT` = write current state to file then end processing for this message.
 
 **On every user message:**
 
 ```
 BEGIN STATE_RESOLUTION
-    READ ~/.vega-punk/vega-punk-state.json
+    READ STATE_FILE
 
-    IF user says "start over" / "new task" / "forget previous":
-        APPLY Post-Completion Cleanup
-        TELL: "[vega-punk] Starting fresh. What shall we build?"
-        GOTO ROUTE
+    /* Check these rules in order — stop at the first match */
 
-    IF state == "DONE":
-        APPLY Post-Completion Cleanup
-        GOTO ROUTE
+    1. User says "start over" / "new task" / "forget previous":
+       → APPLY Post-Completion Cleanup
+       → TELL: "[vega-punk] Starting fresh. What shall we build?"
+       → GOTO ROUTE
 
-    IF file missing:
-        GOTO ROUTE
+    2. State is "DONE":
+       → ENTER DONE, then EXIT
 
-    IF state == "REVIEW":
-        /* Sub-condition: has execution_result → validate it */
-        IF execution_result exists:
-            ENTER REVIEW
-            EXIT
-        /* Sub-condition: roadmap exists with work left → resume */
-        IF ~/.vega-punk/roadmap.json exists AND has incomplete steps:
-            RESUME execution from roadmap.json current_step
-            EXIT
-        /* Sub-condition: user wants iterate/redesign → archive and restart */
-        IF user requests iterate/redesign:
-            IF ~/.vega-punk/roadmap.json exists:
-                RENAME roadmap.json → roadmap.ARCHIVED.json
-            GOTO DESIGN
-            EXIT
-        /* Sub-condition: nothing to review, no direction → wait */
-        WAIT for user input (do NOT restart ROUTE)
-        EXIT
+    3. State file missing:
+       → GOTO ROUTE
 
-    /* state is not DONE, file exists → recovery */
-    ENTER current state directly
-    DO NOT go back to ROUTE
+    4. State is "REVIEW" — check sub-conditions in order, stop at first match:
 
-    /* ── Global guards (apply after routing) ── */
+       | # | Condition | Action |
+       |---|-----------|--------|
+       | 4a | STATE_FILE.execution_result exists | ENTER REVIEW, then EXIT |
+       | 4b | ROADMAP_FILE exists with incomplete steps | RESUME from ROADMAP_FILE current_step, EXIT |
+       | 4c | User requests iterate or redesign | Archive ROADMAP_FILE if exists → GOTO DESIGN, EXIT |
+       | 4d | None of the above | TELL: "In REVIEW with nothing to review. Start a new task, iterate, or tell me what to do." → WAIT for user input, EXIT |
+
+    5. State file has invalid JSON or state NOT in valid states:
+       → APPLY RECOVERY
+
+    6. None of the above (file exists, state is valid):
+       → ENTER current state directly
+       → DO NOT go back to ROUTE
+
+    /* After routing — always apply these */
     APPLY GlobalGuards
     APPLY StateTransition
 END
+```
 
+### StateTransition
+
+```
+BEGIN StateTransition
+    /* Applies to every state change — ALL skills must follow: */
+    READ current JSON → merge in memory → CHANGE state → ADD new fields
+    NEVER delete existing fields (cross-skill safety)
+    INCREMENT transition_count (init to 1 if absent) → WRITE back
+
+    /* State file write rules — ALL skills must follow: */
+    1. NEVER overwrite STATE_FILE without reading first — always read, merge in memory, then write back
+    2. NEVER delete existing fields — only ADD new fields or UPDATE existing values
+    3. If a field was written by another skill (e.g. worktree_path by worktree-setup), preserve it
+    4. When in doubt, read the current JSON, add your fields, and write back — never assume you own the entire file
+END
+```
+
+### GlobalGuards
+
+```
 BEGIN GlobalGuards
     /* Loop protection — prevents skill routing loops during SCAN */
     IF state == "SCAN" AND scan_depth >= 3:
@@ -92,45 +114,33 @@ BEGIN GlobalGuards
     ON entering CLARIFY: RESET scan_depth = 0
 
     /* Compaction — prevents unbounded state file growth */
-    /* threshold > 12 allows full 9-state flow + retries without premature compaction */
+    /* Apply when context is under pressure: long conversations, many retries, or large state */
     IF qa.retries > 2 OR transition_count > 12:
         PRESERVE: state, task, context, selected_skills, scope, requirements, design, dependencies, spec_path
         COMPRESS qa → { retries: N, last_feedback: "<summary>", status: "FAIL" }
-        DROP any field > 500 chars not in preserve list → 1-sentence summary
+        COMPRESS any oversized field not in preserve list → 1-sentence summary
 END
+```
 
-BEGIN StateTransition
-    /* Applies to every state change — ALL skills must follow: */
-    READ current JSON → merge in memory → CHANGE state → ADD new fields
-    NEVER delete existing fields (cross-skill safety)
-    INCREMENT transition_count (init to 1 if absent) → WRITE back
-END
+### Post-Completion Cleanup
 
+```
 BEGIN Post-Completion Cleanup
     /* Step 1: save counters BEFORE deleting state file */
-    IF ~/.vega-punk/vega-punk-state.json has consecutive_dissatisfied_count:
-        WRITE ~/.vega-punk/vega-punk-counters.json:
+    IF STATE_FILE has consecutive_dissatisfied_count:
+        WRITE COUNTERS_FILE:
             { "consecutive_dissatisfied_count": value }
 
     /* Step 2: archive + delete state */
-    RENAME ~/.vega-punk/specs/*.md → *.DONE.md (completed) or *.CANCELLED.md (cancelled)
-    DELETE ~/.vega-punk/vega-punk-state.json
+    RENAME SPEC_DIR*.md → *.DONE.md (completed) or *.CANCELLED.md (cancelled)
+    DELETE STATE_FILE
 
     /* On REVIEW → new task: archive specs + preserve counters, then restart ROUTE */
     /* On "start over" / "new task" / "forget previous": also clear counter */
     IF user says "forget previous":
-        DELETE ~/.vega-punk/vega-punk-counters.json
+        DELETE COUNTERS_FILE
 END
 ```
-
-**Key rule:** Always preserve `task` field across all state transitions.
-
-**State file write rules — ALL skills must follow:**
-1. **NEVER** use full `Write` on `~/.vega-punk/vega-punk-state.json` — always read first, merge in memory, then `Write` back
-2. **NEVER delete existing fields** — only ADD new fields or UPDATE existing values
-3. If a field was written by another skill (e.g. `worktree_path` by worktree-setup), preserve it
-4. When in doubt, read the current JSON, add your fields, and write back — never assume you own the entire file
-
 
 **Progress reporting:** At each transition:
 > "Entering [STATE]..."
@@ -158,7 +168,7 @@ If user asks "where are we?" or "how much left?", print current state and remain
 | **CONDENSED** | Minimal spec → Approval → Handoff | Small changes, single features, emergency | Required   | Full SCAN   |
 | **FULL**      | All 9 states                      | Large/multi-step tasks, ambiguous scope   | Required   | Full SCAN   |
 
-CONDENSED: 3 steps (spec → approve → handoff). Skips DESIGN, DEPENDENCIES, SPEC. 3 states remain (CONDENSED → HANDOFF → REVIEW → DONE).
+CONDENSED skips DESIGN, DEPENDENCIES, SPEC. 3 states remain (CONDENSED → HANDOFF → REVIEW → DONE).
 
 ---
 
@@ -261,7 +271,7 @@ BEGIN FULL
         IF PASS → BREAK
         IF FAIL → REPEAT (↩ SPEC, fix, re-submit)
     IF retries exhausted → HALT, ask user
-    
+
     ENTER HANDOFF
     state = REVIEW, handoff_to = plan-builder
     WAIT for execution_result
@@ -305,60 +315,46 @@ END
 
 ```
 BEGIN ROUTE
-    /* load preserved counters from previous task */
-    IF ~/.vega-punk/vega-punk-counters.json exists:
+    /* Load preserved counters from previous task */
+    IF COUNTERS_FILE exists:
         READ consecutive_dissatisfied_count into context
     ELSE:
         INITIALIZE consecutive_dissatisfied_count = 0
 
-    /* Step 0: clean slate */
-    IF state == "DONE" AND ~/.vega-punk/vega-punk-state.json exists:
-        RENAME ~/.vega-punk/specs/*.md → *.DONE.md
-        DELETE ~/.vega-punk/vega-punk-state.json
+    /* Clean slate is handled by STATE_RESOLUTION Post-Completion Cleanup before reaching ROUTE */
 
-    /* Step 1: bug detection first */
+    /* Bug detection — always check first */
     IF message contains bug keywords (`bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception`):
         INVOKE root-cause skill
 
-    /* Step 1b: emergency mode — production outage or critical fix */
-    IF user says "urgent" / "emergency" / "hotfix" / "prod down" / "critical":
-        /* if bug keywords present, root-cause was already invoked above */
-        IF root-cause skill was invoked:
-            TELL: "[vega-punk] Emergency mode — root-cause done, switching to fast execution."
-        ELSE:
-            TELL: "[vega-punk] Emergency mode — minimal design, fast execution."
-        /* Step 3: write state (emergency skips SCAN, goes straight to CONDENSED) */
-        WRITE ~/.vega-punk/vega-punk-state.json:
-            { "state": "CONDENSED", "task": "<user request>", "mode": "emergency", "transition_count": 1 }
-        GOTO CONDENSED
+    /* Classify task — check these rules in order, stop at first match */
 
-    /* Step 2: classify task type */
-    MATCH task type:
+    1. **Emergency** — user says "urgent" / "emergency" / "hotfix" / "prod down" / "critical":
+       - If root-cause was invoked above: TELL "Emergency mode — root-cause done, switching to fast execution."
+       - Else: TELL "Emergency mode — minimal design, fast execution."
+       - MERGE INTO STATE_FILE: { "state": "CONDENSED", "task": "<user request>", "mode": "emergency", "transition_count": 1 }
+       - GOTO CONDENSED
 
-    CASE user says "just write code" / "skip design" / "just do it" / "don't overthink":
-        /* CONDENSED still routes essential quality skills */
-        INVOKE root-cause IF bug keywords present
-        INVOKE test-first IF implementation involves code
-        INVOKE verify-gate BEFORE any success claim
-        state = CONDENSED
+    2. **Fast mode** — user says "just write code" / "skip design" / "just do it" / "don't overthink":
+       - INVOKE root-cause IF bug keywords present (may already be done above)
+       - INVOKE test-first IF implementation involves code
+       - INVOKE verify-gate BEFORE any success claim
+       - MERGE INTO STATE_FILE: { "state": "CONDENSED", "task": "<user request>", "mode": "fast", "transition_count": 1 }
+       - GOTO CONDENSED
 
-    CASE Informational (simple Q&A, definitions, explanations):
-        ANSWER directly — no skill check needed
-        state = DONE
-        EXIT
+    3. **Informational** — simple Q&A, definitions, explanations:
+       - ANSWER directly — no skill check needed
+       - state = DONE, EXIT
 
-    CASE Creative/Implementation (build, fix, modify, design, create):
-        CHECK for relevant skills (1% Rule)
-        state = SCAN
+    4. **Creative/Implementation** — build, fix, modify, design, create:
+       - CHECK for relevant skills (1% Rule)
+       - MERGE INTO STATE_FILE: { "state": "SCAN", "task": "<user request>", "scan_depth": 0, "transition_count": 1 }
+       - Enter SCAN
 
-    CASE Ambiguous:
-        ASK one question to classify
-        IF classified as Informational → see above
-        IF classified as Creative/Implementation → see above
-
-    /* Step 3: write state */
-    WRITE ~/.vega-punk/vega-punk-state.json:
-        { "state": "SCAN", "task": "<user request>", "scan_depth": 0, "transition_count": 1 }
+    5. **Ambiguous** — can't classify:
+       - ASK one question to classify
+       - If Informational → see rule 3
+       - If Creative/Implementation → see rule 4
 END
 ```
 
@@ -400,7 +396,7 @@ BEGIN SCAN
         LOAD skill guidance into context
 
     /* state write */
-    WRITE ~/.vega-punk/vega-punk-state.json:
+    MERGE INTO STATE_FILE:
         state = "CLARIFY"
         ADD: context, selected_skills, scope, skill_selection
         INCREMENT: scan_depth (or set to 1)
@@ -429,20 +425,31 @@ BEGIN CLARIFY
     IF more_than_one clarifying_dimension exists:
         ASK single question: "Most critical unknown" → prefer multiple choice
         WAIT for answer before asking next
-        IF user says "you decide" on all remaining:
-            document assumptions → PROCEED to DESIGN
+
+        /* Check user's answer — match the first row that applies: */
+
+        | User says... | Action |
+        |--------------|--------|
+        | "you decide" on all remaining | Document assumptions for ALL remaining dimensions → TELL: "I've made assumptions for: [list]. Correct any before we design." → WAIT → PROCEED to DESIGN |
+        | "you decide" (just this one) | Document assumption for THIS dimension → If all remaining can be reasonably assumed: same action as row above → Else: ASK next most critical question |
+
     ELSE:
         ASK single clarifying question → prefer multiple choice
         FOCUS on: purpose, constraints, success criteria
         WAIT for answer
 
-    /* handle "you decide" — only fires if the question above was answered with "you decide" */
+    /* handle "you decide" after single-dimension question */
     IF current_question_answered_with "you decide":
-        DOCUMENT assumption
-        PROCEED to DESIGN
+        DOCUMENT assumption for THIS dimension
+        IF more unclarified dimensions remain:
+            ASK next question (do NOT skip to DESIGN)
+        ELSE:
+            TELL: "I've made assumptions for: [list]. Correct any before we design."
+            WAIT for user correction (brief — if none, proceed)
+            PROCEED to DESIGN
 
     /* state write */
-    WRITE ~/.vega-punk/vega-punk-state.json:
+    MERGE INTO STATE_FILE:
         state = "DESIGN"
         ADD: requirements = { purpose, constraints, success }
         RESET: scan_depth = 0
@@ -462,6 +469,14 @@ END
 
 ```
 BEGIN DESIGN
+    /* re-entry from DESIGN_QA FAIL: reset retries if design substantively changed */
+    IF qa.design_status == "FAIL":
+        PREVIOUS_DESIGN = design from last iteration
+        RE-DO design phases (brainstorm → converge → present)
+        IF resulting design differs substantively from PREVIOUS_DESIGN:
+            RESET qa.design_retries = 0
+        CLEAR qa.design_status
+
     /* phase tracking: "brainstorm" → "converge" → "present" */
 
     /* Phase 1: Brainstorm (collaborative) */
@@ -497,52 +512,12 @@ BEGIN DESIGN
         IF exploring alternatives → STAY in DESIGN, restart Phase 1
 
     /* state write */
-    WRITE ~/.vega-punk/vega-punk-state.json:
+    MERGE INTO STATE_FILE:
         state = "DESIGN_QA"
         ADD: design
         INCREMENT: transition_count
 END
 ```
-
----
-
-## Reusable QA Pattern
-
-Both DESIGN_QA and SPEC_QA share this structure:
-
-```
-BEGIN QA(name, checks, pass_state, fail_state)
-    LOOP qa_retries ≤ 3:
-        /* Layer 1: Structured Self-Review */
-        RUN domain-specific checks from `checks`
-        IF any fail:
-            FIX failures inline
-            RE-RUN self-review
-
-        /* Layer 2: User Secondary Review */
-        PRESENT findings: passed / fixed / remaining risks
-        WAIT for user decision
-
-        MATCH user response:
-        CASE PASS:
-            UPDATE qa = { "{name}_status": "PASS", "{name}_retries": N }
-            state = pass_state
-            WRITE state JSON
-            EXIT
-        CASE FAIL:
-            INCREMENT qa_retries
-            UPDATE qa = { "{name}_status": "FAIL", "{name}_retries": qa_retries, "{name}_feedback": "<summary>" }
-            state = fail_state
-            WRITE state JSON
-            EXIT (↩ to previous state for fix, then re-enter QA)
-
-    /* retries exhausted */
-    TELL: "[vega-punk] I've hit the retry limit. Please review manually and tell me how to proceed."
-    STAY in current QA state
-END
-```
-
-**Retry limit:** 3 retries max. Beyond that, halt and ask user.
 
 ---
 
@@ -556,18 +531,37 @@ END
 
 ```
 BEGIN DESIGN_QA
-    INVOKE QA("design",
-        checks = [
-            "Architecture: separation of concerns? units independent?",
-            "Technology choices: tools justified? simpler alternative?",
-            "Data flow: dependencies acyclic? circular references?",
-            "Error handling: what happens when each external call fails?",
-            "Edge cases: top 3 ways this could break in production?",
-            "Scope creep: unrequested features? remove them."
-        ],
-        pass_state = DEPENDENCIES,
-        fail_state = DESIGN
-    )
+    LOOP design_qa_retries ≤ 3:
+        /* Layer 1: Structured Self-Review */
+        CHECK:
+            - Architecture: separation of concerns? units independent?
+            - Technology choices: tools justified? simpler alternative?
+            - Data flow: dependencies acyclic? circular references?
+            - Error handling: what happens when each external call fails?
+            - Edge cases: top 3 ways this could break in production?
+            - Scope creep: unrequested features? remove them.
+        IF any fail:
+            FIX failures inline
+            RE-RUN self-review
+
+        /* Layer 2: User Secondary Review */
+        PRESENT findings: passed / fixed / remaining risks
+        WAIT for user decision
+
+        MATCH user response:
+        CASE PASS:
+            UPDATE qa = { "design_status": "PASS", "design_retries": N }
+            MERGE INTO STATE_FILE: state = "DEPENDENCIES"
+            EXIT
+        CASE FAIL:
+            INCREMENT design_qa_retries
+            UPDATE qa = { "design_status": "FAIL", "design_retries": design_qa_retries, "design_feedback": "<summary>" }
+            MERGE INTO STATE_FILE: state = "DESIGN"
+            EXIT (↩ to DESIGN for fix, then re-enter DESIGN_QA)
+
+    /* retries exhausted */
+    TELL: "[vega-punk] I've hit the retry limit. Please review manually and tell me how to proceed."
+    STAY in DESIGN_QA
 END
 ```
 
@@ -607,7 +601,7 @@ BEGIN DEPENDENCIES
         GOTO DESIGN
 
     /* state write */
-    WRITE ~/.vega-punk/vega-punk-state.json:
+    MERGE INTO STATE_FILE:
         state = "SPEC"
         ADD: dependencies = { components, serial, parallel, critical_path }
         INCREMENT: transition_count
@@ -626,8 +620,16 @@ END
 
 ```
 BEGIN SPEC
+    /* re-entry from SPEC_QA FAIL: reset retries if spec substantively changed */
+    IF qa.spec_status == "FAIL":
+        PREVIOUS_SPEC = spec from last iteration
+        RE-DO spec writing + self-review
+        IF resulting spec differs substantively from PREVIOUS_SPEC:
+            RESET qa.spec_retries = 0
+        CLEAR qa.spec_status
+
     /* 1. write spec file */
-    WRITE ~/.vega-punk/specs/YYYY-MM-DD-<topic>-design.md
+    WRITE SPEC_DIR/YYYY-MM-DD-<topic>-design.md
     REQUIRED sections:
         Goal, Architecture, Components, Interfaces,
         Data Flow, Error Handling, Testing Plan, Dependency Graph
@@ -647,7 +649,7 @@ BEGIN SPEC
         FIX → RE-RUN self-review
 
     /* state write */
-    WRITE ~/.vega-punk/vega-punk-state.json:
+    MERGE INTO STATE_FILE:
         state = "SPEC_QA"
         ADD: spec_path, qa = { spec_retries: 0, spec_feedback: "" }
         INCREMENT: transition_count
@@ -666,18 +668,37 @@ END
 
 ```
 BEGIN SPEC_QA
-    INVOKE QA("spec",
-        checks = [
-            "Completeness: every section implementable? No TBD, TODO, vague statements?",
-            "Consistency: any contradictions? dependency graph matches architecture?",
-            "Interface contracts: inputs, outputs, data shapes explicitly defined?",
-            "Testability: every requirement testable? clear pass/fail criterion?",
-            "Dependency accuracy: serial justified? anything parallelizable marked serial?",
-            "Scope discipline: unrequested features? remove them."
-        ],
-        pass_state = HANDOFF,
-        fail_state = SPEC
-    )
+    LOOP spec_qa_retries ≤ 3:
+        /* Layer 1: Structured Self-Review */
+        CHECK:
+            - Completeness: every section implementable? No TBD, TODO, vague statements?
+            - Consistency: any contradictions? dependency graph matches architecture?
+            - Interface contracts: inputs, outputs, data shapes explicitly defined?
+            - Testability: every requirement testable? clear pass/fail criterion?
+            - Dependency accuracy: serial justified? anything parallelizable marked serial?
+            - Scope discipline: unrequested features? remove them.
+        IF any fail:
+            FIX failures inline
+            RE-RUN self-review
+
+        /* Layer 2: User Secondary Review */
+        PRESENT findings: passed / fixed / remaining risks
+        WAIT for user decision
+
+        MATCH user response:
+        CASE PASS:
+            UPDATE qa = { "spec_status": "PASS", "spec_retries": N }
+            MERGE INTO STATE_FILE: state = "HANDOFF"
+            EXIT
+        CASE FAIL:
+            INCREMENT spec_qa_retries
+            UPDATE qa = { "spec_status": "FAIL", "spec_retries": spec_qa_retries, "spec_feedback": "<summary>" }
+            MERGE INTO STATE_FILE: state = "SPEC"
+            EXIT (↩ to SPEC for fix, then re-enter SPEC_QA)
+
+    /* retries exhausted */
+    TELL: "[vega-punk] I've hit the retry limit. Please review manually and tell me how to proceed."
+    STAY in SPEC_QA
 END
 ```
 
@@ -693,6 +714,10 @@ END
 
 ```
 BEGIN CONDENSED
+    /* 0. extract requirements (CONDENSED bypasses CLARIFY) */
+    EXTRACT purpose, constraints, success criteria from user request + SCAN context (if available)
+    IF any dimension unclear → ASK one question, prefer multiple choice
+
     /* 1. minimal spec */
     WRITE: What, Why, How (3 sentences max)
 
@@ -710,13 +735,14 @@ BEGIN CONDENSED
     WAIT for user response
 
     IF user rejects:
+        RESET scan_depth = 0
         state = SCAN /* go FULL from beginning */
     IF approved:
         /* state write */
-        WRITE ~/.vega-punk/vega-punk-state.json:
+        MERGE INTO STATE_FILE:
             state = "HANDOFF"
             ADD: mode = "condensed", spec, dependencies
-            ADD: requirements = { purpose, constraints, success } /* from CLARIFY — preserve for plan-builder verification */
+            ADD: requirements = { purpose, constraints, success } /* extracted in step 0 — preserve for plan-builder verification */
             INCREMENT: transition_count
 END
 ```
@@ -735,12 +761,16 @@ END
 BEGIN HANDOFF
     /* Use Skill tool directly — do NOT rely on trigger phrase matching */
     INVOKE plan-builder via Skill tool
+    IF invocation fails:
+        TELL: "[vega-punk] Failed to invoke plan-builder. Check that the skill is available."
+        STAY in HANDOFF
+        EXIT
     FOLLOW its workflow
 
-    /* ~/.vega-punk/vega-punk-state.json is the data contract — plan-builder reads it directly */
+    /* STATE_FILE is the data contract — plan-builder reads it directly */
 
     /* state write */
-    WRITE ~/.vega-punk/vega-punk-state.json:
+    MERGE INTO STATE_FILE:
         state = "REVIEW"
         ADD: handoff_to = "plan-builder", user_satisfaction = null
         INCREMENT: transition_count
@@ -759,94 +789,76 @@ END
 
 ```
 BEGIN REVIEW
-    READ execution_result from state file
+    READ execution_result from STATE_FILE
     COMPARE against requirements.success
-
     PRESENT summary to user
-    MATCH execution_result.status:
 
-    CASE success AND verification passed:
-        TELL: "All criteria met. Start a new task?"
-        state = DONE
-        EXIT
-
-    CASE success AND verification failed:
-        /* verification command failed but implementer thought it passed */
-        TELL: "Implementer reported success but verification failed."
-        GOTO DESIGN /* likely a testing or spec mismatch issue */
-
-    CASE partial:
-        /* Identify what's missing and auto-route */
-        missing = execution_result.missing_items OR execution_result.notes
-        IF missing indicates unclear requirements (e.g. "ambiguous spec", "unclear requirement"):
-            TELL: "Partially done — requirements were unclear. Re-clarifying."
-            GOTO CLARIFY
-        ELSE IF missing indicates design gap (e.g. "architecture issue", "wrong pattern", "component missing"):
-            TELL: "Partially done — design gap detected. Revisiting design."
-            GOTO DESIGN
-        ELSE:
-            /* Default: user decides */
-            TELL: "Partially done. Continue or redesign?"
-            WAIT for user response
-            IF user says "continue" or "iterate":
-                GOTO DESIGN
-            ELSE:
-                GOTO CLARIFY
-
-    CASE failed:
-        /* Auto-route based on failure type */
-        notes = execution_result.notes OR ""
-        IF notes indicates requirement ambiguity (contains "ambiguous", "unclear requirement", "spec contradiction", "missing spec"):
-            TELL: "Execution failed due to unclear requirements. Re-clarifying."
-            GOTO CLARIFY
-        ELSE IF notes indicates architectural issue (contains "architecture", "wrong pattern", "fundamental", "wrong approach", "redesign"):
-            TELL: "Execution failed due to design problem. Revisiting design."
-            GOTO DESIGN
-        ELSE:
-            /* Generic failure — default to DESIGN for targeted fix */
-            TELL: "Execution failed. Retrying implementation."
-            GOTO DESIGN
-
-    /* capture satisfaction and act on it */
+    /* capture satisfaction BEFORE routing — always ask, never skip */
     RECORD user_satisfaction: "satisfied" / "neutral" / "dissatisfied"
 
     /* update consecutive dissatisfaction counter */
-    IF user_satisfaction == "dissatisfied":
-        INCREMENT consecutive_dissatisfied_count
-    ELSE:
-        RESET consecutive_dissatisfied_count = 0
+    IF user_satisfaction == "dissatisfied": INCREMENT consecutive_dissatisfied_count
+    ELSE: RESET consecutive_dissatisfied_count = 0
 
-    /* persist counter to survive Post-Completion Cleanup */
-    WRITE ~/.vega-punk/vega-punk-counters.json:
-        { "consecutive_dissatisfied_count": value }
+    /* persist counter */
+    WRITE COUNTERS_FILE: { "consecutive_dissatisfied_count": value }
 
-    IF user_satisfaction == "dissatisfied" AND execution_result.status == "success":
-        TELL: "Criteria met but you're not happy — what's missing?"
-        /* Archive old roadmap */
-        IF ~/.vega-punk/roadmap.json exists:
-            RENAME ~/.vega-punk/roadmap.json → roadmap.ARCHIVED.json
-        GOTO CLARIFY /* realign requirements */
+    /* Find the matching row — check in order, stop at first match */
+
+    | # | Condition | Message to user | Recommend |
+    |---|-----------|-----------------|-----------|
+    | 1 | success + verification passed + satisfied | "All criteria met." | DONE (auto-complete) |
+    | 2 | success + verification passed + dissatisfied | "Criteria met but you're not happy — what's missing?" | CLARIFY |
+    | 3 | success + verification failed | "Implementer reported success but verification failed." | DESIGN |
+    | 4a | partial + missing indicates unclear requirements ("ambiguous spec", "unclear requirement") | "Partially done — requirements were unclear." | CLARIFY |
+    | 4b | partial + missing indicates design gap ("architecture issue", "wrong pattern", "component missing") | "Partially done — design gap detected." | DESIGN |
+    | 4c | partial + unclear cause | "Partially done." | DESIGN |
+    | 5a | failed + notes indicate requirement ambiguity ("ambiguous", "unclear requirement", "spec contradiction", "missing spec") | "Execution failed due to unclear requirements." | CLARIFY |
+    | 5b | failed + notes indicate architectural issue ("architecture", "wrong pattern", "fundamental", "wrong approach", "redesign") | "Execution failed due to design problem." | DESIGN |
+    | 5c | failed + generic (no clear type) | "Execution failed." | DESIGN |
+
+    /* Rule 1 is the only auto-complete path — skip user confirmation */
+    IF matched rule 1: MERGE INTO STATE_FILE: { "state": "DONE" }, EXIT
+
+    /* For rules 2-9: tell the message, then ask user to confirm or override */
+    TELL: [Message from matched row]
 
     IF consecutive_dissatisfied_count >= 3:
         TELL: "[vega-punk] Last 3 tasks dissatisfied. Let's pause and align on process."
         ASK: "Should I change approach? (1) more clarification upfront, (2) tighter QA, (3) different workflow"
+        WAIT for user response
 
-    MATCH user response:
-    CASE new task:
-        APPLY Post-Completion Cleanup
-        GOTO ROUTE
-    CASE iterate:
-        /* Archive old roadmap before re-entering design to prevent version confusion */
-        IF ~/.vega-punk/roadmap.json exists:
-            RENAME ~/.vega-punk/roadmap.json → roadmap.ARCHIVED.json
-        GOTO DESIGN
-    CASE redesign:
-        /* Archive old roadmap before re-entering clarify */
-        IF ~/.vega-punk/roadmap.json exists:
-            RENAME ~/.vega-punk/roadmap.json → roadmap.ARCHIVED.json
-        GOTO CLARIFY
+    /* archive old roadmap before any re-entry */
+    IF ROADMAP_FILE exists: RENAME ROADMAP_FILE → roadmap.ARCHIVED.json
+
+    ASK: "Recommended next step: [Recommend from matched row]. (1) proceed, (2) iterate on design, (3) redesign from scratch, (4) new task?"
+    MATCH user choice:
+    CASE (1) proceed → GOTO [Recommend from matched row]
+    CASE (2) iterate → GOTO DESIGN
+    CASE (3) redesign → GOTO CLARIFY
+    CASE (4) new task → APPLY Post-Completion Cleanup → GOTO ROUTE
 END
 ```
+
+---
+
+## DONE
+
+**Trigger:** State is DONE.
+
+**Announce:** (none — task complete)
+
+**Purpose:** Terminal state. Task finished, resources cleaned up.
+
+```
+BEGIN DONE
+    APPLY Post-Completion Cleanup
+    WAIT for new user request
+    GOTO ROUTE
+END
+```
+
+---
 
 ## Bootstrap (First Run)
 
@@ -859,13 +871,15 @@ BEGIN BOOTSTRAP
 END
 ```
 
+---
+
 ## Self-Recovery Guide
 
 When vega-punk's state becomes corrupted or inconsistent:
 
 ```
 BEGIN RECOVERY
-    READ ~/.vega-punk/vega-punk-state.json
+    READ STATE_FILE
     VALID_STATES = [ROUTE, SCAN, CLARIFY, DESIGN, DESIGN_QA,
                     DEPENDENCIES, SPEC, SPEC_QA, CONDENSED, HANDOFF, REVIEW, DONE]
 
@@ -880,7 +894,7 @@ BEGIN RECOVERY
             state = ROUTE
             TELL: "State file was corrupted. Recovered to ROUTE."
         ELSE:
-            DELETE ~/.vega-punk/vega-punk-state.json
+            DELETE STATE_FILE
             GOTO ROUTE
             TELL: "State file was corrupted. Starting fresh."
 
@@ -899,7 +913,7 @@ BEGIN RECOVERY
             state = CLARIFY
             TELL: "Spec file was lost. Let me re-run the design flow."
 
-    CASE state == REVIEW AND (~/.vega-punk/roadmap.json missing OR invalid JSON):
+    CASE state == REVIEW AND (ROADMAP_FILE missing OR invalid JSON):
         /* execution interrupted during planning */
         IF spec_path exists AND spec file readable:
             RE-RUN HANDOFF
@@ -928,11 +942,11 @@ BEGIN RECOVERY
 
     CASE user says "reset everything":
         /* nuclear option */
-        RENAME ~/.vega-punk/specs/*.md → *.CANCELLED.md
-        DELETE ~/.vega-punk/vega-punk-state.json
-        DELETE ~/.vega-punk/roadmap.json (if exists)
-        DELETE ~/.vega-punk/findings.json (if exists)
-        DELETE ~/.vega-punk/progress.json (if exists)
+        RENAME SPEC_DIR*.md → *.CANCELLED.md
+        DELETE STATE_FILE
+        DELETE ROADMAP_FILE (if exists)
+        DELETE FINDINGS_FILE (if exists)
+        DELETE PROGRESS_FILE (if exists)
         TELL: "[vega-punk] Full reset complete. Starting fresh. What shall we build?"
         GOTO ROUTE
 END
@@ -960,7 +974,6 @@ END
 | "This is just a draft, we'll polish later" | No drafts. First output IS the final output.                                |
 | "I'll ask all my questions at once"        | CLARIFY enforces one question at a time. Batch questions = batch confusion  |
 | "This bug needs the full flow"             | Emergency exists — prod down → CONDENSED, diagnose → FULL                   |
-
 
 **Self-recovery:** Built-in — see "Self-Recovery Guide" section above. No external reference needed.
 

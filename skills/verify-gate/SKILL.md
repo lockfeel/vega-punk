@@ -16,6 +16,8 @@ Claiming work is complete without verification is unreliable — evidence before
 
 **Violating the letter of this rule is violating the spirit of this rule.**
 
+**Document format:** This document combines pseudocode (exact logic, branching, state transitions) with natural language prompts (intent, principles, constraints). Both carry equal authority. Pseudocode defines WHAT to do and WHEN; prompts define WHY and HOW. Execute pseudocode as mandatory workflow rules, not optional illustrations. 
+
 ## Pre-Execution Gate
 
 ```

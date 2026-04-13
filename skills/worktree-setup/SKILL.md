@@ -1,8 +1,8 @@
 ---
 name: worktree-setup
 description: Use when starting feature work that needs isolation from current workspace or before executing implementation plans - creates isolated git worktrees with smart directory selection and safety verification
-categories: ["workflow"]
-triggers: ["worktree", "isolated workspace", "feature branch", "set up workspace"]
+categories: [ "workflow" ]
+triggers: [ "worktree", "isolated workspace", "feature branch", "set up workspace" ]
 ---
 
 # Using Git Worktrees
@@ -14,6 +14,8 @@ Git worktrees create isolated workspaces sharing the same repository, allowing w
 **Core principle:** Systematic directory selection + safety verification = reliable isolation.
 
 **Announce at start:** "I'm using the worktree-setup skill to set up an isolated workspace."
+
+**Document format:** This document combines pseudocode (exact logic, branching, state transitions) with natural language prompts (intent, principles, constraints). Both carry equal authority. Pseudocode defines WHAT to do and WHEN; prompts define WHY and HOW. Execute pseudocode as mandatory workflow rules, not optional illustrations.
 
 ## Pre-Execution Gate
 
@@ -83,6 +85,7 @@ git check-ignore -q "$worktree_dir" 2>/dev/null
 ```
 
 **If NOT ignored:**
+
 1. Add `"$worktree_dir/"` to `.gitignore`
 2. Commit the change
 3. Proceed with worktree creation
@@ -151,17 +154,17 @@ END
 
 ## Quick Reference
 
-| Situation | Action |
-|-----------|--------|
-| `.worktrees/` exists | Use it, set `worktree_dir=".worktrees"` (verify ignored) |
-| `worktrees/` exists | Use it, set `worktree_dir="worktrees"` (verify ignored) |
-| Both exist | Use `.worktrees/` |
-| Neither exists, no config | Default `.worktrees/` |
-| CLAUDE.md specifies preference | Use it without asking |
-| Directory not ignored | Add to `.gitignore` + commit |
-| Tests fail during baseline | Report + proceed (pre-existing flag) |
-| No package.json/Cargo.toml | Skip dependency install |
-| Worktree already exists for branch | Reuse it, skip creation |
+| Situation                          | Action                                                   |
+|------------------------------------|----------------------------------------------------------|
+| `.worktrees/` exists               | Use it, set `worktree_dir=".worktrees"` (verify ignored) |
+| `worktrees/` exists                | Use it, set `worktree_dir="worktrees"` (verify ignored)  |
+| Both exist                         | Use `.worktrees/`                                        |
+| Neither exists, no config          | Default `.worktrees/`                                    |
+| CLAUDE.md specifies preference     | Use it without asking                                    |
+| Directory not ignored              | Add to `.gitignore` + commit                             |
+| Tests fail during baseline         | Report + proceed (pre-existing flag)                     |
+| No package.json/Cargo.toml         | Skip dependency install                                  |
+| Worktree already exists for branch | Reuse it, skip creation                                  |
 
 ## Common Mistakes
 
@@ -223,6 +226,7 @@ Ready to implement auth feature
 ## Red Flags
 
 **Never:**
+
 - Create worktree without verifying it's ignored (project-local)
 - Skip baseline test verification
 - Assume directory location when ambiguous
@@ -232,6 +236,7 @@ Ready to implement auth feature
 - Rely on `cd` to persist between code blocks
 
 **Always:**
+
 - Follow directory priority: existing > CLAUDE.md > default `.worktrees/`
 - Verify directory is ignored for project-local
 - Auto-detect and run project setup
@@ -243,10 +248,12 @@ Ready to implement auth feature
 ## Integration
 
 **Called by:**
+
 - **vega-punk** (DESIGN → HANDOFF) — REQUIRED when design is approved and implementation follows
 - **plan-executor** — REQUIRED at Step 1.6 (fresh start only)
 - **task-dispatcher** — REQUIRED before executing any tasks
 - Any skill needing isolated workspace
 
 **Pairs with:**
+
 - **branch-landing** — reads `worktree_path` from `~/.vega-punk/vega-punk-state.json` for cleanup
