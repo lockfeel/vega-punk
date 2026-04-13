@@ -65,7 +65,15 @@ END
 BEGIN BRANCH_LANDING_PROCESS
     /* Step 1: Verify Tests */
     AUTO-DETECT project test command (package.json, pyproject.toml, Cargo.toml, go.mod)
-    RUN test command
+    /* Monorepo: detect workspace structure and scope tests to changed packages */
+    IF monorepo detected (nx.json, turbo.json, lerna.json, pnpm-workspace.yaml):
+        IDENTIFY changed packages from git diff
+        RUN test command scoped to those packages ONLY
+        REPORT: "Monorepo detected. Running tests for changed packages: <list>"
+        IF user wants full test suite: RUN full test command as well
+    ELSE:
+        RUN test command
+    /* If tests take > 3 minutes, report progress and ask whether to continue waiting */
 
     IF tests fail:
         REPORT: "Tests failing (<N> failures). Must fix before completing."
@@ -276,11 +284,33 @@ END
 
 **No confirmation for discard**
 - **Problem:** Accidentally delete work
-- **Fix:** Require typed "discard" confirmation
+- **Fix:** Require typed "discard" confirmation; message specifies "commits unique to this branch" (not all commits — shared commits survive)
 
 **Ignoring merge test failures**
 - **Problem:** Merged code passes on branch but fails on main (integration gap, dependency conflict)
 - **Fix:** Always re-run tests AFTER merge, diagnose new vs pre-existing failures, auto-abort if broken
+
+**Auto-fixing without user review**
+- **Problem:** Automatically fixing merge artifacts (conflict markers, missing imports) can introduce subtle errors
+- **Fix:** Always present auto-fix diff to user for review before committing — never auto-commit fixes silently
+
+## PR Description Template
+
+```
+## Summary
+- <1-3 bullet points from Step 2 diff summary>
+
+## Changes
+- New files: <list>
+- Modified files: <list>
+- Deleted files: <list>
+- Notable: <migrations, config changes, dependency updates>
+
+## Test plan
+- [ ] All existing tests pass (<N> tests)
+- [ ] Post-merge test verification completed
+- [ ] <any manual verification steps if applicable>
+```
 
 ## Red Flags
 
@@ -306,7 +336,39 @@ END
 
 **Called by:**
 - **task-dispatcher** (Step 7) - After all tasks complete
-- **plan-executor** (Step 5) - After all batches complete
+- **plan-executor** (Step 3) - After all steps complete
+
+**Calls:**
+- **root-cause** — When merge introduces new test failures that require deep diagnosis (not just conflict markers or missing imports)
+- **verify-gate** — For final mechanical verification before merge/PR (invoked by plan-executor, not directly by branch-landing)
 
 **Pairs with:**
 - **worktree-setup** - Cleans up worktree created by that skill
+
+**State contract:**
+- Reads: `state`, `worktree_path` from state file
+- Writes: `state`, `completion_method`, `pr_url`, `notes` to state file (Step 6)
+- Expected upstream states: `"EXECUTING"`, `"REVIEW"`
+- Produces downstream states: `"DONE"`, `"REVIEW"` (PR), `"PAUSED"` (kept)
+
+## Completion Contract
+
+After branch-landing completes (any option), write back to state file if it exists:
+
+```
+BEGIN COMPLETION_CONTRACT
+    IF state file exists:
+        WRITE state file:
+            state = <per Step 6 mapping>
+            completion_method = <"merged" | "pr" | "kept" | "discarded">
+            pr_url = <url if Option 2, else omit>
+            completed_at = <ISO8601 timestamp>
+            notes = <any caveats or follow-ups>
+
+    /* Standalone mode — no state write-back */
+    ELSE:
+        PRESENT final summary: option chosen, branch status, worktree status
+END
+```
+
+This contract aligns with plan-executor's Completion Contract — both write `state` and `execution_result`/`completion_method` to the same state file.

@@ -1,7 +1,6 @@
 ---
 name: vega-punk
 description: "A disciplined AI brain: design before execution. State machine-driven — routes requests, orchestrates skills, designs solutions, delivers plans."
-user-invocable: true
 allowed-tools: "Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch"
 hooks:
   SessionStart:
@@ -16,6 +15,7 @@ hooks:
 **Boundary:** vega-punk owns design and routing. After HANDOFF, plan-builder takes execution — reads the state file, generates the roadmap, manages implementation. vega-punk stays in REVIEW to validate results against requirements.
 
 **Constants:**
+
 - `STATE_FILE` = `~/.vega-punk/vega-punk-state.json`
 - `SPEC_DIR` = `~/.vega-punk/specs/`
 - `ROADMAP_FILE` = `~/.vega-punk/roadmap.json`
@@ -29,8 +29,7 @@ For **OpenClaw** and **Claude Code**, the workspace is always `~/.vega-punk/` �
 
 Describe what you want to build. vega-punk auto-selects the mode:
 
-- **Small change** ("fix typo") → CONDENSED: brief spec → approve → execute
-- **Single feature** ("add dark mode") → CONDENSED: spec → plan → execute
+- **Single feature or Small change** ("add dark mode") → CONDENSED: spec → plan → execute
 - **Complex project** ("build notification system") → FULL: design → QA → dependencies → spec → plan → execute
 
 Say "just do it" for condensed flow, or "let's think about this" for complex ones.
@@ -186,7 +185,7 @@ If there is even a 1% chance a skill might apply to what you are doing, you MUST
 
 ### 3. Instruction Priority
 
-1. **User's explicit instructions** (CLAUDE.md, AGENTS.md, direct requests) — highest priority
+1. **User's explicit instructions** — highest priority
 2. **Skills** — override default system behavior where they conflict
 3. **Default system prompt** — lowest priority
 
@@ -956,24 +955,24 @@ END
 
 ## Red Flags — STOP, You're Rationalizing
 
-| If you think...                            | The reality is...                                                           |
-|--------------------------------------------|-----------------------------------------------------------------------------|
-| "This is too simple to need a design"      | Use CONDENSED, don't skip                                                   |
-| "I'll just do this one thing first"        | Check the state machine BEFORE acting                                       |
-| "Let me explore the codebase first"        | SCAN handles context gathering                                              |
-| "This doesn't need a formal skill"         | If a skill exists, invoke it                                                |
-| "The skill is overkill"                    | Use CONDENSED, not nothing                                                  |
-| "Dependencies are obvious"                 | Write them down. "Obvious" causes merge conflicts                           |
-| "This is just a simple question"           | Questions are tasks. Check skills.                                          |
-| "I need more context first"                | Skill check comes BEFORE clarification                                      |
-| "Let me gather information first"          | Skills tell you HOW to gather information                                   |
-| "I remember this skill"                    | Skills evolve. Read the current version.                                    |
-| "This doesn't count as a task"             | Action = task. Check skills.                                                |
-| "I know what that means"                   | Knowing the concept ≠ invoking the skill                                    |
-| "This feels productive"                    | Undisciplined action wastes time. Skills prevent this.                      |
-| "This is just a draft, we'll polish later" | No drafts. First output IS the final output.                                |
-| "I'll ask all my questions at once"        | CLARIFY enforces one question at a time. Batch questions = batch confusion  |
-| "This bug needs the full flow"             | Emergency exists — prod down → CONDENSED, diagnose → FULL                   |
+| If you think...                            | The reality is...                                                          |
+|--------------------------------------------|----------------------------------------------------------------------------|
+| "This is too simple to need a design"      | Use CONDENSED, don't skip                                                  |
+| "I'll just do this one thing first"        | Check the state machine BEFORE acting                                      |
+| "Let me explore the codebase first"        | SCAN handles context gathering                                             |
+| "This doesn't need a formal skill"         | If a skill exists, invoke it                                               |
+| "The skill is overkill"                    | Use CONDENSED, not nothing                                                 |
+| "Dependencies are obvious"                 | Write them down. "Obvious" causes merge conflicts                          |
+| "This is just a simple question"           | Questions are tasks. Check skills.                                         |
+| "I need more context first"                | Skill check comes BEFORE clarification                                     |
+| "Let me gather information first"          | Skills tell you HOW to gather information                                  |
+| "I remember this skill"                    | Skills evolve. Read the current version.                                   |
+| "This doesn't count as a task"             | Action = task. Check skills.                                               |
+| "I know what that means"                   | Knowing the concept ≠ invoking the skill                                   |
+| "This feels productive"                    | Undisciplined action wastes time. Skills prevent this.                     |
+| "This is just a draft, we'll polish later" | No drafts. First output IS the final output.                               |
+| "I'll ask all my questions at once"        | CLARIFY enforces one question at a time. Batch questions = batch confusion |
+| "This bug needs the full flow"             | Emergency exists — prod down → CONDENSED, diagnose → FULL                  |
 
 **Self-recovery:** Built-in — see "Self-Recovery Guide" section above. No external reference needed.
 
@@ -993,7 +992,7 @@ Skills vega-punk directly invokes:
 | Skill            | When    | How                                                                                   |
 |------------------|---------|---------------------------------------------------------------------------------------|
 | **root-cause**   | ROUTE   | message contains `bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception` |
-| **plan-builder** | HANDOFF | via Skill tool — NOT trigger phrase                                                 |
+| **plan-builder** | HANDOFF | via Skill tool — NOT trigger phrase                                                   |
 
 All other skills (test-first, verify-gate, test, domain experts) are routed during SCAN.
 

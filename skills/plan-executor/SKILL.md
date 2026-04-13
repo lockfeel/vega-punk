@@ -9,9 +9,6 @@ hooks:
   SessionStart:
     - type: command
       command: "bash scripts/planning-resume.sh"
-      # planning-resume.sh: Checks if ~/.vega-punk/roadmap.json exists with incomplete steps.
-      # Output: "[plan-executor] Resuming: step {id} in phase {phase}" or "[plan-executor] No active plan."
-      # Failure: non-zero exit → warn user, do not block session start.
 ---
 
 # Executing Plans (Inline)
