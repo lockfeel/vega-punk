@@ -72,6 +72,7 @@ BEGIN STATE_RESOLUTION
 
     5. State file has invalid JSON or state NOT in valid states:
        → APPLY RECOVERY
+       → GOTO current state (RECOVERY sets the target; if unclear → GOTO ROUTE)
 
     6. None of the above (file exists, state is valid):
        → ENTER current state directly
@@ -115,7 +116,7 @@ BEGIN GlobalGuards
     /* Compaction — prevents unbounded state file growth */
     /* Apply when context is under pressure: long conversations, many retries, or large state */
     IF qa.retries > 2 OR transition_count > 12:
-        PRESERVE: state, task, context, selected_skills, scope, requirements, design, dependencies, spec_path
+        PRESERVE: state, task, context, selected_skills, scope, requirements, design, dependencies, spec_path, phase_skill_mapping
         COMPRESS qa → { retries: N, last_feedback: "<summary>", status: "FAIL" }
         COMPRESS any oversized field not in preserve list → 1-sentence summary
 END
@@ -157,17 +158,17 @@ If user asks "where are we?" or "how much left?", print current state and remain
 | SPEC         | 3             | —              |
 | SPEC_QA      | 2             | —              |
 | CONDENSED    | 3             | 3              |
-| HANDOFF      | 1             | 1              |
-| REVIEW       | 0             | 1              |
+| HANDOFF      | 2             | 2              |
+| REVIEW       | 1             | 1              |
 
 **Two execution modes:**
 
 | Mode          | Steps                             | When                                      | State File | Skill Check |
 |---------------|-----------------------------------|-------------------------------------------|------------|-------------|
-| **CONDENSED** | Minimal spec → Approval → Handoff | Small changes, single features, emergency | Required   | Full SCAN   |
+| **CONDENSED** | Minimal spec → Approval → Handoff | Small changes, single features, fast-path | Required   | Full SCAN   |
 | **FULL**      | All 9 states                      | Large/multi-step tasks, ambiguous scope   | Required   | Full SCAN   |
 
-CONDENSED skips DESIGN, DEPENDENCIES, SPEC. 3 states remain (CONDENSED → HANDOFF → REVIEW → DONE).
+CONDENSED skips DESIGN, DESIGN_QA, DEPENDENCIES, SPEC, SPEC_QA. 4 states remain: CONDENSED → HANDOFF → REVIEW → DONE.
 
 ---
 
@@ -209,13 +210,6 @@ Skills tell you HOW to explore. Check skills BEFORE gathering context, BEFORE as
 
 - **Claude Code:** Use the `Skill` tool.
 - **OpenClaw:** Use `openclaw skills` command or the platform's skill invocation mechanism.
-
-### Skill Types
-
-- **Rigid** (TDD, root-cause, verify-gate): Follow exactly. Don't adapt away discipline.
-- **Flexible** (ui-ux-pro-max, frontend-design): Adapt principles to context.
-
-The skill itself tells you which. Read the current version — skills evolve.
 
 ### Output Is Production
 
@@ -328,32 +322,25 @@ BEGIN ROUTE
 
     /* Classify task — check these rules in order, stop at first match */
 
-    1. **Emergency** — user says "urgent" / "emergency" / "hotfix" / "prod down" / "critical":
-       - If root-cause was invoked above: TELL "Emergency mode — root-cause done, switching to fast execution."
-       - Else: TELL "Emergency mode — minimal design, fast execution."
-       - MERGE INTO STATE_FILE: { "state": "CONDENSED", "task": "<user request>", "mode": "emergency", "transition_count": 1 }
-       - GOTO CONDENSED
-
-    2. **Fast mode** — user says "just write code" / "skip design" / "just do it" / "don't overthink":
-       - INVOKE root-cause IF bug keywords present (may already be done above)
-       - INVOKE test-first IF implementation involves code
-       - INVOKE verify-gate BEFORE any success claim
+    1. **Fast mode** — user says "urgent" / "emergency" / "hotfix" / "prod down" / "critical" / "just do it" / "skip design" / "just write code" / "don't overthink":
+       - ADD "verify-gate" TO skills_to_apply (executor will invoke before any success claim)
+       - ADD "test-first" TO skills_to_apply (executor will invoke for code implementation)
        - MERGE INTO STATE_FILE: { "state": "CONDENSED", "task": "<user request>", "mode": "fast", "transition_count": 1 }
        - GOTO CONDENSED
 
-    3. **Informational** — simple Q&A, definitions, explanations:
+    2. **Informational** — simple Q&A, definitions, explanations:
        - ANSWER directly — no skill check needed
        - state = DONE, EXIT
 
-    4. **Creative/Implementation** — build, fix, modify, design, create:
+    3. **Creative/Implementation** — build, fix, modify, design, create:
        - CHECK for relevant skills (1% Rule)
        - MERGE INTO STATE_FILE: { "state": "SCAN", "task": "<user request>", "scan_depth": 0, "transition_count": 1 }
        - Enter SCAN
 
-    5. **Ambiguous** — can't classify:
+    4. **Ambiguous** — can't classify:
        - ASK one question to classify
-       - If Informational → see rule 3
-       - If Creative/Implementation → see rule 4
+       - If Informational → see rule 2
+       - If Creative/Implementation → see rule 3
 END
 ```
 
@@ -386,18 +373,28 @@ BEGIN SCAN
         IF script fails or not found:
             FALLBACK: scan registered skills from system prompt skill list
             MATCH task against built-in skill descriptions
+            IF fallback matched 0 skills:
+                TELL: "No skills matched. This may be a new domain. Proceeding without skill guidance."
         ELSE:
             MATCH task against skill descriptions
         SELECT ALL relevant skills + note execution order
 
     /* 4. invoke skills for guidance (NOT implementation) */
     FOR EACH selected skill:
-        LOAD skill guidance into context
+        INVOKE skill via Skill tool
+        /* Guidance mode only — do NOT execute implementation steps from the skill */
+        /* Use skill output to populate context, scope, and selected_skills fields */
 
     /* state write */
     MERGE INTO STATE_FILE:
         state = "CLARIFY"
-        ADD: context, selected_skills, scope, skill_selection
+        ADD: context, scope
+        ADD: selected_skills = {
+            "planner": "plan-builder",
+            "executor": <inferred from skill types — execution-oriented skills → "task-dispatcher" or "plan-executor">,
+            "reviewer": <if review-oriented skills found → "review-request", else null>,
+            "alternatives": [<other plausible executors identified during skill matching>]
+        }
         INCREMENT: scan_depth (or set to 1)
         INCREMENT: transition_count
 END
@@ -603,6 +600,7 @@ BEGIN DEPENDENCIES
     MERGE INTO STATE_FILE:
         state = "SPEC"
         ADD: dependencies = { components, serial, parallel, critical_path }
+        /* Note: phase_skill_mapping will be populated by SPEC phase from Skill Mapping section */
         INCREMENT: transition_count
 END
 ```
@@ -631,7 +629,16 @@ BEGIN SPEC
     WRITE SPEC_DIR/YYYY-MM-DD-<topic>-design.md
     REQUIRED sections:
         Goal, Architecture, Components, Interfaces,
-        Data Flow, Error Handling, Testing Plan, Dependency Graph
+        Data Flow, Error Handling, Testing Plan, Dependency Graph,
+        Skill Mapping
+
+    /* Skill Mapping — required section in spec document */
+    /* For EACH implementation phase/component, specify: */
+    /*   - Phase name → SKILL name(s) to invoke during execution */
+    /*   - Example: "User auth module" → test-first, verify-gate */
+    /*              "Dashboard UI" → frontend-design, ui-ux-pro-max, verify-gate */
+    /*   - Bug fix phases → root-cause, test-first, verify-gate */
+    /* This section is READ by plan-builder and injected into executor prompts */
 
     /* 2. spec self-review */
     CHECK:
@@ -645,12 +652,15 @@ BEGIN SPEC
     /* 3. user review */
     ASK: "Spec written to <path>. Review it. If it looks good, I'll hand off to planning."
     IF user wants changes:
+        IF user identifies fundamental design issue (architecture wrong, wrong pattern, missing component):
+            GOTO DESIGN
         FIX → RE-RUN self-review
 
     /* state write */
     MERGE INTO STATE_FILE:
         state = "SPEC_QA"
-        ADD: spec_path, qa = { spec_retries: 0, spec_feedback: "" }
+        ADD: spec_path, phase_skill_mapping
+        ADD: qa = { spec_retries: 0, spec_feedback: "" }
         INCREMENT: transition_count
 END
 ```
@@ -676,6 +686,7 @@ BEGIN SPEC_QA
             - Testability: every requirement testable? clear pass/fail criterion?
             - Dependency accuracy: serial justified? anything parallelizable marked serial?
             - Scope discipline: unrequested features? remove them.
+            - Skill Mapping: every phase has at least one skill assigned? skills actually exist?
         IF any fail:
             FIX failures inline
             RE-RUN self-review
@@ -691,9 +702,13 @@ BEGIN SPEC_QA
             EXIT
         CASE FAIL:
             INCREMENT spec_qa_retries
-            UPDATE qa = { "spec_status": "FAIL", "spec_retries": spec_qa_retries, "spec_feedback": "<summary>" }
-            MERGE INTO STATE_FILE: state = "SPEC"
-            EXIT (↩ to SPEC for fix, then re-enter SPEC_QA)
+            /* Check if feedback indicates design-level issue */
+            IF spec_feedback contains "architecture" OR "wrong pattern" OR "fundamental" OR "design problem":
+                MERGE INTO STATE_FILE: state = "DESIGN"
+            ELSE:
+                UPDATE qa = { "spec_status": "FAIL", "spec_retries": spec_qa_retries, "spec_feedback": "<summary>" }
+                MERGE INTO STATE_FILE: state = "SPEC"
+            EXIT (↩ to SPEC for fix, or DESIGN for fundamental issue, then re-enter SPEC_QA)
 
     /* retries exhausted */
     TELL: "[vega-punk] I've hit the retry limit. Please review manually and tell me how to proceed."
@@ -726,10 +741,14 @@ BEGIN CONDENSED
     /* 3. lightweight dependency check */
     NOTE in one sentence: "all parallel" or serial chain (e.g. "backend first, then frontend")
 
-    /* 4. self-review */
+    /* 4. skill mapping — which skills executor should invoke per step */
+    /* Add skills relevant to this task to phase_skill_mapping */
+    /* e.g. code → test-first, verify-gate; bug fix → root-cause; UI → ui-ux-pro-max */
+
+    /* 5. self-review */
     CHECK: any TBD, TODO, ambiguous statements? FIX inline
 
-    /* 5. approval */
+    /* 6. approval */
     ASK: "I'll implement [X] using [Y]. Proceed?"
     WAIT for user response
 
@@ -742,6 +761,7 @@ BEGIN CONDENSED
             state = "HANDOFF"
             ADD: mode = "condensed", spec, dependencies
             ADD: requirements = { purpose, constraints, success } /* extracted in step 0 — preserve for plan-builder verification */
+            ADD: phase_skill_mapping = <skills mapped in step 4>
             INCREMENT: transition_count
 END
 ```
@@ -758,6 +778,33 @@ END
 
 ```
 BEGIN HANDOFF
+    /* 0. validate data contract before handoff */
+    REQUIRED_FIELDS = ["task", "requirements", "mode"]
+    IF mode == "full":
+        REQUIRED_FIELDS += ["design", "dependencies", "spec_path"]
+    IF mode == "condensed":
+        REQUIRED_FIELDS += ["spec"]
+    FOR EACH field IN REQUIRED_FIELDS:
+        IF field NOT IN STATE_FILE OR STATE_FILE[field] is empty:
+            TELL: "[vega-punk] Missing required field: [field]. Cannot hand off."
+            STAY in current state (DESIGN or SPEC_QA)
+            EXIT
+
+    /* 0.5. check if worktree isolation is needed */
+    IF task benefits from isolation (multi-file changes, feature branch work):
+        INVOKE worktree-setup via Skill tool
+        IF worktree-setup succeeds:
+            MERGE worktree_path into STATE_FILE
+
+    /* 0.6. attach skills to apply during execution */
+    /* Preserve existing skills_to_apply (e.g. from Fast mode in ROUTE) */
+    IF skills_to_apply NOT IN STATE_FILE:
+        MERGE INTO STATE_FILE: skills_to_apply = []
+    IF mode == "fast" AND "verify-gate" NOT IN skills_to_apply:
+        ADD "verify-gate" TO skills_to_apply
+    IF implementation involves code AND "test-first" NOT IN skills_to_apply:
+        ADD "test-first" TO skills_to_apply
+
     /* Use Skill tool directly — do NOT rely on trigger phrase matching */
     INVOKE plan-builder via Skill tool
     IF invocation fails:
@@ -767,6 +814,33 @@ BEGIN HANDOFF
     FOLLOW its workflow
 
     /* STATE_FILE is the data contract — plan-builder reads it directly */
+    /* NOTE to plan-builder: phase_skill_mapping maps each implementation phase/component to the SKILL(s) that executor MUST invoke.
+       Write this into roadmap.json step instructions so the executor knows exactly which skills to use per step. */
+    /* Data contract schema (plan-builder MUST read these fields):
+       {
+         "task": string,                    // user's original request
+         "mode": "full"|"condensed"|"fast",
+         "requirements": {                   // extracted during CLARIFY or CONDENSED step 0
+           "purpose": string,
+           "constraints": string[],
+           "success": string[]
+         },
+         "design": object|null,             // FULL mode: architecture from DESIGN phase
+         "dependencies": object|null,       // FULL mode: { components, serial, parallel, critical_path }
+         "spec_path": string|null,          // FULL mode: path to spec file
+         "spec": object|null,               // CONDENSED mode: inline spec (what/why/how)
+         "phase_skill_mapping": object,     // { "phase_name": ["skill-1", "skill-2"] } — executor MUST invoke these per phase/step
+         "skills_to_apply": string[],        // global skills applied to ALL steps (e.g. ["verify-gate", "test-first"]) — executor invokes throughout
+         "selected_skills": {              // skills identified during SCAN
+           "planner": "plan-builder",       // always plan-builder when coming from vega-punk
+           "executor": string|null,         // "plan-executor" | "task-dispatcher" | null
+           "reviewer": string|null,         // "review-request" | null
+           "alternatives": string[]         // alternative executors identified during SCAN
+         },
+         "worktree_path": string|null,      // set by worktree-setup if isolation needed
+         "context": object|null             // project context from SCAN
+       }
+    */
 
     /* state write */
     MERGE INTO STATE_FILE:
@@ -788,6 +862,15 @@ END
 
 ```
 BEGIN REVIEW
+    /* Guard: execution_result missing — plan was interrupted or didn't complete */
+    IF execution_result NOT IN STATE_FILE:
+        TELL: "[vega-punk] REVIEW state but no execution_result. Plan may have been interrupted."
+        ASK: "(1) wait for result, (2) redesign, (3) start new task"
+        WAIT for user choice
+        CASE (1) wait for result → STAY in REVIEW, EXIT
+        CASE (2) redesign → Archive ROADMAP_FILE → GOTO DESIGN, EXIT
+        CASE (3) new task → APPLY Post-Completion Cleanup → GOTO ROUTE, EXIT
+
     READ execution_result from STATE_FILE
     COMPARE against requirements.success
     PRESENT summary to user
@@ -972,7 +1055,7 @@ END
 | "This feels productive"                    | Undisciplined action wastes time. Skills prevent this.                     |
 | "This is just a draft, we'll polish later" | No drafts. First output IS the final output.                               |
 | "I'll ask all my questions at once"        | CLARIFY enforces one question at a time. Batch questions = batch confusion |
-| "This bug needs the full flow"             | Emergency exists — prod down → CONDENSED, diagnose → FULL                  |
+| "This bug needs the full flow"             | Fast mode exists — prod down → CONDENSED, diagnose → FULL                  |
 
 **Self-recovery:** Built-in — see "Self-Recovery Guide" section above. No external reference needed.
 
@@ -992,9 +1075,10 @@ Skills vega-punk directly invokes:
 | Skill            | When    | How                                                                                   |
 |------------------|---------|---------------------------------------------------------------------------------------|
 | **root-cause**   | ROUTE   | message contains `bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception` |
+| **worktree-setup** | HANDOFF | task needs isolation (multi-file changes, feature branch)                           |
 | **plan-builder** | HANDOFF | via Skill tool — NOT trigger phrase                                                   |
 
-All other skills (test-first, verify-gate, test, domain experts) are routed during SCAN.
+All other skills (test-first, verify-gate, domain experts) are either routed during SCAN or added to `skills_to_apply` for the executor to invoke.
 
 > ### ⚠ How to choose skills — CRITICAL
 > 1. Run `discover-skills.sh` — get the full registry

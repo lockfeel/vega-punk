@@ -19,14 +19,7 @@
     "deny": [
       "Bash:sudo:*",
       "Bash:rm:--rf:/",
-      "Bash:rm:--rf:/*",
-      "Bash:curl:--pipe:sh",
-      "Bash:wget:--pipe:sh",
-      "Bash:mkfs:*",
-      "Bash:dd:*",
-      "Bash:chmod:777",
-      "Bash:chmod:000",
-      "/"
+      "Bash:rm:--rf:/*"
     ]
   }
 }
