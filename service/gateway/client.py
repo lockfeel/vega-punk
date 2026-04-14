@@ -92,7 +92,7 @@ class OpenClawGatewayClient:
                     "maxProtocol": 5,
                     "client": {
                         "id": "openclaw-control-ui",
-                        "version": "vega-punk",
+                        "version": "V1.0.1",
                         "platform": "python",
                         "mode": "webchat"
                     },
