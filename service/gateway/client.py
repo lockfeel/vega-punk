@@ -2,14 +2,11 @@
 
 import asyncio
 import json
-import logging
 import uuid
 from typing import Any, Callable, Dict, Optional
 
 import websockets
 from websockets.client import WebSocketClientProtocol
-
-logger = logging.getLogger(__name__)
 
 RECONNECT_DELAYS = [1, 2, 5, 10, 30, 60]
 MAX_RECONNECT_ATTEMPTS = 10
@@ -44,15 +41,12 @@ class OpenClawGatewayClient:
                 await self._doConnect()
                 self._reconnectAttempts = 0
                 self._connected.set()
-                logger.info("[OpenClaw] 连接成功")
                 return
             except Exception as e:
-                logger.error(f"[OpenClaw] 连接失败: {e}")
                 await self._scheduleReconnect()
 
     async def _doConnect(self):
         if self._isConnecting:
-            logger.debug("[OpenClaw] 已在连接中")
             await asyncio.sleep(1)
             if self._connected.is_set():
                 return
@@ -62,23 +56,19 @@ class OpenClawGatewayClient:
         try:
             await self._cleanup()
 
-            logger.info(f"[OpenClaw] 连接网关: {self.url}")
             self.ws = await websockets.connect(
                 self.url,
                 ping_interval=None,
                 origin="http://127.0.0.1:18789"
             )
-            logger.info("[OpenClaw] WebSocket 连接已建立")
 
             asyncio.create_task(self._messageHandler())
 
-            logger.info("[OpenClaw] 等待 challenge...")
             challenge = await self._waitForEvent("connect.challenge", timeout=10)
             if not challenge:
                 raise Exception("未收到 connect.challenge")
 
             nonce = challenge["payload"]["nonce"]
-            logger.info(f"[OpenClaw] 收到 challenge")
 
             connectId = str(uuid.uuid4())
             future = self._pending[connectId] = asyncio.Future()
@@ -143,13 +133,10 @@ class OpenClawGatewayClient:
             self._reconnectTimer.cancel()
 
         if self._reconnectAttempts >= MAX_RECONNECT_ATTEMPTS:
-            logger.error("[OpenClaw] 达到最大重连次数")
             return
 
         delay = self._getReconnectDelay()
         self._reconnectAttempts += 1
-
-        logger.info(f"[OpenClaw] {delay}s 后重连 (尝试 {self._reconnectAttempts}/{MAX_RECONNECT_ATTEMPTS})")
 
         async def doReconnect():
             if not self._isAborted:
@@ -172,12 +159,10 @@ class OpenClawGatewayClient:
                 try:
                     if self.ws.state == websockets.protocol.State.OPEN:
                         await self.ws.send(json.dumps({"type": "ping"}))
-                        logger.debug("[OpenClaw] 心跳已发送")
                     await asyncio.sleep(30)
                 except asyncio.CancelledError:
                     break
                 except Exception as e:
-                    logger.warning(f"[OpenClaw] 心跳异常: {e}")
                     break
 
         self._heartbeatInterval = asyncio.create_task(heartbeat())
@@ -212,7 +197,7 @@ class OpenClawGatewayClient:
                                     else:
                                         h(payload)
                                 except Exception as e:
-                                    logger.error(f"[OpenClaw] 事件处理错误: {e}")
+                                    pass
 
                         any_handlers = self._eventHandlers.get("any", [])
                         if any_handlers:
@@ -224,21 +209,20 @@ class OpenClawGatewayClient:
                                     else:
                                         h(event, payload)
                                 except Exception as e:
-                                    logger.error(f"[OpenClaw] any 事件处理错误: {e}")
+                                    pass
 
                     elif msgType == "ping":
-                        logger.debug("[OpenClaw] 收到 ping")
+                        pass
 
                     else:
-                        logger.debug(f"[OpenClaw] 未知消息: {msgType}")
+                        pass
 
                 except json.JSONDecodeError:
-                    logger.warning("[OpenClaw] 无效 JSON")
+                    pass
                 except Exception as e:
-                    logger.error(f"[OpenClaw] 消息处理错误: {e}")
+                    pass
 
         except websockets.exceptions.ConnectionClosed as e:
-            logger.warning(f"[OpenClaw] 连接关闭: {e}")
             self._connected.clear()
             if not self._isAborted:
                 await self._scheduleReconnect()
@@ -287,6 +271,36 @@ class OpenClawGatewayClient:
         }
         return await self.sendRequest("chat.send", params)
 
+    async def abortSession(self, sessionKey: str):
+        return await self.sendRequest("sessions.abort", {"sessionKey": sessionKey})
+
+    async def abortChat(self, sessionKey: str):
+        return await self.sendRequest("chat.abort", {"sessionKey": sessionKey})
+
+    async def spawnSession(
+            self,
+            agentId: str,
+            task: str,
+            mode: str = "run",
+    ):
+        if mode not in ("run", "session"): raise ValueError(f"mode 必须为 'run' 或 'session'，当前: {mode}")
+        params = {
+            "agentId": agentId,
+            "task": task,
+            "mode": mode,
+        }
+        if mode == "session": params["thread"] = True
+        return await self.sendRequest("sessions.spawn", params)
+
+    async def steerSession(self, sessionKey: str, message: str):
+        return await self.sendRequest("sessions.steer", {
+            "sessionKey": sessionKey,
+            "message": message
+        })
+
+    async def deleteSession(self, sessionKey: str):
+        return await self.sendRequest("sessions.delete", {"key": sessionKey})
+
     def onEvent(self, eventName: str, handler: Callable, once: bool = False):
         if once:
             original = handler
@@ -312,7 +326,6 @@ class OpenClawGatewayClient:
     async def close(self):
         self.abort()
         await self._cleanup()
-        logger.info("[OpenClaw] 连接已关闭")
 
     async def __aenter__(self):
         await self.connect()

@@ -1,10 +1,8 @@
 import asyncio
-import logging
 import threading
 from datetime import datetime
 from typing import Optional
 
-logger = logging.getLogger(__name__)
 
 
 class Session:
@@ -31,7 +29,6 @@ class SessionManager:
 
     async def start(self):
         self._gcTask = asyncio.create_task(self._garbageCollector())
-        logger.info("[Session] 管理器启动")
 
     async def stop(self):
         if self._gcTask: self._gcTask.cancel()
@@ -59,11 +56,9 @@ class SessionManager:
             else:
                 sessionKey = f"agent:main:user-{userId}-{botId}"
             try:
-                await self.gateway.sendRequest("sessions.create", {
-                    "key": sessionKey
-                })
+                await self.gateway.sendRequest("sessions.create", {"key": sessionKey})
             except Exception as e:
-                logger.warning(f"[Session] 创建失败: {e}")
+                pass
 
             self.db.createSession(userId=userId, botId=botId, sessionKey=sessionKey)
             return Session(userId, sessionKey, botId)
@@ -94,15 +89,14 @@ class SessionManager:
             return Session(userId='openclaw', sessionKey=sessionKey, botId='openclaw')
 
     async def close(self, userId: str, botId: str = 'vega-punk'):
-        with self._lock:
+        with (self._lock):
             dbRow = self.db.getSession(userId, botId)
             if dbRow:
                 try:
-                    await self.gateway.sendRequest("sessions.delete", {"key": dbRow['sessionKey']})
+                    await self.gateway.deleteSession(dbRow['sessionKey'])
                     self.db.closeSessionByKey(dbRow['sessionKey'])
-                    logger.info(f"[Session] 关闭: {userId}")
                 except Exception as e:
-                    logger.error(f"[Session] 关闭失败 {userId}: {e}")
+                    pass
 
     async def _garbageCollector(self):
         while True:
@@ -110,9 +104,8 @@ class SessionManager:
                 await asyncio.sleep(600)
                 idleSessions = self.db.getIdleSessions(self.idleTimeout)
                 for row in idleSessions:
-                    logger.info(f"[Session] GC: 清理闲置会话 {row['userId']}-{row['botId']}")
                     await self.close(row['userId'], row['botId'])
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"[Session] GC 错误: {e}")
+                pass

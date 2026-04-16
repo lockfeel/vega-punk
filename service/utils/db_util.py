@@ -257,27 +257,34 @@ class DBase:
 
     def getActiveChats(self, limit: int = 1000) -> List[Dict[str, Any]]:
         bots = self.fetchAll("""
-        SELECT   b.botId, 
-                 b.name, 
-                 b.avatar, 
-                 b.role,                                                                                                                                                                                                                                                                                        
-                 t.lastTime,                                                                                                                                                                                                                                                                                                               
-                 t.lastContent                                                                                                                                                                                                                                                                                                             
-          FROM (                                                                                                                                                                                                                                                                                                                           
-              SELECT m.botId,                                                                                                                                                                                                                                                                                                              
-                     m.createTime AS lastTime,                                                                                                                                                                                                                                                                                             
-                     SUBSTR(m.content, 1, 20) AS lastContent                                                                                                                                                                                                                                                                               
-              FROM messages m                                                                                                                                                                                                                                                                                                              
-              WHERE m.rowid IN (                                                                                                                                                                                                                                                                                                           
-                  SELECT MAX(rowid)                                                                                                                                                                                                                                                                                                        
-                  FROM messages                                                                                                                                                                                                                                                                                                            
-                  WHERE deleted = 0                                                                                                                                                                                                                                                                                                        
-                  GROUP BY botId                                                                                                                                                                                                                                                                                                           
-              )                                                                                                                                                                                                                                                                                                                            
-              ORDER BY m.createTime DESC                                                                                                                                                                                                                                                                                                   
-              LIMIT ?                                                                                                                                                                                                                                                                                                                      
-          ) AS t                                                                                                                                                                                                                                                                                                                           
-          INNER JOIN bots b ON b.botId = t.botId                                                                                                                                                                                                                                                                                           
+        SELECT   b.botId,
+                 b.name,
+                 b.avatar,
+                 b.role,
+                 t.lastTime,
+                 t.lastContent
+          FROM (
+              SELECT m.botId,
+                     m.createTime AS lastTime,
+                     SUBSTR(m.content, 1, 20) AS lastContent
+              FROM messages m
+              WHERE m.rowid IN (
+                  SELECT MAX(rowid)
+                  FROM messages
+                  WHERE deleted = 0
+                  GROUP BY botId
+              )
+              ORDER BY m.createTime DESC
+              LIMIT ?
+          ) AS t
+          INNER JOIN bots b ON b.botId = t.botId
           ORDER BY t.lastTime DESC
         """, (limit,))
         return bots
+
+    def getLastUserMessage(self, userId: str, botId: str) -> Optional[str]:
+        row = self.fetchOne(
+            "SELECT content FROM messages WHERE botId = ? AND role = 'user' AND deleted = 0 ORDER BY createTime DESC LIMIT 1",
+            (botId,)
+        )
+        return row.get('content') if row else None

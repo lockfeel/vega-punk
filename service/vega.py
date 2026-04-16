@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import asyncio
 import json
-import logging
 import os
 import re
 import sys
@@ -25,7 +24,6 @@ from utils.db_util import DBase
 from gateway import (
     OpenClawGatewayClient,
     SessionManager,
-    logger,
     getOpenclawConfig,
 )
 
@@ -35,13 +33,49 @@ db = None
 
 # OpenClaw 内置命令（这些命令不做加工，直接透传）
 OPENCLAW_BUILTIN_COMMANDS = {
-    '/help', '/commands', '/tools', '/status', '/tasks', '/whoami', '/usage', '/models',
-    '/session', '/reset', '/new', '/compact', '/stop', '/restart',
-    '/skill', '/tts', '/context', '/btw', '/reasoning', '/think',
-    '/verbose', '/fast', '/model', '/queue',
-    '/subagents', '/agents', '/kill', '/steer', '/acp', '/focus', '/unfocus',
-    '/config', '/mcp', '/debug', '/allowlist', '/approve', '/activation',
-    '/send', '/elevated', '/exec', '/bash', '/webhook',
+    '/help',
+    '/commands',
+    '/tools',
+    '/status',
+    '/tasks',
+    '/whoami',
+    '/usage',
+    '/models',
+    '/session',
+    '/reset',
+    '/new',
+    '/compact',
+    '/stop',
+    '/restart',
+    '/clear',
+    '/skill',
+    '/tts',
+    '/context',
+    '/btw',
+    '/reasoning',
+    '/think',
+    '/verbose',
+    '/fast',
+    '/model',
+    '/queue',
+    '/subagents',
+    '/agents',
+    '/kill',
+    '/steer',
+    '/acp',
+    '/focus',
+    '/unfocus',
+    '/config',
+    '/mcp',
+    '/debug',
+    '/allowlist',
+    '/approve',
+    '/activation',
+    '/send',
+    '/elevated',
+    '/exec',
+    '/bash',
+    '/webhook',
 }
 
 
@@ -57,13 +91,12 @@ async def lifespan(app):
             await asyncio.wait_for(gatewayClient.connect(), timeout=30)
             sessionManager = SessionManager(gatewayClient, db)
             await sessionManager.start()
-            logging.info("[Vaga] OpenClaw 中间件已启动")
         except Exception as e:
-            logging.error(f"[Vaga] 连接失败: {e}")
+            pass
     elif cfg.get("error"):
-        logging.warning(f"[Vaga] 配置加载失败: {cfg['error']}")
+        pass
     else:
-        logging.warning("[Vaga] 未配置 token，OpenClaw 功能将不可用")
+        pass
 
     yield
 
@@ -145,10 +178,127 @@ async def deleteChat(request: Request):
     for row in sessions:
         try:
             await gatewayClient.sendRequest("sessions.delete", {"key": row['sessionKey']})
-        except Exception as e:
-            logger.error(f"[DeleteChat] 删除 session 失败 {row['sessionKey']}: {e}")
+        except Exception:
+            pass
         db.closeSessionByKey(row['sessionKey'])
     return JSONResponse({"success": True, "botId": botId})
+
+
+def _preprocessMessage(message: str, botId: str) -> str:
+    """对非内置命令的消息进行 botId 前缀加工"""
+    if not message or botId == 'openclaw':
+        return message
+    if message == '/init-bot':
+        return f'/{botId} 加载并激活这个SKILL，并根据这个SKILL的功能描述，给用户输出一段使用指南。'
+    return f'/{botId} {message}'
+
+
+def _isBuiltinCommand(message: str) -> bool:
+    if not message:
+        return False
+    cmd = message.split()[0].lower()
+    return cmd in OPENCLAW_BUILTIN_COMMANDS
+
+
+class ChatHandler:
+
+    def __init__(self, websocket: WebSocket):
+        self.currSession = None
+        self.sessionKey = None
+        self.websocket = websocket
+        self.accumulatedText = ''
+        self.handoffCache: set = set()
+
+    async def handle(self, payload: dict):
+        stream = payload.get('stream')
+        data = payload.get('data', {})
+
+        if 'HEARTBEAT' in data.get('text', ''):
+            return
+
+        self.sessionKey = payload.get('sessionKey', '')
+        self.currSession = sessionManager.getBySessionKey(self.sessionKey) if sessionManager else None
+        if self.currSession:
+            sessionManager.activeBySession(self.sessionKey)
+
+        if stream == 'assistant':
+            await self._handleAssistant(payload, data)
+        elif stream == 'item':
+            await self._handleItem(payload, data)
+
+    async def _handleAssistant(self, payload: dict, data: dict):
+        phase = data.get('phase')
+        # phase=None 表示流式输出
+        if phase is None:
+            self.accumulatedText = data.get('text', '')
+            await self._sendJson({
+                "type": "delta",
+                "runId": payload.get('runId'),
+                "sessionKey": self.sessionKey,
+                "botId": self.currSession.botId if self.currSession else None,
+                "text": self.accumulatedText,
+                "delta": data.get('delta', '')
+            })
+            return
+        # phase=end 表示输出结束
+        if phase == 'end' and not data.get('text', '') and self.accumulatedText.strip():
+            db.addMessage(
+                botId=self.currSession.botId if self.currSession else None,
+                senderId=self.sessionKey,
+                role='assistant',
+                content=self.accumulatedText
+            )
+            self.accumulatedText = ''
+
+    async def _handleItem(self, payload: dict, data: dict):
+        toolName = data.get('name') or data.get('tool')
+        phase = data.get('phase')
+        if toolName != 'read' or phase != 'start':
+            return
+
+        title = data.get('title', '')
+        if 'SKILL.md' not in title:
+            return
+
+        match = re.search(r'[~/\w.\-]+/skills/[^/]+/SKILL\.md', title)
+        filePath = match.group(0) if match else ''
+        skillName = getSkillName(filePath)
+        if not skillName or skillName in self.handoffCache:
+            return
+
+        self.handoffCache.add(skillName)
+        await self._doHandoff(payload, skillName)
+
+    async def _doHandoff(self, payload: dict, skillName: str):
+        if not self.currSession:
+            return
+
+        skillSession = await sessionManager.getOrCreate(self.currSession.userId, skillName)
+        if not skillSession:
+            return
+
+        await self._sendJson({
+            "type": "handoff",
+            "runId": payload.get('runId'),
+            "sessionKey": skillSession.sessionKey,
+            "botId": skillName,
+            "text": f"{skillName}正在为您工作",
+            "fromBotId": self.currSession.botId
+        })
+
+        lastUserMsg = db.getLastUserMessage(self.currSession.userId, self.currSession.botId)
+        handoffMsg = f"请接管处理以下请求：\n\n{lastUserMsg}" if lastUserMsg else "请根据 SKILL 描述开始工作"
+        await gatewayClient.sendChat(
+            skillSession.sessionKey,
+            handoffMsg,
+            idempotencyKey=f"handoff-{skillName}-{payload.get('runId')}"
+        )
+
+    async def _sendJson(self, data: dict):
+        try:
+            await self.websocket.send_json(data)
+        except Exception:
+            pass
 
 
 @app.websocket("/chatClaw")
@@ -158,105 +308,63 @@ async def chatClaw(websocket: WebSocket):
         await websocket.send_json({"error": "OpenClaw 未就绪"})
         await websocket.close()
         return
-    accumulatedText = ''
 
-    async def onChatEvent(payload: dict):
-        nonlocal accumulatedText
-        print(payload)
-        runId = payload.get('runId')
-        stream = payload.get('stream')
-        phase = payload.get('data', {}).get('phase')
-        eventSession = payload.get('sessionKey', '')
-        currSession = sessionManager.getBySessionKey(eventSession)
-        botId = None
-        if currSession:
-            botId = currSession.botId
-            sessionManager.activeBySession(eventSession)
-        data = payload.get('data', {})
-        if 'HEARTBEAT' in data.get('text', ''): return
-        if phase == 'end' and data.get('text', '') == '':
-            try:
-                if accumulatedText.strip():
-                    sessionKey = payload.get('sessionKey', '')
-                    db.addMessage(botId=botId, senderId=sessionKey, role='assistant', content=accumulatedText)
-                    accumulatedText = ''
-                    return
-            except Exception as e:
-                logger.error(f"[WS] 发送 final 失败: {e}")
-        if stream == 'assistant' and phase is None:
-            accumulatedText = data.get('text', '')
-            try:
-                await websocket.send_json({
-                    "type": "delta",
-                    "runId": runId,
-                    "sessionKey": payload.get('sessionKey'),
-                    "botId": botId,
-                    "text": accumulatedText,
-                    "delta": data.get('delta', '')
-                })
-            except Exception as e:
-                logger.error(f"[WS] 发送 delta 失败: {e}")
-        if stream == 'item':
-            toolName = data.get('name') or data.get('tool')
-            phase = data.get('phase')
-            if toolName == 'read' and phase == 'start':
-                title = data.get('title', '')
-                if 'SKILL.md' in title:
-                    match = re.search(r'[~/\w.\-]+/skills/[^/]+/SKILL\.md', title)
-                    filePath = match.group(0) if match else ''
-                    skillName = getSkillName(filePath)
-                    await websocket.send_json({
-                        "type": "delta",
-                        "runId": runId,
-                        "sessionKey": payload.get('sessionKey'),
-                        "botId": skillName,
-                        "text": f"{skillName}正在为您工作",
-                        "delta": ""
-                    })
-
-    gatewayClient.onEvent("agent", onChatEvent)
+    handler = ChatHandler(websocket)
+    gatewayClient.onEvent("agent", handler.handle)
 
     try:
         while True:
             data = await websocket.receive_text()
             msg = json.loads(data)
+
             userId = msg.get('user')
             message = msg.get('text')
             botId = msg.get('botId', 'vega-punk')
-            session = await sessionManager.getOrCreate(userId, botId)
+
+            # ping 心跳
             if msg.get('type') == 'ping':
-                if session: sessionManager.activeBySession(session.sessionKey)
+                session = await sessionManager.getOrCreate(userId, botId)
+                if session:
+                    sessionManager.activeBySession(session.sessionKey)
                 continue
+
+            # 参数校验
             if not userId or not message:
                 await websocket.send_json({"error": "缺少 user 或 message"})
                 continue
+
+            # 连接状态检查
             if not gatewayClient.connected.is_set():
                 await websocket.send_json({"error": "OpenClaw未连接"})
                 continue
+
+            # 记录用户消息
             db.addMessage(botId=botId, senderId=userId, role='user', content=message)
+
+            # 获取或创建 session
+            session = await sessionManager.getOrCreate(userId, botId)
+            if not session:
+                await websocket.send_json({"error": "session 创建失败"})
+                continue
+
+            # 消息预处理并发送
             try:
-                cmd = message.split()[0].split(' ')[0].lower() if message else ''
-                isBuiltin = cmd in OPENCLAW_BUILTIN_COMMANDS
-                if not isBuiltin:
-                    if message == '/init-bot' and botId != 'openclaw':
-                        message = f'/{botId} 加载并激活这个SKILL，并根据这个SKILL的功能描述，给用户输出一段使用指南。'
-                    elif botId != 'openclaw':
-                        message = f'/{botId} {message}'
+                if not _isBuiltinCommand(message):
+                    message = _preprocessMessage(message, botId)
                 await gatewayClient.sendChat(
                     session.sessionKey,
                     message,
                     idempotencyKey=msg.get("idempotency_key", f"{userId}-{uuid.uuid4().hex[:8]}")
                 )
             except Exception as e:
-                logger.error(f"[WS] 发送消息失败: {e}")
                 await websocket.send_json({"type": "error", "error": str(e)})
+
     except WebSocketDisconnect:
-        logger.info("[WS] 客户端断开")
+        pass
     except Exception as e:
-        logger.error(f"[WS] 错误: {e}")
         await websocket.send_json({"error": str(e)})
     finally:
-        gatewayClient.offEvent("agent", onChatEvent)
+        gatewayClient.offEvent("agent", handler.handle)
 
 
 if __name__ == '__main__':
