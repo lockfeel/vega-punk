@@ -5,7 +5,7 @@ allowed-tools: "Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch"
 hooks:
   SessionStart:
     - type: command
-      command: "bash skills/vega-punk/scripts/session-hook.sh 2>/dev/null || echo '[vega-punk] Ready. What shall we build?'"
+      command: "bash scripts/session-hook.sh 2>/dev/null || echo '[vega-punk] Ready. What shall we build?'"
 ---
 
 # Vega-Punk: Session State Machine
@@ -409,7 +409,7 @@ BEGIN SCAN
         SKIP skill routing
     ELSE:
         /* Step A: Discover available skills */
-        RUN bash skills/vega-punk/scripts/discover-skills.sh
+        RUN bash scripts/discover-skills.sh
         IF exit code == 1 (hard failure — no JSON runtime):
             TELL: "[SCAN] Skill discovery failed — no JSON runtime available. Proceeding without skill guidance."
             PARSE system prompt skill list as fallback → available_skills
@@ -1164,7 +1164,7 @@ END
 ```
 BEGIN BOOTSTRAP
     MKDIR ~/.vega-punk/specs
-    VERIFY skills/vega-punk/scripts/ exists (session-hook.sh, discover-skills.sh)
+    VERIFY scripts/ exists (session-hook.sh, discover-skills.sh)
     IF missing → inform user
     GOTO ROUTE
 END
