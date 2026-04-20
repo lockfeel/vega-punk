@@ -1,8 +1,8 @@
 ---
 name: plan-builder
-description: Resilient executable planning that never loses context. Creates ~/.vega-punk/roadmap.json with phases, steps, code, tools, and verification. Breaks multi-step tasks into bite-sized, testable units with complete code in every step. Use when you have a spec or requirements for a multi-step task, before touching code.
+description: "Resilient executable planning that never loses context. 做什么：创建~/.vega-punk/roadmap.json，分解为可执行的TDD任务。何时用：有多步实现需求时，在写代码之前。触发词: plan, roadmap.json, multi-step task, break down, implementation plan, create a plan, spec to tasks, 制定计划, 拆分任务"
 categories: ["workflow"]
-triggers: ["plan", "~/.vega-punk/roadmap.json", "multi-step task", "break down", "implementation plan", "create a plan", "spec to tasks"]
+triggers: ["plan", "~/.vega-punk/roadmap.json", "multi-step task", "break down", "implementation plan", "create a plan", "spec to tasks", "制定计划", "拆分任务"]
 user-invocable: true
 allowed-tools: "Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch"
 hooks:

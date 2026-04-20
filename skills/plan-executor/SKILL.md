@@ -1,8 +1,8 @@
 ---
 name: plan-executor
-description: Use when you have a written implementation plan (~/.vega-punk/roadmap.json) to execute inline in the current session with review checkpoints
+description: "Execute ~/.vega-punk/roadmap.json inline with review checkpoints. 做什么：顺序执行计划步骤 + 每步验证 + 失败重试。何时用：已有写好的 roadmap.json 需要执行。触发词: execute plan, roadmap.json, implementation plan, execute steps, 执行计划, 继续计划"
 categories: ["workflow"]
-triggers: ["execute plan", "~/.vega-punk/roadmap.json", "implementation plan", "execute steps"]
+triggers: ["execute plan", "~/.vega-punk/roadmap.json", "implementation plan", "execute steps", "执行计划", "继续计划"]
 user-invocable: true
 allowed-tools: "Read, Write, Edit, Bash, Glob, Grep, WebSearch, WebFetch"
 hooks:
@@ -69,8 +69,6 @@ BEGIN STATE_VALIDATION_GATE
     IF roadmap.metadata.completion_rate does NOT exist:
         roadmap.metadata.completion_rate = "0%"
     WRITE ~/.vega-punk/roadmap.json
-
-    /* Check if worktree is needed */
 
     /* Check if worktree is needed */
     IF state file exists:

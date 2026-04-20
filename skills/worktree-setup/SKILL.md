@@ -1,8 +1,9 @@
 ---
 name: worktree-setup
-description: Use when starting feature work that needs isolation from current workspace or before executing implementation plans - creates isolated git worktrees with smart directory selection and safety verification
+description: "Create isolated git worktrees for feature work. 做什么：智能目录选择 + 安全检查 + 自动依赖安装。何时用：需要隔离工作区或执行实现计划前。触发词: worktree, isolated workspace, feature branch, set up workspace, 创建工作树, 隔离环境"
 categories: [ "workflow" ]
-triggers: [ "worktree", "isolated workspace", "feature branch", "set up workspace" ]
+triggers: [ "worktree", "isolated workspace", "feature branch", "set up workspace", "创建工作树", "隔离环境" ]
+user-invocable: true
 ---
 
 # Using Git Worktrees
