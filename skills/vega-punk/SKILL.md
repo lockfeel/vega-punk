@@ -541,11 +541,23 @@ BEGIN CLARIFY
             BREAK
 
     /* 3. Finalize requirements and transition */
-    TELL: "Requirements captured. Moving to design."
     EXTRACT purpose, constraints, success from:
         - User's original request
         - SCAN context
         - All answered questions + documented assumptions
+
+    /* CHECKPOINT: requirements confirmation — present summary before design */
+    PRESENT requirements summary:
+        - Purpose: [1 sentence]
+        - Constraints: [list]
+        - Success criteria: [list]
+        - Assumptions: [any "you decide" dimensions]
+    ASK: "This is what I understand. Design based on this — correct?"
+    CASE user confirms / "yes" / "对":
+        TELL: "Requirements captured. Moving to design."
+    CASE user corrects:
+        UPDATE answers → re-extract purpose/constraints/success
+        TELL: "Updated. Moving to design."
 
     /* state write */
     MERGE INTO STATE_FILE:
@@ -1309,9 +1321,11 @@ Auto-add rules always fire: fast mode → `verify-gate`, code → `test-first`, 
 
 | Skill            | When    | How                                                                                   |
 |------------------|---------|---------------------------------------------------------------------------------------|
-| **root-cause**   | ROUTE   | message contains `bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception` |
+| **root-cause**   | ROUTE   | message contains `bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception`, `报错`, `出错`, `崩溃`, `异常`, `不工作`, `坏了` |
 | **worktree-setup** | HANDOFF | task needs isolation (multi-file changes, feature branch)                           |
 | **plan-builder** | HANDOFF | via Skill tool — NOT trigger phrase                                                   |
+
+See ROUTE (bug detection) and SCAN (auto-add rules) for invocation logic.
 
 All other skills are matched by semantic reading of name + description during SCAN, or added via auto-add rules. Skills whose descriptions do not match the task are NOT invoked.
 
