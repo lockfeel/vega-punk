@@ -1,6 +1,6 @@
 ---
 name: verify-gate
-description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+description: "Use when about to claim work is complete, fixed, or passing — requires running verification commands and confirming output before making any success claims. Evidence before assertions always. 触发词: verify gate, verify this, check verification, tests pass, verify completion, 验证一下"
 categories: ["code-quality"]
 triggers: ["verify gate", "verify this batch", "verify completion", "check verification"]
 user-invocable: true
@@ -19,6 +19,8 @@ parameters:
 Claiming work is complete without verification is unreliable — evidence before assertions always.
 
 **Core principle:** Evidence before claims, always.
+
+**TL;DR:** Run the command → Read the output → Write the result → THEN claim the result. No caching, no shortcuts, no freshness windows.
 
 **Violating the letter of this rule is violating the spirit of this rule.**
 
