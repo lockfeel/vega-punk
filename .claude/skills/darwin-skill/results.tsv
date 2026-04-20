@@ -7,3 +7,16 @@ timestamp	commit	skill	old_score	new_score	status	dimension	note	eval_mode
 2026-04-20T23:15	5bb08d7	vega-punk	93.5	95.5	keep	Architecture	Extracted reusable QA protocol, eliminated DESIGN_QA/SPEC_QA duplication	dry_run
 2026-04-20T23:18	84dc653	vega-punk	95.5	96.0	keep	Resources	Restored session-hook.sh and discover-skills.sh paths	full_test
 2026-04-20T23:21	c0d2a6e	vega-punk	96.0	97.4	keep	Re-eval	Restored relative script paths, updated scores	dry_run
+2026-04-20T23:44	5595cf8	test-prompts	-	-	baseline	-	Created test-prompts.json for 10 skills (3 prompts each, happy path + edge + recovery)	dry_run
+2026-04-20T23:44	cee453b	verify-gate	75.8	80.3	keep	Checkpoints	Added Checkpoint Protocol (5 checkpoints: no_commands, timeout, multi_fail, env_issue, standalone_fail)	dry_run
+2026-04-20T23:44	93d6c66	verify-gate	80.3	83.1	keep	Frontmatter+Specificity	Added Chinese triggers, TL;DR section	dry_run
+2026-04-20T23:44	b70221e	parallel-swarm	79.1	82.6	keep	Frontmatter+Resources	Added Chinese triggers, Data Contracts section (dispatch schema + return template)	dry_run
+2026-04-20T23:44	38293e6	review-request	79.3	82.8	keep	Frontmatter+Checkpoints	Added user-invocable, Chinese triggers, Checkpoint Protocol (4 checkpoints)	dry_run
+2026-04-20T23:44	fd11616	test-first	80.8	83.8	keep	Frontmatter	Added user-invocable, Chinese triggers, enriched description	dry_run
+2026-04-20T23:44	fd11616	branch-landing	80.8	83.8	keep	Frontmatter	Added user-invocable, Chinese triggers, enriched description	dry_run
+2026-04-20T23:44	5595cf8	plan-executor	82.0	84.5	keep	Frontmatter+Cleanup	Added Chinese triggers, enriched description, deduplicated comment	dry_run
+2026-04-20T23:44	5595cf8	worktree-setup	82.5	85.0	keep	Frontmatter	Added user-invocable, Chinese triggers, enriched description	dry_run
+2026-04-20T23:44	5595cf8	review-intake	84.0	86.5	keep	Frontmatter	Added user-invocable, Chinese triggers, enriched description	dry_run
+2026-04-20T23:44	5595cf8	plan-builder	82.6	85.1	keep	Frontmatter	Added Chinese triggers, enriched description	dry_run
+2026-04-20T23:44	5595cf8	task-dispatcher	88.1	90.1	keep	Frontmatter	Added Chinese triggers, enriched description	dry_run
+2026-04-20T23:44	5595cf8	root-cause	88.8	90.8	keep	Frontmatter	Added Chinese triggers, enriched description	dry_run
