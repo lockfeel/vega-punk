@@ -164,10 +164,6 @@ The `dependencies` field in `~/.vega-punk/vega-punk-state.json` structures how p
 
 **Mapping to roadmap.json:** Each `serial` inner array maps to a `depends_on` constraint on the first phase in the next group.
 
-## Quick Reference — Execute This Every Session
-
-See **Entry Protocol** for context loading, **Creating a Plan** for plan creation, **Self-Review** for validation, and **Completion Contract** for signaling and state write-back.
-
 ## Codebase Context Protocol
 
 Before "File Structure First", ground the plan in reality:
@@ -570,35 +566,16 @@ BEGIN COMPLETION_CONTRACT
     RUN ROUTING_DECISION
 
     IF ~/.vega-punk/vega-punk-state.json exists:
-        /* Invoked from vega-punk — update state for execution handoff */
         WRITE ~/.vega-punk/vega-punk-state.json:
             state = "HANDOFF"
             ADD: handoff_to = executor
-        /* Signal completion — do NOT block waiting for executor */
-        TELL: "[plan-builder] Plan written. Handing off to {executor}."
-        /* Attempt handoff via Skill tool, but do NOT wait for result */
-        IF executor == "plan-executor":
-            INVOKE plan-executor via Skill tool (non-blocking)
-        ELSE:
-            INVOKE task-dispatcher via Skill tool (non-blocking)
-        /* If Skill invocation fails, log warning and continue */
-        IF Skill invocation fails:
-            LOG: "[plan-builder] Failed to invoke {executor}. Manual invocation needed."
-            UPDATE roadmap.json metadata: add warning = "Executor invocation failed — manual start required"
-        /* Return regardless of executor invocation result */
-    ELSE:
-        /* Standalone mode — no state write-back */
-        TELL: "[plan-builder] Plan written successfully."
-        /* Attempt handoff via Skill tool, but do NOT wait for result */
-        IF executor == "plan-executor":
-            INVOKE plan-executor via Skill tool (non-blocking)
-        ELSE:
-            INVOKE task-dispatcher via Skill tool (non-blocking)
-        /* If Skill invocation fails, log warning and continue */
-        IF Skill invocation fails:
-            LOG: "[plan-builder] Failed to invoke {executor}. Manual invocation needed."
-            UPDATE roadmap.json metadata: add warning = "Executor invocation failed — manual start required"
-        /* Return regardless of executor invocation result */
+    TELL: "[plan-builder] Plan written. Handing off to {executor}."
+
+    /* Unified handoff — same logic for both modes */
+    INVOKE executor via Skill tool (non-blocking)
+    IF Skill invocation fails:
+        LOG: "[plan-builder] Failed to invoke {executor}. Manual invocation needed."
+        UPDATE roadmap.json metadata: add warning = "Executor invocation failed — manual start required"
 END
 ```
 
