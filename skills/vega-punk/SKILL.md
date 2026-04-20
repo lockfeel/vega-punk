@@ -470,64 +470,60 @@ END
 BEGIN CLARIFY
     /* 0. Skill-driven clarification — activate matched skills as domain experts */
     IF selected_skills NOT empty AND domain_considerations NOT IN STATE_FILE:
-        /* Skills were already invoked in SCAN for guidance */
-        /* Now ask each skill: "What ambiguities in your domain would block a good solution?" */
         FOR EACH skill_name IN selected_skills:
             INVOKE skill_name via Skill tool (if not already in context)
             ASK skill: "Based on the user's task, what domain-specific dimensions need clarification?"
             EXTRACT: required_inputs, key_ambiguities, expert_considerations
             COLLECT INTO: domain_considerations[skill_name] = { inputs, ambiguities, considerations }
 
-    /* 1. Check if requirements are already clear */
-    IF purpose, constraints, and success criteria are clear:
-        TELL: "Requirements are clear. Moving to design."
-        EXTRACT purpose, constraints, success from request + SCAN context
-        GOTO DESIGN
-
-    /* 2. Build question pool from skill expertise + vega-punk fallback */
+    /* 1. Build question pool */
     IF domain_considerations NOT empty:
         BUILD question_pool FROM domain_considerations
         CLASSIFY questions:
             - BLOCKERS: "would block a quality solution" — must ask (platform, auth, data model, core API)
             - PREFERENCES: "affects implementation style" — can assume (colors, animation, naming)
-        PRIORITIZE: BLOCKERS first, then PREFERENCES if time allows
+        PRIORITIZE: BLOCKERS first, then PREFERENCES
         DEDUP overlapping questions across skills
-        /* NOTE: PREFERENCES can be assumed if user says "you decide" or doesn't answer */
     ELSE:
         question_pool = []
+        /* Fallback: ask vega-punk's own clarifying questions */
+        IF purpose unclear: APPEND "What is the primary goal?" to question_pool
+        IF constraints unclear: APPEND "Any technical or time constraints?" to question_pool
+        IF success unclear: APPEND "What does 'done' look like?" to question_pool
 
-    /* 3. Enforce ONE-question-at-a-time: AI must NOT batch multiple questions */
-    IF more_than_one clarifying_dimension exists:
-        IF question_pool NOT empty:
-            ASK single question from question_pool → prefer multiple choice
-        ELSE:
-            ASK single question: "Most critical unknown" → prefer multiple choice
-        WAIT for answer before asking next
-
-        /* Check user's answer — match the first row that applies: */
-
-        | User says... | Action |
-        |--------------|--------|
-        | "you decide" on all remaining | Document assumptions for ALL remaining dimensions → TELL: "I've made assumptions for: [list]. Correct any before we design." → WAIT → PROCEED to DESIGN |
-        | "you decide" (just this one) | Document assumption for THIS dimension → If all remaining can be reasonably assumed: same action as row above → Else: ASK next most critical question |
-
-    ELSE:
-        IF question_pool NOT empty:
-            ASK single question from question_pool → prefer multiple choice
-        ELSE:
-            ASK single clarifying question → prefer multiple choice
-        FOCUS on: purpose, constraints, success criteria
+    /* 2. Ask questions one at a time — max 3 rounds */
+    clarify_rounds = 0
+    WHILE question_pool NOT empty AND clarify_rounds < 3:
+        clarify_rounds += 1
+        ASK single question from question_pool (BLOCKER first) → prefer multiple choice
+        REMOVE asked question from pool
         WAIT for answer
 
-    /* handle "you decide" after single-dimension question */
-    IF current_question_answered_with "you decide":
-        DOCUMENT assumption for THIS dimension
-        IF more unclarified dimensions remain:
-            ASK next question (do NOT skip to DESIGN)
-        ELSE:
-            TELL: "I've made assumptions for: [list]. Correct any before we design."
-            WAIT for user correction (brief — if none, proceed)
-            PROCEED to DESIGN
+        /* Match user's answer: */
+        CASE "you decide" / "你决定":
+            DOCUMENT assumption for THIS dimension
+            /* Ask if user wants to skip remaining questions */
+            ASK: "I'll assume [assumption]. Skip remaining questions and move to design?"
+            WAIT for answer
+            CASE "yes" / "好" / "skip":
+                DOCUMENT remaining assumptions for all unanswered dimensions
+                BREAK → PROCEED to step 3
+            CASE else:
+                CONTINUE to next question
+        CASE user answers the question:
+            RECORD answer → remove from unanswered pool
+            IF user's answer reveals new ambiguity:
+                APPEND clarifying follow-up to question_pool (max 1)
+        CASE user rejects answering:
+            DOCUMENT reasonable assumption
+            BREAK
+
+    /* 3. Finalize requirements and transition */
+    TELL: "Requirements captured. Moving to design."
+    EXTRACT purpose, constraints, success from:
+        - User's original request
+        - SCAN context
+        - All answered questions + documented assumptions
 
     /* state write */
     MERGE INTO STATE_FILE:
