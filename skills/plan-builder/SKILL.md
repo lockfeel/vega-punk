@@ -496,6 +496,23 @@ BEGIN USER_INTERRUPTION
 END
 ```
 
+## Checkpoint Protocol
+
+Plan-builder inserts checkpoint flags at critical decision boundaries. These prevent autonomous drift:
+
+| Checkpoint | Trigger | Action |
+|------------|---------|--------|
+| `SCOPE_CONFIRM` | Plan would produce ≥ 15 steps or ≥ 3 phases | Show user estimated scope before writing plan, confirm approach |
+| `SPLIT_DECISION` | Scope check triggers multi-roadmap split | Show user proposed split + inter_plan_deps, confirm before writing |
+| `DESTRUCTIVE_WARN` | Any step deletes files, drops tables, or force-pushes | Mark step `checkpoint: true` in roadmap |
+| `HANDOFF_CONFIRM` | Before invoking executor via Skill tool | Tell user which executor was selected and why, allow override |
+| `RECOVERY_PATH` | Executor re-invokes plan-builder after 3 failed attempts | Show user which steps failed, propose restructured plan before writing |
+
+**HANDOFF_CONFIRM details:** Before the Completion Contract invokes an executor, plan-builder MUST:
+1. State: `"Handing off to {executor}. Reason: {brief rationale from scoring table}"`
+2. Wait for user acknowledgment (unless invoked via hook/automated flow)
+3. If user objects, re-route to the alternative executor
+
 ## Completion Contract
 
 After writing the plan and passing self-review, decide which execution path to use and hand off automatically.
@@ -548,6 +565,7 @@ When `executor` is not null, use it directly. When null, fall through to the sco
 ```
 BEGIN COMPLETION_CONTRACT
     RUN SELF_REVIEW (one pass only — see Self-Review section)
+    RUN HANDOFF_CONFIRM checkpoint (see Checkpoint Protocol section)
     WRITE ~/.vega-punk/roadmap.json (same directory as ~/.vega-punk/vega-punk-state.json) with all phases, steps, and verification config
     RUN ROUTING_DECISION
 
