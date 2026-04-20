@@ -1,6 +1,6 @@
 ---
 name: parallel-swarm
-description: "Decide whether multiple tasks can run in parallel, structure their prompts, and verify results. Use when you have 2+ independent tasks with no shared state or sequential dependencies — e.g., unrelated test failures, separate config fixes, or disjoint feature implementations."
+description: "Decide whether multiple tasks can run in parallel, structure their prompts, and verify results. Use when you have 2+ independent tasks with no shared state or sequential dependencies. 做什么：并行性决策 + prompt构造 + 结果验证。何时用：2+独立任务且无相互依赖。触发词: parallel, 并行, independent tasks, 并发, multiple failures, dispatch agents, should these run in parallel, 可以并行吗"
 categories: ["workflow", "decision"]
 triggers: ["parallel", "independent tasks", "multiple failures", "different root causes", "dispatch agents", "should these run in parallel", "can these run concurrently", "batch dispatch"]
 user-invocable: true
@@ -503,6 +503,29 @@ If total budget exceeds 30 minutes, reconsider whether the task is suitable for 
 **Shared state:** Agents would interfere (editing same files, using same resources)
 **Logical coupling:** Tasks share an interface, contract, or conceptual entity even if files differ
 **Over-decomposed:** More than 8 agents signals wrong granularity — merge related tasks
+
+## Data Contracts
+
+The caller manages the dispatch table, but must conform to this schema:
+
+```json
+{
+  "task_id": "unique within batch",
+  "scope": "what this agent does",
+  "target_files": ["exact files to modify"],
+  "goal": "observable outcome",
+  "success_criteria": "testable condition",
+  "constraints": "what NOT to do",
+  "isolation": "worktree | shared_dir | read_only"
+}
+```
+
+**Return contract** (each agent must output):
+```
+1. Root cause: <what was found>
+2. Changes made: <file:line → what changed>
+3. Verification: <command run + result>
+```
 
 ## Integration
 
