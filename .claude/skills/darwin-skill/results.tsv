@@ -6,3 +6,4 @@ timestamp	commit	skill	old_score	new_score	status	dimension	note	eval_mode
 2026-04-20T23:11	67f9f74	vega-punk	87.5	92.0	keep	Routing+Bug fix	Fixed CONDENSED unreachable, added Chinese bug keywords, auto-simple-task detection	dry_run
 2026-04-20T23:15	5bb08d7	vega-punk	93.5	95.5	keep	Architecture	Extracted reusable QA protocol, eliminated DESIGN_QA/SPEC_QA duplication	dry_run
 2026-04-20T23:18	84dc653	vega-punk	95.5	96.0	keep	Resources	Restored session-hook.sh and discover-skills.sh paths	full_test
+2026-04-20T23:21	c0d2a6e	vega-punk	96.0	97.4	keep	Re-eval	Restored relative script paths, updated scores	dry_run
