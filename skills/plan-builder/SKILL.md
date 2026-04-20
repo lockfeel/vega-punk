@@ -30,6 +30,18 @@ plan-builder accepts the following inbound states:
 
 Outbound: plan-builder always writes `state: "HANDOFF"` + `handoff_to: <executor>` on completion.
 
+## Mode Detection Heuristic
+
+When invoked in standalone mode (no state file), plan-builder auto-detects plan complexity:
+
+| Signal | Detected Mode | Behavior |
+|--------|--------------|----------|
+| Task ≤ 3 files, ≤ 2 features, no integrations | `condensed` | Single phase, max 8 steps, no TDD overhead |
+| Task > 3 files OR has integrations OR has auth/DB | `full` | Multi-phase with full TDD decomposition |
+| Ambiguous | `full` | Safer to over-plan than under-plan |
+
+**Condensed auto-detect rules:** If user request mentions a simple CRUD app, a single component, a config change, or a bug fix → `condensed`. Otherwise → `full`.
+
 ## Pre-Execution Gate
 
 ```
@@ -85,7 +97,12 @@ BEGIN ENTRY_PROTOCOL
     IF ~/.vega-punk/vega-punk-state.json does NOT exist:
         /* Standalone mode — direct invocation */
         TELL: "[plan-builder] Standalone mode — creating plan from your request."
-        GOTO CREATE_PLAN
+        /* Auto-detect complexity to choose condensed vs full flow */
+        RUN mode_detection_heuristic (see Mode Detection Heuristic section)
+        IF mode == "condensed":
+            GOTO CREATE_CONDENSED_PLAN
+        ELSE:
+            GOTO CREATE_PLAN
         SKIP state write-back on completion
 
     READ ~/.vega-punk/vega-punk-state.json
@@ -150,6 +167,47 @@ The `dependencies` field in `~/.vega-punk/vega-punk-state.json` structures how p
 ## Quick Reference — Execute This Every Session
 
 See **Entry Protocol** for context loading, **Creating a Plan** for plan creation, **Self-Review** for validation, and **Completion Contract** for signaling and state write-back.
+
+## Codebase Context Protocol
+
+Before "File Structure First", ground the plan in reality:
+
+```
+BEGIN CODEBASE_CONTEXT
+    /* Purpose: Never plan in a vacuum. Every plan must reference the actual project. */
+
+    /* Step 1: Identify project type */
+    SEARCH for project manifest files:
+        package.json (Node.js/JS), pyproject.toml/poetry.lock/requirements.txt (Python),
+        Cargo.toml (Rust), go.mod (Go), pom.xml/build.gradle (Java/Kotlin),
+        pubspec.yaml (Flutter), composer.json (PHP), Gemfile (Ruby)
+
+    IF no manifest found:
+        TELL: "[plan-builder] No project manifest found — planning as greenfield project."
+        SKIP to step 4
+
+    /* Step 2: Read project configuration */
+    READ primary manifest:
+        - dependencies → inform techStack field
+        - scripts → infer test/build commands for verify fields
+        - main/entry point → identify starting file
+        - framework config → understand routing/middleware patterns
+
+    /* Step 3: Map existing structure */
+    READ top-level directory structure (ls via Bash):
+        - Identify src/ organization pattern
+        - Locate test directory and test framework
+        - Find existing config files (.env.example, tsconfig.json, etc.)
+        - Note any existing auth/DB/API patterns already in place
+
+    /* Step 4: Ground the plan */
+    IF existing patterns found:
+        FOLLOW existing conventions (file naming, import style, test patterns)
+        REFERENCE existing types/functions in step targets (e.g. "extend types from src/types/user.ts")
+    ELSE:
+        PLAN as greenfield — all new files, all new conventions
+END
+```
 
 ## Creating a Plan
 
@@ -324,8 +382,11 @@ If the spec covers multiple independent subsystems (heuristics: ≥ 15 steps, or
 | `json_valid` | Output is valid JSON | Parse output with `jq .` or language parser |
 | `idempotent` | Running the same step twice produces identical result | Execute step twice, diff results (critical for destructive operations like migrations) |
 | `manual_verify` | Human-readable verification step | Describe the expected outcome clearly so the executor can verify visually or functionally |
+| `graceful_degradation` | Feature fails gracefully when dependency unavailable | Simulate dependency failure, verify fallback behavior |
 
-**Choosing the right command:** The step's `tool` and `target` tell you WHAT to verify. The executor MUST infer the correct command from the project's context — look at `package.json` scripts, `pyproject.toml`, `Cargo.toml`, `Makefile`, etc. Never assume a command exists.
+**Inferring commands:** The step's `tool` and `target` tell you WHAT to verify. The executor MUST infer the correct command from the project's context — look at `package.json` scripts, `pyproject.toml`, `Cargo.toml`, `Makefile`, etc. Never assume a command exists.
+
+**Error recovery in steps:** Every step that calls an external service (API, DB, file I/O) must include a fallback plan in the `action` field: `"If X fails, do Y"`. The executor handles the runtime decision.
 
 **Step fields:**
 - `checkpoint`: If `true`, pause after completing this step and wait for user confirmation before advancing. Use for: cross-phase boundaries, destructive operations (deletes, force pushes, data migrations), or architectural decision points.
