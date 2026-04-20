@@ -1,8 +1,8 @@
 ---
 name: plan-builder
-description: Resilient executable planning that never loses context. Creates ~/.vega-punk/roadmap.json with phases, steps, code, tools, and verification. Breaks multi-step tasks into bite-sized, testable units with complete code in every step. Use when you have a spec or requirements for a multi-step task, before touching code.
+description: "Resilient executable planning that never loses context. 做什么：创建~/.vega-punk/roadmap.json，分解为可执行的TDD任务。何时用：有多步实现需求时，在写代码之前。触发词: plan, roadmap.json, multi-step task, break down, implementation plan, create a plan, spec to tasks, 制定计划, 拆分任务"
 categories: ["workflow"]
-triggers: ["plan", "~/.vega-punk/roadmap.json", "multi-step task", "break down", "implementation plan", "create a plan", "spec to tasks"]
+triggers: ["plan", "~/.vega-punk/roadmap.json", "multi-step task", "break down", "implementation plan", "create a plan", "spec to tasks", "制定计划", "拆分任务"]
 user-invocable: true
 allowed-tools: "Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch"
 hooks:
@@ -29,6 +29,18 @@ plan-builder accepts the following inbound states:
 | User (direct invoke) | *(none)* | User runs `/plan-builder` | Standalone mode — no state file |
 
 Outbound: plan-builder always writes `state: "HANDOFF"` + `handoff_to: <executor>` on completion.
+
+## Mode Detection Heuristic
+
+When invoked in standalone mode (no state file), plan-builder auto-detects plan complexity:
+
+| Signal | Detected Mode | Behavior |
+|--------|--------------|----------|
+| Task ≤ 3 files, ≤ 2 features, no integrations | `condensed` | Single phase, max 8 steps, no TDD overhead |
+| Task > 3 files OR has integrations OR has auth/DB | `full` | Multi-phase with full TDD decomposition |
+| Ambiguous | `full` | Safer to over-plan than under-plan |
+
+**Condensed auto-detect rules:** If user request mentions a simple CRUD app, a single component, a config change, or a bug fix → `condensed`. Otherwise → `full`.
 
 ## Pre-Execution Gate
 
@@ -85,11 +97,18 @@ BEGIN ENTRY_PROTOCOL
     IF ~/.vega-punk/vega-punk-state.json does NOT exist:
         /* Standalone mode — direct invocation */
         TELL: "[plan-builder] Standalone mode — creating plan from your request."
-        GOTO CREATE_PLAN
+        /* Auto-detect complexity to choose condensed vs full flow */
+        RUN mode_detection_heuristic (see Mode Detection Heuristic section)
+        IF mode == "condensed":
+            GOTO CREATE_CONDENSED_PLAN
+        ELSE:
+            GOTO CREATE_PLAN
         SKIP state write-back on completion
 
     READ ~/.vega-punk/vega-punk-state.json
     EXTRACT: spec_path (or spec), dependencies, design, requirements, selected_skills
+    EXTRACT: phase_skill_mapping (if present — per-phase skill assignments from vega-punk SCAN)
+    EXTRACT: skills_to_apply (if present — global skills like verify-gate, test-first)
 
     /* ~/.vega-punk/roadmap.json is always written to the same directory as ~/.vega-punk/vega-punk-state.json */
     DETERMINE roadmap_dir = directory of ~/.vega-punk/vega-punk-state.json
@@ -147,9 +166,46 @@ The `dependencies` field in `~/.vega-punk/vega-punk-state.json` structures how p
 
 **Mapping to roadmap.json:** Each `serial` inner array maps to a `depends_on` constraint on the first phase in the next group.
 
-## Quick Reference — Execute This Every Session
+## Codebase Context Protocol
 
-See **Entry Protocol** for context loading, **Creating a Plan** for plan creation, **Self-Review** for validation, and **Completion Contract** for signaling and state write-back.
+Before "File Structure First", ground the plan in reality:
+
+```
+BEGIN CODEBASE_CONTEXT
+    /* Purpose: Never plan in a vacuum. Every plan must reference the actual project. */
+
+    /* Step 1: Identify project type */
+    SEARCH for project manifest files:
+        package.json (Node.js/JS), pyproject.toml/poetry.lock/requirements.txt (Python),
+        Cargo.toml (Rust), go.mod (Go), pom.xml/build.gradle (Java/Kotlin),
+        pubspec.yaml (Flutter), composer.json (PHP), Gemfile (Ruby)
+
+    IF no manifest found:
+        TELL: "[plan-builder] No project manifest found — planning as greenfield project."
+        SKIP to step 4
+
+    /* Step 2: Read project configuration */
+    READ primary manifest:
+        - dependencies → inform techStack field
+        - scripts → infer test/build commands for verify fields
+        - main/entry point → identify starting file
+        - framework config → understand routing/middleware patterns
+
+    /* Step 3: Map existing structure */
+    READ top-level directory structure (ls via Bash):
+        - Identify src/ organization pattern
+        - Locate test directory and test framework
+        - Find existing config files (.env.example, tsconfig.json, etc.)
+        - Note any existing auth/DB/API patterns already in place
+
+    /* Step 4: Ground the plan */
+    IF existing patterns found:
+        FOLLOW existing conventions (file naming, import style, test patterns)
+        REFERENCE existing types/functions in step targets (e.g. "extend types from src/types/user.ts")
+    ELSE:
+        PLAN as greenfield — all new files, all new conventions
+END
+```
 
 ## Creating a Plan
 
@@ -192,6 +248,7 @@ Before defining tasks, map out which files will be created or modified:
           "action": "<what to do>",
           "tool": "<Read|Write|Edit|Bash|Glob|Grep|WebSearch|WebFetch>",
           "target": "<file path or search query>",
+          "target_files": ["<files this step creates/modifies — required for task-dispatcher routing>"],
           "code": "<complete code block if this is a Write/Edit step>",
           "verify": { "type": "<verify type>", "expected": "<expected result>" },
           "status": "pending",
@@ -199,7 +256,8 @@ Before defining tasks, map out which files will be created or modified:
           "checkpoint": false,
           "depends_on": [],
           "critical": true,
-          "attempts": 0
+          "attempts": 0,
+          "skills": ["<skills from phase_skill_mapping for this step — e.g. test-first, verify-gate>"]
         }
       ]
     }
@@ -216,6 +274,7 @@ Before defining tasks, map out which files will be created or modified:
 - `architecture`: Required. 2-3 sentences about the approach. Written for the executor agent — must contain enough context to make implementation decisions without re-reading the full spec. Example: "Express.js REST API with PostgreSQL. JWT auth middleware on all routes except /health. Repository pattern for data access layer."
 - `techStack`: Array of key technologies/libraries. Used to inform subagent dispatch context — each implementer subagent should know what technologies they're working with without reading the full spec.
 - `code`: Complete code for Write steps; `old_string`/`new_string` pairs for large Edit steps. See "Step Size vs Code Field" for rules.
+- `target_files`: **Required.** Array of file paths this step creates or modifies. Used by task-dispatcher for scope auditing and parallel conflict detection. Example: `["src/services/UserService.ts", "src/services/UserService.test.ts"]`
 
 ### Step Granularity Rules
 
@@ -324,8 +383,11 @@ If the spec covers multiple independent subsystems (heuristics: ≥ 15 steps, or
 | `json_valid` | Output is valid JSON | Parse output with `jq .` or language parser |
 | `idempotent` | Running the same step twice produces identical result | Execute step twice, diff results (critical for destructive operations like migrations) |
 | `manual_verify` | Human-readable verification step | Describe the expected outcome clearly so the executor can verify visually or functionally |
+| `graceful_degradation` | Feature fails gracefully when dependency unavailable | Simulate dependency failure, verify fallback behavior |
 
-**Choosing the right command:** The step's `tool` and `target` tell you WHAT to verify. The executor MUST infer the correct command from the project's context — look at `package.json` scripts, `pyproject.toml`, `Cargo.toml`, `Makefile`, etc. Never assume a command exists.
+**Inferring commands:** The step's `tool` and `target` tell you WHAT to verify. The executor MUST infer the correct command from the project's context — look at `package.json` scripts, `pyproject.toml`, `Cargo.toml`, `Makefile`, etc. Never assume a command exists.
+
+**Error recovery in steps:** Every step that calls an external service (API, DB, file I/O) must include a fallback plan in the `action` field: `"If X fails, do Y"`. The executor handles the runtime decision.
 
 **Step fields:**
 - `checkpoint`: If `true`, pause after completing this step and wait for user confirmation before advancing. Use for: cross-phase boundaries, destructive operations (deletes, force pushes, data migrations), or architectural decision points.
@@ -435,6 +497,23 @@ BEGIN USER_INTERRUPTION
 END
 ```
 
+## Checkpoint Protocol
+
+Plan-builder inserts checkpoint flags at critical decision boundaries. These prevent autonomous drift:
+
+| Checkpoint | Trigger | Action |
+|------------|---------|--------|
+| `SCOPE_CONFIRM` | Plan would produce ≥ 15 steps or ≥ 3 phases | Show user estimated scope before writing plan, confirm approach |
+| `SPLIT_DECISION` | Scope check triggers multi-roadmap split | Show user proposed split + inter_plan_deps, confirm before writing |
+| `DESTRUCTIVE_WARN` | Any step deletes files, drops tables, or force-pushes | Mark step `checkpoint: true` in roadmap |
+| `HANDOFF_CONFIRM` | Before invoking executor via Skill tool | Tell user which executor was selected and why, allow override |
+| `RECOVERY_PATH` | Executor re-invokes plan-builder after 3 failed attempts | Show user which steps failed, propose restructured plan before writing |
+
+**HANDOFF_CONFIRM details:** Before the Completion Contract invokes an executor, plan-builder MUST:
+1. State: `"Handing off to {executor}. Reason: {brief rationale from scoring table}"`
+2. Wait for user acknowledgment (unless invoked via hook/automated flow)
+3. If user objects, re-route to the alternative executor
+
 ## Completion Contract
 
 After writing the plan and passing self-review, decide which execution path to use and hand off automatically.
@@ -487,39 +566,21 @@ When `executor` is not null, use it directly. When null, fall through to the sco
 ```
 BEGIN COMPLETION_CONTRACT
     RUN SELF_REVIEW (one pass only — see Self-Review section)
+    RUN HANDOFF_CONFIRM checkpoint (see Checkpoint Protocol section)
     WRITE ~/.vega-punk/roadmap.json (same directory as ~/.vega-punk/vega-punk-state.json) with all phases, steps, and verification config
     RUN ROUTING_DECISION
 
     IF ~/.vega-punk/vega-punk-state.json exists:
-        /* Invoked from vega-punk — update state for execution handoff */
         WRITE ~/.vega-punk/vega-punk-state.json:
             state = "HANDOFF"
             ADD: handoff_to = executor
-        /* Signal completion — do NOT block waiting for executor */
-        TELL: "[plan-builder] Plan written. Handing off to {executor}."
-        /* Attempt handoff via Skill tool, but do NOT wait for result */
-        IF executor == "plan-executor":
-            INVOKE plan-executor via Skill tool (non-blocking)
-        ELSE:
-            INVOKE task-dispatcher via Skill tool (non-blocking)
-        /* If Skill invocation fails, log warning and continue */
-        IF Skill invocation fails:
-            LOG: "[plan-builder] Failed to invoke {executor}. Manual invocation needed."
-            UPDATE roadmap.json metadata: add warning = "Executor invocation failed — manual start required"
-        /* Return regardless of executor invocation result */
-    ELSE:
-        /* Standalone mode — no state write-back */
-        TELL: "[plan-builder] Plan written successfully."
-        /* Attempt handoff via Skill tool, but do NOT wait for result */
-        IF executor == "plan-executor":
-            INVOKE plan-executor via Skill tool (non-blocking)
-        ELSE:
-            INVOKE task-dispatcher via Skill tool (non-blocking)
-        /* If Skill invocation fails, log warning and continue */
-        IF Skill invocation fails:
-            LOG: "[plan-builder] Failed to invoke {executor}. Manual invocation needed."
-            UPDATE roadmap.json metadata: add warning = "Executor invocation failed — manual start required"
-        /* Return regardless of executor invocation result */
+    TELL: "[plan-builder] Plan written. Handing off to {executor}."
+
+    /* Unified handoff — same logic for both modes */
+    INVOKE executor via Skill tool (non-blocking)
+    IF Skill invocation fails:
+        LOG: "[plan-builder] Failed to invoke {executor}. Manual invocation needed."
+        UPDATE roadmap.json metadata: add warning = "Executor invocation failed — manual start required"
 END
 ```
 

@@ -1,8 +1,9 @@
 ---
 name: test-first
-description: Use when implementing any feature or bugfix, before writing implementation code
+description: "Test-Driven Development: write test first, watch it fail, write minimal code to pass. 做什么：TDD 红绿重构循环。何时用：任何新功能、bug修复、重构之前。触发词: TDD, test-driven, write test first, red-green-refactor, implement feature, bug fix, refactoring, 先写测试, 测试驱动"
 categories: ["code-quality"]
-triggers: ["TDD", "test-driven", "write test first", "red-green-refactor", "implement feature", "bug fix", "refactoring"]
+triggers: ["TDD", "test-driven", "write test first", "red-green-refactor", "implement feature", "bug fix", "refactoring", "先写测试", "测试驱动"]
+user-invocable: true
 ---
 
 # Test-Driven Development (TDD)

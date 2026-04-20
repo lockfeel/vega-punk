@@ -1,8 +1,9 @@
 ---
 name: review-request
-description: Use when completing tasks, implementing major features, or before merging to verify work meets requirements
+description: "Dispatch code-reviewer subagent to catch issues before they cascade. 做什么：代码审查调度 + 两阶段review（spec合规→代码质量）。何时用：完成任务后、合并前。触发词: code review, review my code, before merge, 代码审查, 检查一下代码, check code quality"
 categories: ["code-quality"]
-triggers: ["code review", "review my code", "request review", "before merge", "check code quality"]
+triggers: ["code review", "review my code", "request review", "before merge", "check code quality", "代码审查", "检查一下代码"]
+user-invocable: true
 ---
 
 # Requesting Code Review
@@ -230,6 +231,15 @@ verify-gate (pass) → review-request → review-intake → verify-gate (re-veri
 ```
 
 Do NOT run review-request before verify-gate. Reviewing code that doesn't compile or fails tests wastes the reviewer's time on noise.
+
+## Checkpoint Protocol
+
+| Checkpoint | Trigger | Action |
+|------------|---------|--------|
+| `LARGE_DIFF_WARN` | > 20 files or > 2000 lines changed | ASK: "Large diff — split into focused reviews or proceed with comprehensive?" |
+| `SUBAGENT_TIMEOUT` | Reviewer exceeds timeout | ASK: re-dispatch narrower scope / proceed without review |
+| `CRITICAL_FINDING` | Review finds security/data-loss issue | BLOCK progression, REQUIRE fix before continuing |
+| `REVIEW_CYCLE_EXHAUSTED` | 2 re-review cycles without resolution | STOP, escalate disagreement summary to user |
 
 ## When to Request Review
 

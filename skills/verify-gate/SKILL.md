@@ -1,6 +1,6 @@
 ---
 name: verify-gate
-description: Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always
+description: "Use when about to claim work is complete, fixed, or passing — requires running verification commands and confirming output before making any success claims. Evidence before assertions always. 触发词: verify gate, verify this, check verification, tests pass, verify completion, 验证一下"
 categories: ["code-quality"]
 triggers: ["verify gate", "verify this batch", "verify completion", "check verification"]
 user-invocable: true
@@ -19,6 +19,8 @@ parameters:
 Claiming work is complete without verification is unreliable — evidence before assertions always.
 
 **Core principle:** Evidence before claims, always.
+
+**TL;DR:** Run the command → Read the output → Write the result → THEN claim the result. No caching, no shortcuts, no freshness windows.
 
 **Violating the letter of this rule is violating the spirit of this rule.**
 
@@ -178,6 +180,20 @@ BEGIN VERIFY_FAILURE
             FOLLOW user direction
 END
 ```
+
+## Checkpoint Protocol
+
+verify-gate requires user confirmation at these decision boundaries — never auto-proceed:
+
+| Checkpoint | Trigger | Action |
+|------------|---------|--------|
+| `NO_COMMANDS_FOUND` | Auto-detect finds zero verification commands | ASK user what to verify before proceeding |
+| `TIMEOUT_EXCEEDED` | Command exceeds timeout (default 300s) | REPORT timeout, ASK: extend timeout / skip / abort |
+| `MULTI_COMMAND_FAIL` | Multiple verification commands, some pass some fail | REPORT per-command results, ASK: proceed with partial / abort |
+| `ENV_ISSUE_DETECTED` | Output contains connection/service errors | FLAG as environment issue (not code), ASK: check services / proceed anyway |
+| `STANDALONE_VERIFY_FAIL` | caller=standalone AND verification fails | ASK user: (1) fix and re-verify, (2) show details, (3) proceed anyway |
+
+**Rule:** Checkpoints gate user-facing decisions, not mechanical execution. Running the command is mandatory; asking what to do with the result follows the checkpoint table.
 
 ## Failure Retry Loop
 

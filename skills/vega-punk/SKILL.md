@@ -1,6 +1,6 @@
 ---
 name: vega-punk
-description: "A disciplined AI brain: design before execution. State machine-driven — routes requests, orchestrates skills, designs solutions, delivers plans."
+description: "A disciplined AI brain: design before execution. State machine-driven — routes requests, orchestrates skills, designs solutions, delivers plans. 触发词: design first / 先设计再实现 / let's think / 我想做一个 / 帮我构建 / skip design / just do it / 直接写代码 / urgent / hotfix / 报错了 / bug / 重新开始 / new task"
 allowed-tools: "Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch"
 hooks:
   SessionStart:
@@ -29,10 +29,11 @@ For **OpenClaw** and **Claude Code**, the workspace is always `~/.vega-punk/` �
 
 Describe what you want to build. vega-punk auto-selects the mode:
 
-- **Single feature or Small change** ("add dark mode") → CONDENSED: spec → plan → execute
+- **Single feature or Small change** ("add dark mode", "添加XX") → Auto-detected → CONDENSED
 - **Complex project** ("build notification system") → FULL: design → QA → dependencies → spec → plan → execute
+- **Bug / Error** ("报错了", "not working") → Bug fast-path → CONDENSED with root-cause
 
-Say "just do it" for condensed flow, or "let's think about this" for complex ones.
+Say "just do it" for explicit fast mode, or "let's think about this" to force FULL flow.
 
 See [State Machine](#state-machine) for full flow details.
 
@@ -60,6 +61,10 @@ BEGIN STATE_RESOLUTION
 
     3. State file missing:
        → GOTO ROUTE
+
+    3b. State is "HANDOFF" (written by plan-builder during execution routing):
+       → TELL: "[vega-punk] Plan is being executed. Waiting for execution_result..."
+       → ENTER REVIEW, then EXIT
 
     4. State is "REVIEW" — check sub-conditions in order, stop at first match:
 
@@ -337,9 +342,11 @@ BEGIN ROUTE
 
     /* Clean slate is handled by STATE_RESOLUTION Post-Completion Cleanup before reaching ROUTE */
 
-    /* Bug detection — always check first */
-    IF message contains bug keywords (`bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception`):
+    /* Bug detection — always check first (English + Chinese keywords) */
+    IF message contains bug keywords (`bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception`, `broken`, `报错`, `出错`, `崩溃`, `异常`, `不工作`, `坏了`):
         INVOKE root-cause skill
+        /* Auto-fast-path for bugs: skip full design flow */
+        GOTO rule 1a below
 
     /* Classify task — check these rules in order, stop at first match */
 
@@ -348,6 +355,21 @@ BEGIN ROUTE
        - ADD "test-first" TO skills_to_apply (executor will invoke for code implementation)
        - MERGE INTO STATE_FILE: { "state": "CONDENSED", "task": "<user request>", "mode": "fast", "transition_count": 1 }
        - GOTO CONDENSED
+
+    1a. **Bug fast-path** — triggered by bug detection above:
+        - ADD "root-cause" TO skills_to_apply (already invoked above)
+        - ADD "verify-gate" TO skills_to_apply
+        - MERGE INTO STATE_FILE: { "state": "CONDENSED", "task": "<user request>", "mode": "fast", "transition_count": 1 }
+        - GOTO CONDENSED
+
+    1b. **Simple task auto-detect** — single feature or small change request:
+        /* Heuristic: task involves ONE component change, no new subsystems */
+        /* Signals: "add dark mode", "add button", "change color", "update text", "fix typo", "添加XX", "修改XX", "改成XX" */
+        IF task scope is clearly single-component AND no architectural dependency:
+            ADD "verify-gate" TO skills_to_apply
+            ADD "test-first" TO skills_to_apply (if code involved)
+            MERGE INTO STATE_FILE: { "state": "CONDENSED", "task": "<user request>", "mode": "condensed", "transition_count": 1 }
+            GOTO CONDENSED
 
     2. **Informational** — simple Q&A, definitions, explanations:
        - ANSWER directly — no skill check needed
@@ -470,64 +492,60 @@ END
 BEGIN CLARIFY
     /* 0. Skill-driven clarification — activate matched skills as domain experts */
     IF selected_skills NOT empty AND domain_considerations NOT IN STATE_FILE:
-        /* Skills were already invoked in SCAN for guidance */
-        /* Now ask each skill: "What ambiguities in your domain would block a good solution?" */
         FOR EACH skill_name IN selected_skills:
             INVOKE skill_name via Skill tool (if not already in context)
             ASK skill: "Based on the user's task, what domain-specific dimensions need clarification?"
             EXTRACT: required_inputs, key_ambiguities, expert_considerations
             COLLECT INTO: domain_considerations[skill_name] = { inputs, ambiguities, considerations }
 
-    /* 1. Check if requirements are already clear */
-    IF purpose, constraints, and success criteria are clear:
-        TELL: "Requirements are clear. Moving to design."
-        EXTRACT purpose, constraints, success from request + SCAN context
-        GOTO DESIGN
-
-    /* 2. Build question pool from skill expertise + vega-punk fallback */
+    /* 1. Build question pool */
     IF domain_considerations NOT empty:
         BUILD question_pool FROM domain_considerations
         CLASSIFY questions:
             - BLOCKERS: "would block a quality solution" — must ask (platform, auth, data model, core API)
             - PREFERENCES: "affects implementation style" — can assume (colors, animation, naming)
-        PRIORITIZE: BLOCKERS first, then PREFERENCES if time allows
+        PRIORITIZE: BLOCKERS first, then PREFERENCES
         DEDUP overlapping questions across skills
-        /* NOTE: PREFERENCES can be assumed if user says "you decide" or doesn't answer */
     ELSE:
         question_pool = []
+        /* Fallback: ask vega-punk's own clarifying questions */
+        IF purpose unclear: APPEND "What is the primary goal?" to question_pool
+        IF constraints unclear: APPEND "Any technical or time constraints?" to question_pool
+        IF success unclear: APPEND "What does 'done' look like?" to question_pool
 
-    /* 3. Enforce ONE-question-at-a-time: AI must NOT batch multiple questions */
-    IF more_than_one clarifying_dimension exists:
-        IF question_pool NOT empty:
-            ASK single question from question_pool → prefer multiple choice
-        ELSE:
-            ASK single question: "Most critical unknown" → prefer multiple choice
-        WAIT for answer before asking next
-
-        /* Check user's answer — match the first row that applies: */
-
-        | User says... | Action |
-        |--------------|--------|
-        | "you decide" on all remaining | Document assumptions for ALL remaining dimensions → TELL: "I've made assumptions for: [list]. Correct any before we design." → WAIT → PROCEED to DESIGN |
-        | "you decide" (just this one) | Document assumption for THIS dimension → If all remaining can be reasonably assumed: same action as row above → Else: ASK next most critical question |
-
-    ELSE:
-        IF question_pool NOT empty:
-            ASK single question from question_pool → prefer multiple choice
-        ELSE:
-            ASK single clarifying question → prefer multiple choice
-        FOCUS on: purpose, constraints, success criteria
+    /* 2. Ask questions one at a time — max 3 rounds */
+    clarify_rounds = 0
+    WHILE question_pool NOT empty AND clarify_rounds < 3:
+        clarify_rounds += 1
+        ASK single question from question_pool (BLOCKER first) → prefer multiple choice
+        REMOVE asked question from pool
         WAIT for answer
 
-    /* handle "you decide" after single-dimension question */
-    IF current_question_answered_with "you decide":
-        DOCUMENT assumption for THIS dimension
-        IF more unclarified dimensions remain:
-            ASK next question (do NOT skip to DESIGN)
-        ELSE:
-            TELL: "I've made assumptions for: [list]. Correct any before we design."
-            WAIT for user correction (brief — if none, proceed)
-            PROCEED to DESIGN
+        /* Match user's answer: */
+        CASE "you decide" / "你决定":
+            DOCUMENT assumption for THIS dimension
+            /* Ask if user wants to skip remaining questions */
+            ASK: "I'll assume [assumption]. Skip remaining questions and move to design?"
+            WAIT for answer
+            CASE "yes" / "好" / "skip":
+                DOCUMENT remaining assumptions for all unanswered dimensions
+                BREAK → PROCEED to step 3
+            CASE else:
+                CONTINUE to next question
+        CASE user answers the question:
+            RECORD answer → remove from unanswered pool
+            IF user's answer reveals new ambiguity:
+                APPEND clarifying follow-up to question_pool (max 1)
+        CASE user rejects answering:
+            DOCUMENT reasonable assumption
+            BREAK
+
+    /* 3. Finalize requirements and transition */
+    TELL: "Requirements captured. Moving to design."
+    EXTRACT purpose, constraints, success from:
+        - User's original request
+        - SCAN context
+        - All answered questions + documented assumptions
 
     /* state write */
     MERGE INTO STATE_FILE:
@@ -603,6 +621,81 @@ END
 
 ---
 
+## Reusable QA Protocol
+
+Both DESIGN_QA and SPEC_QA follow the same 3-layer review pattern. This protocol defines the shared logic.
+
+```
+/* QA_PROTOCOL — called by DESIGN_QA and SPEC_QA
+   Parameters:
+     qa_type:     "design" | "spec"
+     review_items: domain-specific self-review checklist
+     expert_q:     what to ask each expert (design vs spec)
+     pass_state:   next state on PASS
+     fail_state:   next state on FAIL
+     retry_field:  "design_qa_retries" | "spec_qa_retries"
+     qa_field:     "design_status" | "spec_status"
+*/
+
+BEGIN QA_PROTOCOL(qa_type, review_items, expert_q, pass_state, fail_state, retry_field, qa_field)
+    LOOP retry_field ≤ 3:
+        /* Layer 1: Expert Review — prefer cached contexts */
+        IF expert_contexts NOT empty:
+            FOR EACH skill_name IN expert_contexts:
+                REVIEW {qa_type} against expert_contexts[skill_name]:
+                    - expertise_domains, quality_standards, common_pitfalls
+                COLLECT: expert_findings[skill_name] = { passed, risks, recommendations }
+        ELSE IF selected_skills NOT empty:
+            FOR EACH skill_name IN selected_skills:
+                INVOKE skill_name via Skill tool
+                ASK skill: expert_q
+                COLLECT: expert_findings[skill_name] = { passed, risks, recommendations }
+
+        /* Layer 2: Structured Self-Review */
+        CHECK review_items
+        MERGE self-review results with expert_findings
+        IF any fail: FIX inline → RE-RUN self-review
+
+        /* Layer 3: User Secondary Review */
+        PRESENT summary: expert findings + self-review + bottom line
+        WAIT for user decision
+
+        MATCH user response:
+        CASE PASS:
+            UPDATE qa = { qa_field: "PASS", retry_field: N, expert_review: expert_findings }
+            MERGE INTO STATE_FILE: state = pass_state, EXIT
+        CASE CONDITIONAL_PASS:
+            RECORD conditions: [must-fix items]
+            IF conditions are specific and actionable:
+                FIX inline
+                IF all conditions resolved:
+                    UPDATE qa = { qa_field: "PASS", retry_field: N, expert_review: expert_findings, conditional_fixes: conditions }
+                    MERGE INTO STATE_FILE: state = pass_state, EXIT
+                ELSE:
+                    INCREMENT retry_field
+                    UPDATE qa = { qa_field: "FAIL", retry_field: retry_field, qa_feedback: "Conditionals not resolved", expert_review: expert_findings }
+                    MERGE INTO STATE_FILE: state = fail_state, EXIT
+            ELSE:
+                INCREMENT retry_field
+                UPDATE qa = { qa_field: "FAIL", retry_field: retry_field, qa_feedback: "<summary>", expert_review: expert_findings }
+                MERGE INTO STATE_FILE: state = fail_state, EXIT
+        CASE FAIL:
+            INCREMENT retry_field
+            IF qa_type == "spec" AND qa_feedback contains "architecture" OR "wrong pattern" OR "fundamental":
+                MERGE INTO STATE_FILE: state = "DESIGN"
+            ELSE:
+                UPDATE qa = { qa_field: "FAIL", retry_field: retry_field, qa_feedback: "<summary>", expert_review: expert_findings }
+                MERGE INTO STATE_FILE: state = fail_state
+            EXIT
+
+    /* retries exhausted */
+    TELL: "[vega-punk] Retry limit hit. Expert findings: [summary]. Review manually."
+    STAY in current state
+END
+```
+
+---
+
 ## DESIGN_QA
 
 **Trigger:** State is DESIGN_QA.
@@ -613,77 +706,30 @@ END
 
 ```
 BEGIN DESIGN_QA
-    LOOP design_qa_retries ≤ 3:
-        /* Layer 1: Expert Review — prefer cached contexts, re-invoke only if needed */
-        IF expert_contexts NOT empty:
-            /* Use SCAN-cached expertise — no need to reload full SKILL.md */
-            FOR EACH skill_name IN expert_contexts:
-                REVIEW design against expert_contexts[skill_name]:
-                    - expertise_domains: does design align with this skill's domain?
-                    - quality_standards: does design meet quality bar?
-                    - common_pitfalls: does design avoid known mistakes?
-                COLLECT: expert_findings[skill_name] = { passed, risks, recommendations }
-        ELSE IF selected_skills NOT empty:
-            /* Fallback: no cached context, re-invoke skills */
-            FOR EACH skill_name IN selected_skills:
-                INVOKE skill_name via Skill tool (if not already in context)
-                ASK skill: "Review this design against your domain expertise. What risks, gaps, or anti-patterns do you see?"
-                COLLECT: expert_findings[skill_name] = { passed, risks, recommendations }
+    /* Re-entry: reset retries if design substantively changed */
+    IF qa.design_status == "FAIL":
+        PREVIOUS_DESIGN = design from last iteration
+        RE-DO design phases (brainstorm → converge → present)
+        IF resulting design differs substantively from PREVIOUS_DESIGN:
+            RESET qa.design_retries = 0
+        CLEAR qa.design_status
 
-        /* Layer 2: Structured Self-Review (cross-cutting, not domain-specific) */
-        CHECK:
+    CALL QA_PROTOCOL(
+        qa_type = "design",
+        review_items = [
             - Architecture: separation of concerns? units independent?
             - Technology choices: tools justified? simpler alternative?
             - Data flow: dependencies acyclic? circular references?
             - Error handling: what happens when each external call fails?
             - Edge cases: top 3 ways this could break in production?
             - Scope creep: unrequested features? remove them.
-        MERGE self-review results with expert_findings
-        IF any fail:
-            FIX failures inline
-            RE-RUN self-review
-
-        /* Layer 3: User Secondary Review — present expert + self-review findings */
-        PRESENT summary:
-            - Expert review: [which skills reviewed, what passed, what risks flagged]
-            - Self-review: [passed / fixed / remaining risks]
-            - Bottom line: recommendation (proceed / proceed-with-conditions / redesign)
-        WAIT for user decision
-
-        MATCH user response:
-        CASE PASS:
-            UPDATE qa = { "design_status": "PASS", "design_retries": N, "expert_review": expert_findings }
-            MERGE INTO STATE_FILE: state = "DEPENDENCIES"
-            EXIT
-        CASE CONDITIONAL_PASS:
-            /* User approves overall direction but needs specific changes */
-            RECORD conditions: [list of must-fix items]
-            IF conditions are specific and actionable:
-                FIX conditions in design inline
-                IF all conditions resolved:
-                    UPDATE qa = { "design_status": "PASS", "design_retries": N, "expert_review": expert_findings, "conditional_fixes": conditions }
-                    MERGE INTO STATE_FILE: state = "DEPENDENCIES"
-                    EXIT
-                ELSE:
-                    INCREMENT design_qa_retries
-                    UPDATE qa = { "design_status": "FAIL", "design_retries": design_qa_retries, "design_feedback": "Conditional fixes not resolved: [remaining]", "expert_review": expert_findings }
-                    MERGE INTO STATE_FILE: state = "DESIGN"
-                    EXIT
-            ELSE:
-                /* Conditions are too vague — treat as FAIL */
-                INCREMENT design_qa_retries
-                UPDATE qa = { "design_status": "FAIL", "design_retries": design_qa_retries, "design_feedback": "<summary>", "expert_review": expert_findings }
-                MERGE INTO STATE_FILE: state = "DESIGN"
-                EXIT
-        CASE FAIL:
-            INCREMENT design_qa_retries
-            UPDATE qa = { "design_status": "FAIL", "design_retries": design_qa_retries, "design_feedback": "<summary>", "expert_review": expert_findings }
-            MERGE INTO STATE_FILE: state = "DESIGN"
-            EXIT (↩ to DESIGN for fix, then re-enter DESIGN_QA)
-
-    /* retries exhausted */
-    TELL: "[vega-punk] I've hit the retry limit. Expert review findings: [summary]. Please review manually and tell me how to proceed."
-    STAY in DESIGN_QA
+        ],
+        expert_q = "Review this design against your domain expertise. What risks, gaps, or anti-patterns do you see?",
+        pass_state = "DEPENDENCIES",
+        fail_state = "DESIGN",
+        retry_field = "design_qa_retries",
+        qa_field = "design_status"
+    )
 END
 ```
 
@@ -817,25 +863,17 @@ END
 
 ```
 BEGIN SPEC_QA
-    LOOP spec_qa_retries ≤ 3:
-        /* Layer 1: Expert Review — prefer cached contexts, re-invoke only if needed */
-        IF expert_contexts NOT empty:
-            /* Use SCAN-cached expertise — no need to reload full SKILL.md */
-            FOR EACH skill_name IN expert_contexts:
-                REVIEW spec against expert_contexts[skill_name]:
-                    - expertise_domains: does spec cover this domain's essentials?
-                    - quality_standards: is spec detailed enough for quality implementation?
-                    - common_pitfalls: does spec leave room for known mistakes?
-                COLLECT: expert_findings[skill_name] = { passed, gaps, ambiguities, recommendations }
-        ELSE IF selected_skills NOT empty:
-            /* Fallback: no cached context, re-invoke skills */
-            FOR EACH skill_name IN selected_skills:
-                INVOKE skill_name via Skill tool (if not already in context)
-                ASK skill: "Review this spec against your domain expertise. Is it complete, implementable, and unambiguous? What's missing or vague?"
-                COLLECT: expert_findings[skill_name] = { passed, gaps, ambiguities, recommendations }
+    /* Re-entry: reset retries if spec substantively changed */
+    IF qa.spec_status == "FAIL":
+        PREVIOUS_SPEC = spec from last iteration
+        RE-DO spec writing + self-review
+        IF resulting spec differs substantively from PREVIOUS_SPEC:
+            RESET qa.spec_retries = 0
+        CLEAR qa.spec_status
 
-        /* Layer 2: Structured Self-Review (cross-cutting, not domain-specific) */
-        CHECK:
+    CALL QA_PROTOCOL(
+        qa_type = "spec",
+        review_items = [
             - Completeness: every section implementable? No TBD, TODO, vague statements?
             - Consistency: any contradictions? dependency graph matches architecture?
             - Interface contracts: inputs, outputs, data shapes explicitly defined?
@@ -843,56 +881,13 @@ BEGIN SPEC_QA
             - Dependency accuracy: serial justified? anything parallelizable marked serial?
             - Scope discipline: unrequested features? remove them.
             - Skill Mapping: every phase has at least one skill assigned? skills actually exist?
-        MERGE self-review results with expert_findings
-        IF any fail:
-            FIX failures inline
-            RE-RUN self-review
-
-        /* Layer 3: User Secondary Review — present expert + self-review findings */
-        PRESENT summary:
-            - Expert review: [which skills reviewed, what passed, what gaps flagged]
-            - Self-review: [passed / fixed / remaining risks]
-            - Bottom line: recommendation (proceed / proceed-with-conditions / redesign)
-        WAIT for user decision
-
-        MATCH user response:
-        CASE PASS:
-            UPDATE qa = { "spec_status": "PASS", "spec_retries": N, "expert_review": expert_findings }
-            MERGE INTO STATE_FILE: state = "HANDOFF"
-            EXIT
-        CASE CONDITIONAL_PASS:
-            /* User approves overall spec but needs specific changes */
-            RECORD conditions: [list of must-fix items]
-            IF conditions are specific and actionable:
-                FIX conditions in spec inline
-                IF all conditions resolved:
-                    UPDATE qa = { "spec_status": "PASS", "spec_retries": N, "expert_review": expert_findings, "conditional_fixes": conditions }
-                    MERGE INTO STATE_FILE: state = "HANDOFF"
-                    EXIT
-                ELSE:
-                    INCREMENT spec_qa_retries
-                    UPDATE qa = { "spec_status": "FAIL", "spec_retries": spec_qa_retries, "spec_feedback": "Conditional fixes not resolved: [remaining]", "expert_review": expert_findings }
-                    MERGE INTO STATE_FILE: state = "SPEC"
-                    EXIT
-            ELSE:
-                /* Conditions are too vague — treat as FAIL */
-                INCREMENT spec_qa_retries
-                UPDATE qa = { "spec_status": "FAIL", "spec_retries": spec_qa_retries, "spec_feedback": "<summary>", "expert_review": expert_findings }
-                MERGE INTO STATE_FILE: state = "SPEC"
-                EXIT (↩ to SPEC for fix, then re-enter SPEC_QA)
-        CASE FAIL:
-            INCREMENT spec_qa_retries
-            /* Check if feedback indicates design-level issue */
-            IF spec_feedback contains "architecture" OR "wrong pattern" OR "fundamental" OR "design problem":
-                MERGE INTO STATE_FILE: state = "DESIGN"
-            ELSE:
-                UPDATE qa = { "spec_status": "FAIL", "spec_retries": spec_qa_retries, "spec_feedback": "<summary>", "expert_review": expert_findings }
-                MERGE INTO STATE_FILE: state = "SPEC"
-            EXIT (↩ to SPEC for fix, or DESIGN for fundamental issue, then re-enter SPEC_QA)
-
-    /* retries exhausted */
-    TELL: "[vega-punk] I've hit the retry limit. Expert review findings: [summary]. Please review manually and tell me how to proceed."
-    STAY in SPEC_QA
+        ],
+        expert_q = "Review this spec against your domain expertise. Is it complete, implementable, and unambiguous? What's missing or vague?",
+        pass_state = "HANDOFF",
+        fail_state = "SPEC",
+        retry_field = "spec_qa_retries",
+        qa_field = "spec_status"
+    )
 END
 ```
 
@@ -942,13 +937,17 @@ BEGIN CONDENSED
     /* 5. self-review */
     CHECK: any TBD, TODO, ambiguous statements? FIX inline
 
-    /* 6. approval */
+    /* 6. approval checkpoint — must get explicit user agreement before handoff */
+    PRESENT: summary of what will be built, how, and which skills will be invoked
     ASK: "I'll implement [X] using [Y]. Proceed?"
     WAIT for user response
 
     IF user rejects:
         RESET scan_depth = 0
         state = SCAN /* go FULL from beginning */
+    IF user says "modify" / "change" / "调整":
+        /* Treat as reject — incorporate feedback and re-present */
+        REFINE based on user feedback → REPEAT step 6 (max 2 refine cycles)
     IF approved:
         /* state write */
         MERGE INTO STATE_FILE:
@@ -1169,7 +1168,7 @@ END
 ```
 BEGIN BOOTSTRAP
     MKDIR ~/.vega-punk/specs
-    VERIFY scripts/ exists (session-hook.sh, etc.)
+    VERIFY scripts/ exists (session-hook.sh, discover-skills.sh)
     IF missing → inform user
     GOTO ROUTE
 END

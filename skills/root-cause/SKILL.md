@@ -1,8 +1,8 @@
 ---
 name: root-cause
-description: Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes
+description: "Systematic debugging: find root cause before proposing fixes. 做什么：严重性分类→根因调查→模式分析→假设验证→修复。何时用：遇到bug、测试失败或异常行为时。触发词: bug, fix, error, not working, crash, failed, exception, test failure, unexpected behavior, debug, performance problem, 报错, 出错, 调试, 排查"
 categories: [ "code-quality", "debugging" ]
-triggers: [ "bug" ,"fix" ,"error" , "not working", "crash", "failed", "exception", "test failure", "unexpected behavior", "debug", "performance problem" ]
+triggers: [ "bug" ,"fix" ,"error" , "not working", "crash", "failed", "exception", "test failure", "unexpected behavior", "debug", "performance problem", "报错", "出错", "调试", "排查" ]
 ---
 
 # Systematic Debugging

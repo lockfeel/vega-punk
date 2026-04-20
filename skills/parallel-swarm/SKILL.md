@@ -1,8 +1,9 @@
 ---
 name: parallel-swarm
-description: Use when facing 2+ independent tasks that can be worked on without shared state or sequential dependencies
-categories: ["workflow"]
-triggers: ["parallel", "independent tasks", "multiple failures", "different root causes", "dispatch agents", "should these run in parallel"]
+description: "Decide whether multiple tasks can run in parallel, structure their prompts, and verify results. Use when you have 2+ independent tasks with no shared state or sequential dependencies. 做什么：并行性决策 + prompt构造 + 结果验证。何时用：2+独立任务且无相互依赖。触发词: parallel, 并行, independent tasks, 并发, multiple failures, dispatch agents, should these run in parallel, 可以并行吗"
+categories: ["workflow", "decision"]
+triggers: ["parallel", "independent tasks", "multiple failures", "different root causes", "dispatch agents", "should these run in parallel", "can these run concurrently", "batch dispatch"]
+user-invocable: true
 ---
 
 # Dispatching Parallel Agents
@@ -92,37 +93,6 @@ BEGIN PARALLEL_EVALUATION
         RETURN: { strategy: "sequential" }
 END
 ```
-
-## When to Use
-
-**Decision tree:**
-
-```
-Multiple failures or independent tasks?
-├── No → Sequential execution (don't use parallel-swarm)
-└── Yes
-    └── Are they independent? (disjoint files, no shared state, no logical conflicts)
-        ├── No, related → Single agent investigates all
-        └── Yes
-            └── Can they run without interfering?
-                ├── No, shared resources or logical conflicts → Sequential agents
-                └── Yes
-                    └── Agent count reasonable (≤ 8)?
-                        ├── No → Re-bundle tasks, reduce count
-                        └── Yes → Parallel dispatch (this skill)
-```
-
-**Use when:**
-- 2+ independent tasks that can run without shared state
-- Different test files failing with different root causes
-- Multiple subsystems broken independently
-- Each problem can be understood without context from others
-
-**Don't use when:**
-- Failures are related (fix one might fix others)
-- Need to understand full system state
-- Agents would interfere with each other
-- Tasks share an interface/contract (logical dependency)
 
 ## Dispatch Table (Caller-managed)
 
@@ -377,6 +347,17 @@ Success Criteria:
 Resource Budget: Max 2 attempts per platform, 5 minutes each
 ```
 
+## Checkpoint Protocol
+
+Before dispatching, confirm these gates:
+
+| Checkpoint | Trigger | Action |
+|------------|---------|--------|
+| `INDEPENDENCE_CONFIRM` | After Stage 2 passes | Announce: "N tasks verified independent — dispatching in parallel" |
+| `COUNT_WARN` | agent_count > 5 | Warn user: "{N} agents may cost more than benefit" |
+| `COUNT_REJECT` | agent_count > 8 | Block dispatch, require task merge |
+| `POST_MERGE_GATE` | After all agents return | Run full verification before committing — never ship without it |
+
 ## Common Mistakes
 
 **❌ Too broad:** "Fix all the tests" — agent gets lost
@@ -522,6 +503,29 @@ If total budget exceeds 30 minutes, reconsider whether the task is suitable for 
 **Shared state:** Agents would interfere (editing same files, using same resources)
 **Logical coupling:** Tasks share an interface, contract, or conceptual entity even if files differ
 **Over-decomposed:** More than 8 agents signals wrong granularity — merge related tasks
+
+## Data Contracts
+
+The caller manages the dispatch table, but must conform to this schema:
+
+```json
+{
+  "task_id": "unique within batch",
+  "scope": "what this agent does",
+  "target_files": ["exact files to modify"],
+  "goal": "observable outcome",
+  "success_criteria": "testable condition",
+  "constraints": "what NOT to do",
+  "isolation": "worktree | shared_dir | read_only"
+}
+```
+
+**Return contract** (each agent must output):
+```
+1. Root cause: <what was found>
+2. Changes made: <file:line → what changed>
+3. Verification: <command run + result>
+```
 
 ## Integration
 

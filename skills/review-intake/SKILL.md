@@ -1,8 +1,9 @@
 ---
 name: review-intake
-description: Use when receiving code review feedback, before implementing suggestions, especially if feedback seems unclear or technically questionable - requires technical rigor and verification, not performative agreement or blind implementation
+description: "Evaluate and act on code review feedback with technical rigor. 做什么：解析→去重→分类→冲突检测→技术验证→有序实现。何时用：收到代码审查反馈后、实现建议之前。触发词: code review feedback, reviewer suggestion, fix review comments, implement feedback, reviewer said, 审查反馈, 修复review意见"
 categories: ["code-quality"]
-triggers: ["code review feedback", "reviewer suggestion", "fix review comments", "implement feedback", "reviewer said"]
+triggers: ["code review feedback", "reviewer suggestion", "fix review comments", "implement feedback", "reviewer said", "审查反馈", "修复review意见"]
+user-invocable: true
 ---
 
 # Code Review Reception

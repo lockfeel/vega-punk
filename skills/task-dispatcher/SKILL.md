@@ -1,8 +1,9 @@
 ---
 name: task-dispatcher
-description: Use when executing implementation plans with independent tasks in the current session
-categories: ["workflow"]
-triggers: ["subagent-driven development", "dispatch subagent", "implement tasks", "roadmap execution"]
+description: "Execute implementation plans by dispatching independent tasks to isolated subagents, with two-stage review after each. 做什么：子agent调度 + 依赖管理 + 两轮审查。何时用：有roadmap.json且任务可独立执行。触发词: subagent-driven development, dispatch subagent, implement tasks, roadmap execution, execute plan, run tasks in parallel, implement roadmap, 执行任务, 分发任务"
+categories: ["workflow", "execution"]
+triggers: ["subagent-driven development", "dispatch subagent", "implement tasks", "roadmap execution", "execute plan", "run tasks in parallel", "implement roadmap", "执行任务", "分发任务"]
+user-invocable: true
 ---
 
 # Subagent-Driven Development
@@ -387,6 +388,43 @@ Invoke `verify-gate` via Skill tool one final time after review-request passes �
 ### Step 6: Complete Development
 
 Invoke `branch-landing` via Skill tool.
+
+### Completion Contract (write back to vega-punk state file)
+
+After branch-landing completes (or if execution fails before reaching branch-landing):
+
+```
+BEGIN COMPLETION_CONTRACT
+    /* Write execution_result so vega-punk REVIEW can validate */
+    IF ~/.vega-punk/vega-punk-state.json exists:
+        READ state file (preserve existing fields — NEVER delete)
+
+        total_tasks = count of all steps across all phases
+        completed_tasks = count of tasks with status "COMPLETED"
+        failed_tasks = count of tasks with status "FAILED"
+
+        IF failed_tasks == 0:
+            execution_status = "success"
+        ELSE IF all failed tasks are non-critical:
+            execution_status = "partial"
+        ELSE:
+            execution_status = "failed"
+
+        MERGE INTO state file:
+            state = "REVIEW"
+            execution_result = {
+                status: execution_status,
+                summary: "{completed_tasks}/{total_tasks} tasks completed",
+                artifacts: ["<union of all tasks' target_files that were committed>"],
+                verification: "<verify-gate final result>",
+                notes: "<failed task IDs + reasons if any>"
+            }
+        WRITE back
+    /* Standalone mode — no state file, present summary directly to user */
+    ELSE:
+        PRESENT: completed/failed task summary, artifacts, verification status
+END
+```
 
 ## Rollback Strategy
 
