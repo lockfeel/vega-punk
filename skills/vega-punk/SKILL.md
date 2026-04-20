@@ -62,6 +62,10 @@ BEGIN STATE_RESOLUTION
     3. State file missing:
        → GOTO ROUTE
 
+    3b. State is "HANDOFF" (written by plan-builder during execution routing):
+       → TELL: "[vega-punk] Plan is being executed. Waiting for execution_result..."
+       → ENTER REVIEW, then EXIT
+
     4. State is "REVIEW" — check sub-conditions in order, stop at first match:
 
        | # | Condition | Action |

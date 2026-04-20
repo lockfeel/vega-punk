@@ -1,0 +1,5 @@
+[
+  {"id": 1, "prompt": "应用启动时报错：TypeError: Cannot read properties of undefined (reading 'config')", "expected": "Phase 1：完整读取错误信息→检查最近变更→追溯数据流→找到根因；Phase 4：写复现测试→修复→验证"},
+  {"id": 2, "prompt": "这个API偶尔返回500，大概10%的请求失败，但不确定原因", "expected": "严重性分类P2→添加诊断instrumentation→收集证据→可能发现是竞态条件或资源泄漏"},
+  {"id": 3, "prompt": "修了3次都没修好，每次修好一个地方又在另一个地方出问题", "expected": "触发Architecture Escalation——停止修复，呈现证据给Decision Maker，建议架构重构"}
+]

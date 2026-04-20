@@ -107,6 +107,8 @@ BEGIN ENTRY_PROTOCOL
 
     READ ~/.vega-punk/vega-punk-state.json
     EXTRACT: spec_path (or spec), dependencies, design, requirements, selected_skills
+    EXTRACT: phase_skill_mapping (if present — per-phase skill assignments from vega-punk SCAN)
+    EXTRACT: skills_to_apply (if present — global skills like verify-gate, test-first)
 
     /* ~/.vega-punk/roadmap.json is always written to the same directory as ~/.vega-punk/vega-punk-state.json */
     DETERMINE roadmap_dir = directory of ~/.vega-punk/vega-punk-state.json
@@ -246,6 +248,7 @@ Before defining tasks, map out which files will be created or modified:
           "action": "<what to do>",
           "tool": "<Read|Write|Edit|Bash|Glob|Grep|WebSearch|WebFetch>",
           "target": "<file path or search query>",
+          "target_files": ["<files this step creates/modifies — required for task-dispatcher routing>"],
           "code": "<complete code block if this is a Write/Edit step>",
           "verify": { "type": "<verify type>", "expected": "<expected result>" },
           "status": "pending",
@@ -253,7 +256,8 @@ Before defining tasks, map out which files will be created or modified:
           "checkpoint": false,
           "depends_on": [],
           "critical": true,
-          "attempts": 0
+          "attempts": 0,
+          "skills": ["<skills from phase_skill_mapping for this step — e.g. test-first, verify-gate>"]
         }
       ]
     }
@@ -270,6 +274,7 @@ Before defining tasks, map out which files will be created or modified:
 - `architecture`: Required. 2-3 sentences about the approach. Written for the executor agent — must contain enough context to make implementation decisions without re-reading the full spec. Example: "Express.js REST API with PostgreSQL. JWT auth middleware on all routes except /health. Repository pattern for data access layer."
 - `techStack`: Array of key technologies/libraries. Used to inform subagent dispatch context — each implementer subagent should know what technologies they're working with without reading the full spec.
 - `code`: Complete code for Write steps; `old_string`/`new_string` pairs for large Edit steps. See "Step Size vs Code Field" for rules.
+- `target_files`: **Required.** Array of file paths this step creates or modifies. Used by task-dispatcher for scope auditing and parallel conflict detection. Example: `["src/services/UserService.ts", "src/services/UserService.test.ts"]`
 
 ### Step Granularity Rules
 

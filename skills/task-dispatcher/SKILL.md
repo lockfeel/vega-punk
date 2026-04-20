@@ -389,6 +389,43 @@ Invoke `verify-gate` via Skill tool one final time after review-request passes �
 
 Invoke `branch-landing` via Skill tool.
 
+### Completion Contract (write back to vega-punk state file)
+
+After branch-landing completes (or if execution fails before reaching branch-landing):
+
+```
+BEGIN COMPLETION_CONTRACT
+    /* Write execution_result so vega-punk REVIEW can validate */
+    IF ~/.vega-punk/vega-punk-state.json exists:
+        READ state file (preserve existing fields — NEVER delete)
+
+        total_tasks = count of all steps across all phases
+        completed_tasks = count of tasks with status "COMPLETED"
+        failed_tasks = count of tasks with status "FAILED"
+
+        IF failed_tasks == 0:
+            execution_status = "success"
+        ELSE IF all failed tasks are non-critical:
+            execution_status = "partial"
+        ELSE:
+            execution_status = "failed"
+
+        MERGE INTO state file:
+            state = "REVIEW"
+            execution_result = {
+                status: execution_status,
+                summary: "{completed_tasks}/{total_tasks} tasks completed",
+                artifacts: ["<union of all tasks' target_files that were committed>"],
+                verification: "<verify-gate final result>",
+                notes: "<failed task IDs + reasons if any>"
+            }
+        WRITE back
+    /* Standalone mode — no state file, present summary directly to user */
+    ELSE:
+        PRESENT: completed/failed task summary, artifacts, verification status
+END
+```
+
 ## Rollback Strategy
 
 When a task fails and needs to be undone, use the `git_commit_map` to surgically revert:

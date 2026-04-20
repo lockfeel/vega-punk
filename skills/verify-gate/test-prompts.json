@@ -1,0 +1,5 @@
+[
+  {"id": 1, "prompt": "我刚实现了一个功能，现在要claim它完成了", "expected": "识别验证命令→运行测试/构建/lint→读取完整输出→检查exit code→写入verify-result.json→只有验证通过才claim成功"},
+  {"id": 2, "prompt": "验证命令超时了，测试跑了超过5分钟还没结束", "expected": "报告超时→写入失败结果→RETURN failure，不claim成功"},
+  {"id": 3, "prompt": "verify-gate 运行后发现测试失败，caller 是 task-dispatcher", "expected": "报告失败→不推进到下一个batch→标记当前batch为verification_failed→RETURN control给caller"}
+]

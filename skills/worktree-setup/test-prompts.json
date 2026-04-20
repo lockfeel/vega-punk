@@ -1,0 +1,5 @@
+[
+  {"id": 1, "prompt": "请为当前功能创建一个隔离的工作空间", "expected": "检查git仓库→目录选择(.worktrees/优先)→生成分支名→创建worktree→自动安装依赖→运行测试基线→记录到state文件"},
+  {"id": 2, "prompt": "已经在 .worktrees/feature/xxx 下有一个worktree了，请重新使用它", "expected": "检测已存在的worktree→复用它而不是创建新的→跳过creation直接进入POST_CREATION_SETUP"},
+  {"id": 3, "prompt": "创建worktree后 npm install 失败了", "expected": "触发ROLLBACK：git worktree remove --force → 报告清理完成"}
+]

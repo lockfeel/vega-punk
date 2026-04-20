@@ -171,7 +171,7 @@ END
 BEGIN STEP1_LOAD_REVIEW
     READ ~/.vega-punk/roadmap.json — understand goal, phases, steps, current_step
     REVIEW schema awareness:
-        - Each step: id, description, tool, target, code, status, attempts (default 0), checkpoint (optional), depends_on (optional)
+        - Each step: id, action, tool, target, target_files (optional), code, status, attempts (default 0), checkpoint (optional), depends_on (optional)
         - attempts auto-incremented on failed verification (max 3)
         - Phase objects: name, status, steps
     IF concerns: raise with user before starting
@@ -200,14 +200,15 @@ BEGIN STEP2_EXECUTE
         /* Mark in progress */
         step.status = "in_progress"
 
-        /* Classify step type — decision tree */
-        IF step has root-cause keywords (bug, crash, error, unexpected, regression, security):
+        /* Classify step type — decision tree (read step.action for keyword matching) */
+        step_keywords = LOWERCASE(step.action)
+        IF step_keywords contains root-cause keywords (bug, crash, error, unexpected, regression, security):
             INVOKE root-cause skill — follow Phase 1-3 before writing code
-        ELIF step has test-first keywords (new feature, behavior change, refactor, add, implement, API integration):
+        ELIF step_keywords contains test-first keywords (new feature, behavior change, refactor, add, implement, API integration):
             INVOKE test-first skill — follow RED-GREEN-REFACTOR cycle
-        ELIF step has performance keywords (optimize, speed, latency, benchmark, slow):
+        ELIF step_keywords contains performance keywords (optimize, speed, latency, benchmark, slow):
             EXECUTE directly → verify: benchmark_comparison (before vs after metrics)
-        ELIF step has UI keywords (layout, style, visual, render, component UI):
+        ELIF step_keywords contains UI keywords (layout, style, visual, render, component UI):
             EXECUTE directly → verify: visual_diff / screenshot_comparison
         ELIF step is context gathering (Glob, Grep, WebSearch, WebFetch):
             EXECUTE directly → verify: non-empty results
@@ -267,7 +268,7 @@ BEGIN STEP2_EXECUTE
                 step.result = "<error description>"
                 WRITE ~/.vega-punk/roadmap.json
                 APPEND to progress.json:
-                    { "timestamp": "<ISO8601>", "step_id": "<id>", "error": "<description>", "attempts": 3 }
+                    { "timestamp": "<ISO8601>", "step_id": "<id>", "event": "step_failed", "error": "<description>", "attempts": 3 }
                 IF step.critical == true:
                     ASK user for direction — do not advance to next steps
                 ELSE:
@@ -369,13 +370,19 @@ END
 
 All data files reside in `~/.vega-punk/`.
 
-**progress.json** — Failure log (created automatically on first failure):
+**progress.json** — Failure log (structured schema, shared with task-dispatcher):
 
 ```json
-[
-  { "timestamp": "2026-04-13T10:30:00Z", "step_id": "1.3", "error": "timeout after 30s", "attempts": 3 }
-]
+{
+  "max_entries": 100,
+  "entries": [
+    { "timestamp": "2026-04-13T10:30:00Z", "step_id": "1.3", "event": "step_failed", "error": "timeout after 30s", "attempts": 3 }
+  ]
+}
 ```
+
+- Append-only array. When `entries` exceeds `max_entries`, remove oldest entries.
+- `event` values: `step_failed`, `verification_failed`, `escalation`
 
 **findings.json** — WebSearch/WebFetch results (created on first WebSearch/WebFetch step):
 
