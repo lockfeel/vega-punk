@@ -179,6 +179,20 @@ BEGIN VERIFY_FAILURE
 END
 ```
 
+## Checkpoint Protocol
+
+verify-gate requires user confirmation at these decision boundaries — never auto-proceed:
+
+| Checkpoint | Trigger | Action |
+|------------|---------|--------|
+| `NO_COMMANDS_FOUND` | Auto-detect finds zero verification commands | ASK user what to verify before proceeding |
+| `TIMEOUT_EXCEEDED` | Command exceeds timeout (default 300s) | REPORT timeout, ASK: extend timeout / skip / abort |
+| `MULTI_COMMAND_FAIL` | Multiple verification commands, some pass some fail | REPORT per-command results, ASK: proceed with partial / abort |
+| `ENV_ISSUE_DETECTED` | Output contains connection/service errors | FLAG as environment issue (not code), ASK: check services / proceed anyway |
+| `STANDALONE_VERIFY_FAIL` | caller=standalone AND verification fails | ASK user: (1) fix and re-verify, (2) show details, (3) proceed anyway |
+
+**Rule:** Checkpoints gate user-facing decisions, not mechanical execution. Running the command is mandatory; asking what to do with the result follows the checkpoint table.
+
 ## Failure Retry Loop
 
 verify-gate itself does not fix — it only reports. The **caller** is responsible for fixing and re-invoking:
