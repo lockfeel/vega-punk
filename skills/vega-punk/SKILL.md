@@ -938,13 +938,17 @@ BEGIN CONDENSED
     /* 5. self-review */
     CHECK: any TBD, TODO, ambiguous statements? FIX inline
 
-    /* 6. approval */
+    /* 6. approval checkpoint — must get explicit user agreement before handoff */
+    PRESENT: summary of what will be built, how, and which skills will be invoked
     ASK: "I'll implement [X] using [Y]. Proceed?"
     WAIT for user response
 
     IF user rejects:
         RESET scan_depth = 0
         state = SCAN /* go FULL from beginning */
+    IF user says "modify" / "change" / "调整":
+        /* Treat as reject — incorporate feedback and re-present */
+        REFINE based on user feedback → REPEAT step 6 (max 2 refine cycles)
     IF approved:
         /* state write */
         MERGE INTO STATE_FILE:
