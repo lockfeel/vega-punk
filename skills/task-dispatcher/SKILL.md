@@ -1,8 +1,9 @@
 ---
 name: task-dispatcher
-description: Use when executing implementation plans with independent tasks in the current session
-categories: ["workflow"]
-triggers: ["subagent-driven development", "dispatch subagent", "implement tasks", "roadmap execution"]
+description: "Execute implementation plans by dispatching independent tasks to isolated subagents, with two-stage review (spec compliance then code quality) after each. Use when you have a roadmap.json or multi-step implementation plan with tasks that can run independently."
+categories: ["workflow", "execution"]
+triggers: ["subagent-driven development", "dispatch subagent", "implement tasks", "roadmap execution", "execute plan", "run tasks in parallel", "implement roadmap"]
+user-invocable: true
 ---
 
 # Subagent-Driven Development
