@@ -1,9 +1,6 @@
 ---
 name: vega-punk
-description: "A disciplined AI brain: design before execution. State machine-driven — routes requests, orchestrates skills, designs solutions, delivers plans. Use when starting any new feature, project, or architectural task — before writing code."
-categories: ["workflow", "orchestration"]
-triggers: ["design first", "先设计再实现", "let's think", "我想做一个", "帮我构建", "skip design", "just do it", "直接写代码", "urgent", "hotfix", "报错了", "bug", "重新开始", "new task"]
-user-invocable: true
+description: "A disciplined AI brain: design before execution. State machine-driven — routes requests, orchestrates skills, designs solutions, delivers plans. 触发词: design first / 先设计再实现 / let's think / 我想做一个 / 帮我构建 / skip design / just do it / 直接写代码 / urgent / hotfix / 报错了 / bug / 重新开始 / new task"
 allowed-tools: "Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch"
 hooks:
   SessionStart:
@@ -32,9 +29,11 @@ For **OpenClaw** and **Claude Code**, the workspace is always `~/.vega-punk/` �
 
 Describe what you want to build. vega-punk auto-selects the mode:
 
-- **CONDENSED** (single feature, small change, bug fix) → Fast path: root-cause → spec → plan
-- **FULL** (complex project, multi-feature) → Full flow: SCAN → QA → DEPENDENCIES → SPEC → HANDOFF
-- **Bug fast-path** ("报错了", "not working") → CONDENSED with root-cause
+- **Single feature or Small change** ("add dark mode", "添加XX") → Auto-detected → CONDENSED
+- **Complex project** ("build notification system") → FULL: design → QA → dependencies → spec → plan → execute
+- **Bug / Error** ("报错了", "not working") → Bug fast-path → CONDENSED with root-cause
+
+Say "just do it" for explicit fast mode, or "let's think about this" to force FULL flow.
 
 See [State Machine](#state-machine) for full flow details.
 
