@@ -1,8 +1,9 @@
 ---
 name: branch-landing
-description: Use when implementation is complete, all tests pass, and you need to decide how to integrate the work - guides completion of development work by presenting structured options for merge, PR, or cleanup
+description: "Guide development branch completion: verify tests → present 4 options → execute choice → cleanup. 做什么：分支完成决策（合并/PR/保留/丢弃）。何时用：实现完成、测试通过后。触发词: implementation complete, merge, create PR, finish development, complete branch, integrate work, 合并代码, 创建PR, 完成开发"
 categories: ["workflow"]
-triggers: ["implementation complete", "merge", "create PR", "finish development", "complete branch", "integrate work"]
+triggers: ["implementation complete", "merge", "create PR", "finish development", "complete branch", "integrate work", "合并代码", "创建PR", "完成开发"]
+user-invocable: true
 ---
 
 # Finishing a Development Branch
