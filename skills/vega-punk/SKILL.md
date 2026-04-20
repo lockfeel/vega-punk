@@ -5,7 +5,7 @@ allowed-tools: "Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch"
 hooks:
   SessionStart:
     - type: command
-      command: "bash scripts/session-hook.sh 2>/dev/null || echo '[vega-punk] Ready. What shall we build?'"
+      command: "echo '[vega-punk] Ready. What shall we build?'"
 ---
 
 # Vega-Punk: Session State Machine
@@ -1169,7 +1169,7 @@ END
 ```
 BEGIN BOOTSTRAP
     MKDIR ~/.vega-punk/specs
-    VERIFY scripts/ exists (session-hook.sh, etc.)
+    VERIFY scripts/discover-skills.sh exists
     IF missing → inform user
     GOTO ROUTE
 END
