@@ -1,0 +1,17 @@
+[
+  {
+    "id": 1,
+    "prompt": "帮我给项目添加 dark mode 支持",
+    "expected": "使用 CONDENSED 流程（单一功能），快速提取需求、展示简短设计方案、获得用户确认后 handoff"
+  },
+  {
+    "id": 2,
+    "prompt": "我想做一个完整的用户通知系统，包括站内消息、邮件推送、和推送通知",
+    "expected": "使用 FULL 流程（多组件复杂项目），经过 SCAN→CLARIFY→DESIGN→DESIGN_QA→DEPENDENCIES→SPEC→SPEC_QA→HANDOFF→REVIEW 完整链路"
+  },
+  {
+    "id": 3,
+    "prompt": "登录页面报错了，点击提交没反应",
+    "expected": "检测到 bug 关键词，自动触发 root-cause skill，进入 CONDENSED/fast 流程快速诊断"
+  }
+]

@@ -1,6 +1,6 @@
 ---
 name: vega-punk
-description: "A disciplined AI brain: design before execution. State machine-driven — routes requests, orchestrates skills, designs solutions, delivers plans."
+description: "A disciplined AI brain: design before execution. State machine-driven — routes requests, orchestrates skills, designs solutions, delivers plans. 触发词: design first / 先设计再实现 / let's think / 我想做一个 / 帮我构建 / skip design / just do it / 直接写代码 / urgent / hotfix / 报错了 / bug / 重新开始 / new task"
 allowed-tools: "Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch"
 hooks:
   SessionStart:
