@@ -3,3 +3,4 @@ timestamp	commit	skill	old_score	new_score	status	dimension	note	eval_mode
 2026-04-20T23:06	ce306e8	vega-punk	81.0	85.0	keep	Frontmatter+Resources	Added triggers to frontmatter, created discover-skills.sh, added test-prompts	dry_run
 2026-04-20T23:06	cc33072	vega-punk	85.0	88.5	keep	Clarify logic	Removed duplicate you-decide handling, added max-3-rounds limit	dry_run
 2026-04-20T23:07	31b6312	vega-punk	88.5	89.7	keep	Checkpoints	Added CONDENSED approval + refine cycle	dry_run
+2026-04-20T23:11	67f9f74	vega-punk	87.5	92.0	keep	Routing+Bug fix	Fixed CONDENSED unreachable, added Chinese bug keywords, auto-simple-task detection	dry_run
