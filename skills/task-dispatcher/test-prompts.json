@@ -1,5 +1,0 @@
-[
-  {"id": 1, "prompt": "~/.vega-punk/roadmap.json 有6个任务分布在2个phase中，请执行", "expected": "验证roadmap→创建worktree→构建依赖图→分批dispatch→每任务两轮review→verify-gate→最终review→branch-landing"},
-  {"id": 2, "prompt": "执行到一半session断了，batch_progress记录batch 1到了spec_review_done阶段", "expected": "从batch_progress恢复→跳过已完成任务→从spec_review阶段继续→验证worktree一致性"},
-  {"id": 3, "prompt": "并行dispatch的两个任务产生了merge冲突", "expected": "git diff --check检测冲突标记→识别涉及任务→回滚后执行的任务→顺序重新dispatch"}
-]

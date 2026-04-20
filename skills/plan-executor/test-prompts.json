@@ -1,5 +1,0 @@
-[
-  {"id": 1, "prompt": "~/.vega-punk/roadmap.json 已经写好了，有3个phase共8个步骤，请执行这个计划", "expected": "加载roadmap.json，创建worktree，按顺序执行步骤，每步验证后更新状态，完成后调用review/verify/landing"},
-  {"id": 2, "prompt": "执行到一半的计划，~/.vega-punk/roadmap.json 中 current_step 是 2.3，请继续", "expected": "识别为恢复模式，从 current_step 继续执行，而不是从头开始"},
-  {"id": 3, "prompt": "执行计划时第1.3步失败了，verify-gate 报告测试不通过", "expected": "按照重试逻辑：第一次失败回滚文件并调整方法，第二次完全换策略，第三次标记失败并询问用户"}
-]

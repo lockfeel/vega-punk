@@ -1,5 +1,0 @@
-[
-  {"id": 1, "prompt": "有3个独立的测试失败：agent-tool-abort.test.ts、batch-completion.test.ts、tool-approval.test.ts，请判断是否可以并行处理", "expected": "Stage 2独立性验证→文件无重叠→无输出依赖→无共享可变状态→推荐parallel_swarm + worktree隔离"},
-  {"id": 2, "prompt": "任务A要重写User接口，任务B要修复user profile渲染bug，能并行吗", "expected": "Stage 2逻辑冲突检测：共享类型定义→interface/consumer关系→FAIL：使用顺序执行"},
-  {"id": 3, "prompt": "10个独立任务，每个修改不同配置文件，可以并行吗", "expected": "Stage 4 Agent Count Gate：10>8→FAIL：过度分解，建议合并任务"}
-]

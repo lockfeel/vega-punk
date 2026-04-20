@@ -20,3 +20,4 @@ timestamp	commit	skill	old_score	new_score	status	dimension	note	eval_mode
 2026-04-20T23:44	5595cf8	plan-builder	82.6	85.1	keep	Frontmatter	Added Chinese triggers, enriched description	dry_run
 2026-04-20T23:44	5595cf8	task-dispatcher	88.1	90.1	keep	Frontmatter	Added Chinese triggers, enriched description	dry_run
 2026-04-20T23:44	5595cf8	root-cause	88.8	90.8	keep	Frontmatter	Added Chinese triggers, enriched description	dry_run
+2026-04-21T00:05	f052641	pipeline-arch	-	-	keep	DataContracts	6 critical fixes: target_files schema, action field naming, HANDOFF state, execution_result, progress.json schema, phase_skill_mapping	dry_run

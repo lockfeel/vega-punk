@@ -1,5 +1,0 @@
-[
-  {"id": 1, "prompt": "完成了一个用户服务模块的实现，请发起代码审查", "expected": "计算git range→分类scope（feature）→构建reviewer prompt→dispatch code-reviewer subagent→接收结果→handoff给review-intake"},
-  {"id": 2, "prompt": "一个150行的小bug fix，请发起review", "expected": "scope=focused，focus_areas=[correctness, testing, security]，超时5分钟"},
-  {"id": 3, "prompt": "reviewer 发现了安全问题，review-intake 修复后需要重新审查", "expected": "触发re-review protocol，scope=focused，base为修复前的HEAD，focus=[correctness, regression]，最多2轮"}
-]

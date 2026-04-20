@@ -1,5 +1,0 @@
-[
-  {"id": 1, "prompt": "reviewer 说「把这个函数改成异步的」并且「加一些错误处理」，请处理这些反馈", "expected": "解析为两个feedback item→分类（ARCHITECTURE + BLOCKING）→技术验证→按优先级实现→验证回归"},
-  {"id": 2, "prompt": "两个reviewer给出了矛盾的建议：A说改成async，B说保持sync，怎么办", "expected": "检测CONFLICT→不实现任何一个→呈现给Decision Maker并推荐方向"},
-  {"id": 3, "prompt": "reviewer 说「同时也加个metrics导出功能吧，反正你在改这个文件」", "expected": "分类为SCOPE_CREEP→执行YAGNI检查→grep代码库看是否有调用者→无调用则pushback"}
-]
