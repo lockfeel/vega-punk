@@ -29,10 +29,11 @@ For **OpenClaw** and **Claude Code**, the workspace is always `~/.vega-punk/` �
 
 Describe what you want to build. vega-punk auto-selects the mode:
 
-- **Single feature or Small change** ("add dark mode") → CONDENSED: spec → plan → execute
+- **Single feature or Small change** ("add dark mode", "添加XX") → Auto-detected → CONDENSED
 - **Complex project** ("build notification system") → FULL: design → QA → dependencies → spec → plan → execute
+- **Bug / Error** ("报错了", "not working") → Bug fast-path → CONDENSED with root-cause
 
-Say "just do it" for condensed flow, or "let's think about this" for complex ones.
+Say "just do it" for explicit fast mode, or "let's think about this" to force FULL flow.
 
 See [State Machine](#state-machine) for full flow details.
 
@@ -337,9 +338,11 @@ BEGIN ROUTE
 
     /* Clean slate is handled by STATE_RESOLUTION Post-Completion Cleanup before reaching ROUTE */
 
-    /* Bug detection — always check first */
-    IF message contains bug keywords (`bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception`):
+    /* Bug detection — always check first (English + Chinese keywords) */
+    IF message contains bug keywords (`bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception`, `broken`, `报错`, `出错`, `崩溃`, `异常`, `不工作`, `坏了`):
         INVOKE root-cause skill
+        /* Auto-fast-path for bugs: skip full design flow */
+        GOTO rule 1a below
 
     /* Classify task — check these rules in order, stop at first match */
 
@@ -348,6 +351,21 @@ BEGIN ROUTE
        - ADD "test-first" TO skills_to_apply (executor will invoke for code implementation)
        - MERGE INTO STATE_FILE: { "state": "CONDENSED", "task": "<user request>", "mode": "fast", "transition_count": 1 }
        - GOTO CONDENSED
+
+    1a. **Bug fast-path** — triggered by bug detection above:
+        - ADD "root-cause" TO skills_to_apply (already invoked above)
+        - ADD "verify-gate" TO skills_to_apply
+        - MERGE INTO STATE_FILE: { "state": "CONDENSED", "task": "<user request>", "mode": "fast", "transition_count": 1 }
+        - GOTO CONDENSED
+
+    1b. **Simple task auto-detect** — single feature or small change request:
+        /* Heuristic: task involves ONE component change, no new subsystems */
+        /* Signals: "add dark mode", "add button", "change color", "update text", "fix typo", "添加XX", "修改XX", "改成XX" */
+        IF task scope is clearly single-component AND no architectural dependency:
+            ADD "verify-gate" TO skills_to_apply
+            ADD "test-first" TO skills_to_apply (if code involved)
+            MERGE INTO STATE_FILE: { "state": "CONDENSED", "task": "<user request>", "mode": "condensed", "transition_count": 1 }
+            GOTO CONDENSED
 
     2. **Informational** — simple Q&A, definitions, explanations:
        - ANSWER directly — no skill check needed
