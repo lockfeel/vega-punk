@@ -4,7 +4,7 @@ from typing import Optional, Dict
 
 import jwt
 
-SECRET_KEY = "com.amemo.app.cipher"
+SECRET_KEY = "com.amemo.app.cipher.202602140521"
 ALGORITHM = "HS256"
 
 

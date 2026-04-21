@@ -210,6 +210,27 @@
     "desc": "用户安装"
   },
   {
+    "name": "达尔文",
+    "code": "darwin-skill",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "user",
+    "desc": "用户安装"
+  },
+  {
+    "name": "女娲造人",
+    "code": "nuwa-skill",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "user",
+    "desc": "用户安装"
+  },
+  {
+    "name": "仓颉造字",
+    "code": "cangjie-skill",
+    "icon": "https://res.amemo.cn/engineering.png",
+    "type": "user",
+    "desc": "用户安装"
+  },
+  {
     "name": "表格圣手",
     "code": "xlsx",
     "icon": "https://res.amemo.cn/xlsx.png",

@@ -179,11 +179,15 @@ async def deleteChat(request: Request):
 
 
 def _preprocessMessage(message: str, botId: str) -> str:
-    """对非内置命令的消息进行 botId 前缀加工"""
+    """对非内置命令的消息进行 botId 前缀加工，已带前缀的不再重复添加"""
     if not message or botId == 'openclaw':
         return message
     if message == '/init-bot':
         return f'/{botId} 加载并激活这个SKILL，并根据这个SKILL的功能描述，给用户输出一段使用指南。'
+    # 检查消息是否已经带有当前 botId 前缀
+    prefix = f'/{botId}'
+    if message.startswith(prefix) and (len(message) == len(prefix) or message[len(prefix)] in (' ', '\t')):
+        return message
     return f'/{botId} {message}'
 
 

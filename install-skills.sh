@@ -93,7 +93,7 @@ for name, info in d['skills'].items():
     if [ -f "$src" ]; then
       cp "$src" "$dest/SKILL.md"
     elif [ -d "$src" ]; then
-      cp -r "$src"/. "$dest"/
+      cp -rL "$src"/. "$dest"/
     else
       echo "  !! WARN: not found at $skill_path"
       skipped=$((skipped + 1))

@@ -75,6 +75,9 @@ class ChatHandler:
         skillName = getSkillName(filePath)
         if not skillName or skillName in self.handoffCache:
             return
+        # 已经在当前 skill 的 session 中，无需 handoff
+        if self.currSession and self.currSession.botId == skillName:
+            return
 
         self.handoffCache.add(skillName)
         await self._doHandoff(payload, skillName)
