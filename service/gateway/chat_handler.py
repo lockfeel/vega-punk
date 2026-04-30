@@ -50,8 +50,7 @@ class ChatHandler:
                 "delta": data.get('delta', '')
             })
             return
-        # phase=end 表示输出结束
-        if phase == 'end' and not data.get('text', '') and self.accumulatedText.strip():
+        if phase == 'end' and self.accumulatedText.strip():
             self.db.addMessage(
                 botId=self.currSession.botId if self.currSession else None,
                 senderId=self.sessionKey,

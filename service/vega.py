@@ -251,7 +251,7 @@ async def chatClaw(websocket: WebSocket):
                 idempotencyKey=msg.get("idempotency_key", f"{userId}-{uuid.uuid4().hex[:8]}")
             )
     except WebSocketDisconnect:
-        await websocket.send_json({"type": "error", "error": str(e)})
+        pass
     except Exception as e:
         await websocket.send_json({"error": str(e)})
     finally:
