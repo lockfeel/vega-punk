@@ -37,6 +37,9 @@ class OpenClawGatewayClient:
         self._isAborted = False
 
         while not self._isAborted:
+            if self._reconnectAttempts >= MAX_RECONNECT_ATTEMPTS:
+                raise Exception("重连次数已达上限，放弃连接")
+
             try:
                 await self._doConnect()
                 self._reconnectAttempts = 0

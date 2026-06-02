@@ -1,6 +1,9 @@
+import logging
 import re
 
 from starlette.websockets import WebSocket
+
+logger = logging.getLogger("uvicorn.error")
 
 from service.gateway import SessionManager, OpenClawGatewayClient
 from service.utils.common_util import getSkillName
@@ -12,12 +15,18 @@ class ChatHandler:
     def __init__(self, websocket: WebSocket, sessionManager: SessionManager, gatewayClient: OpenClawGatewayClient, db: DBase):
         self.currSession = None
         self.sessionKey = None
+        self.userId = None
+        self.botId = None
         self.websocket = websocket
         self.accumulatedText = ''
         self.handoffCache: set = set()
         self.sessionManager = sessionManager
         self.db = db
         self.gatewayClient = gatewayClient
+
+    def setUserContext(self, userId: str, botId: str):
+        self.userId = userId
+        self.botId = botId
 
     async def handle(self, payload: dict):
         stream = payload.get('stream')
@@ -32,32 +41,49 @@ class ChatHandler:
             self.sessionManager.activeBySession(self.sessionKey)
 
         if stream == 'assistant':
+            logger.info(f"handle: stream=assistant, textPresent={bool(data.get('text'))}, textLen={len(data.get('text') or '')}")
             await self._handleAssistant(payload, data)
         elif stream == 'item':
             await self._handleItem(payload, data)
+        elif stream == 'lifecycle':
+            phase = data.get('phase')
+            logger.info(f"handle: stream=lifecycle, phase={phase}")
+            if phase is None:
+                logger.warning(f"lifecycle event 缺少 phase: data={data}")
+                return
+            await self._handleLifecycle(payload, data, phase)
 
     async def _handleAssistant(self, payload: dict, data: dict):
-        phase = data.get('phase')
-        # phase=None 表示流式输出
-        if phase is None:
-            self.accumulatedText = data.get('text', '')
-            await self._sendJson({
-                "type": "delta",
-                "runId": payload.get('runId'),
-                "sessionKey": self.sessionKey,
-                "botId": self.currSession.botId if self.currSession else None,
-                "text": self.accumulatedText,
-                "delta": data.get('delta', '')
-            })
-            return
-        if phase == 'end' and self.accumulatedText.strip():
-            self.db.addMessage(
-                botId=self.currSession.botId if self.currSession else None,
-                senderId=self.sessionKey,
-                role='assistant',
-                content=self.accumulatedText
-            )
-            self.accumulatedText = ''
+        text = data.get('text')
+        if text:
+            self.accumulatedText = text
+        await self._sendJson({
+            "type": "delta",
+            "runId": payload.get('runId'),
+            "sessionKey": self.sessionKey,
+            "botId": self.currSession.botId if self.currSession else None,
+            "text": self.accumulatedText,
+            "delta": data.get('delta', '')
+        })
+
+    async def _handleLifecycle(self, payload: dict, data: dict, phase: str):
+        if phase == 'end':
+            accLen = len(self.accumulatedText) if isinstance(self.accumulatedText, str) else -1
+            logger.info(f"lifecycle end: sessionKey={self.sessionKey}, accumulatedText_len={accLen}, currSession={self.currSession is not None}, db={self.db is not None}")
+            try:
+                if isinstance(self.accumulatedText, str) and self.accumulatedText.strip():
+                    self.db.addMessage(
+                        botId=self.botId,
+                        senderId=self.userId,
+                        role='assistant',
+                        content=self.accumulatedText
+                    )
+                    logger.info(f"assistant 消息已保存: userId={self.userId}, botId={self.botId}, len={len(self.accumulatedText)}")
+                    self.accumulatedText = ''
+                else:
+                    logger.warning(f"lifecycle end 跳过保存: accumulatedText_type={type(self.accumulatedText).__name__}, is_empty={not (isinstance(self.accumulatedText, str) and self.accumulatedText.strip())}")
+            except Exception as e:
+                logger.error(f"保存 assistant 消息失败: {type(e).__name__}: {e}", exc_info=True)
 
     async def _handleItem(self, payload: dict, data: dict):
         toolName = data.get('name') or data.get('tool')

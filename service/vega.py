@@ -90,7 +90,8 @@ async def lifespan(app):
             sessionManager = SessionManager(gatewayClient, db)
             await sessionManager.start()
         except Exception as e:
-            pass
+            import logging
+            logging.getLogger("uvicorn.error").error(f"OpenClaw gateway 连接失败: {e}")
     elif cfg.get("error"):
         pass
     else:
@@ -201,8 +202,12 @@ def _isBuiltinCommand(message: str) -> bool:
 @app.websocket("/chatClaw")
 async def chatClaw(websocket: WebSocket):
     await websocket.accept()
-    if not gatewayClient or not sessionManager:
-        await websocket.send_json({"error": "OpenClaw 未就绪"})
+    if not gatewayClient:
+        await websocket.send_json({"error": "OpenClaw gateway 未启用，请检查 ~/.openclaw/openclaw.json 中的 token 配置"})
+        await websocket.close()
+        return
+    if not sessionManager:
+        await websocket.send_json({"error": "OpenClaw gateway 连接失败，请重启服务或检查 gateway daemon 是否运行"})
         await websocket.close()
         return
     handler = ChatHandler(websocket, sessionManager, gatewayClient, db)
@@ -244,6 +249,7 @@ async def chatClaw(websocket: WebSocket):
                 continue
 
             # 消息预处理并发送
+            handler.setUserContext(userId, botId)
             if not _isBuiltinCommand(message): message = _preprocessMessage(message, botId)
             await gatewayClient.sendChat(
                 session.sessionKey,
