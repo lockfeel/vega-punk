@@ -1,8 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash:*",
-      "Bash:git:*",
+      "Bash",
+      "Bash(git:*)",
       "Read",
       "Write",
       "Edit",
@@ -17,9 +17,9 @@
       "TaskUpdate"
     ],
     "deny": [
-      "Bash:sudo:*",
-      "Bash:rm:--rf:/",
-      "Bash:rm:--rf:/*"
+      "Bash(sudo:*)",
+      "Bash(rm -rf /)",
+      "Bash(rm -rf /*)"
     ]
   }
 }
