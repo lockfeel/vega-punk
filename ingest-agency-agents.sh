@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-REPO_URL="https://github.com/msitarzewski/agency-agents.git"
+REPO_URL="https://github.com/jnMetaCode/agency-agents-zh.git"
 CLONE_DIR="/tmp/agency-agents"
 SKILLS_DIR="$HOME/.agents/skills"
 
