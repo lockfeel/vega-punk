@@ -17,14 +17,6 @@
       "gitHash": "dff6af81942be4bcb63194833a675066b9b9fee5",
       "updatedAt": "2026-09-21T10:40:02.000Z"
     },
-    "brand-guidelines": {
-      "source": "anthropics/skills",
-      "sourceType": "github",
-      "sourceUrl": "https://github.com/anthropics/skills.git",
-      "skillPath": "skills/brand-guidelines",
-      "gitHash": "6b6e62b85d97c943ed37c29ef6315a68b81903c1",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
-    },
     "canvas-design": {
       "source": "anthropics/skills",
       "sourceType": "github",
@@ -73,14 +65,6 @@
       "gitHash": "d3db9b65b2feaba97c7e31fcbc7bc411f5b05c20",
       "updatedAt": "2026-09-21T10:40:02.000Z"
     },
-    "mcp-builder": {
-      "source": "anthropics/skills",
-      "sourceType": "github",
-      "sourceUrl": "https://github.com/anthropics/skills.git",
-      "skillPath": "skills/mcp-builder",
-      "gitHash": "63435c4f1a53caea0beace0542ae733b47eb0342",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
-    },
     "pdf": {
       "source": "anthropics/skills",
       "sourceType": "github",
@@ -95,14 +79,6 @@
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/pptx",
       "gitHash": "bd06fbdd5892bd372df9147876221a076e4caac2",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
-    },
-    "self-improving-agent": {
-      "source": "zhaono1/agent-playbook",
-      "sourceType": "github",
-      "sourceUrl": "https://github.com/zhaono1/agent-playbook.git",
-      "skillPath": "skills/self-improving-agent",
-      "gitHash": "a27361a225dc9fc2244675bd4b3e857e267d7bc2",
       "updatedAt": "2026-09-21T10:40:02.000Z"
     },
     "skill-creator": {
@@ -143,38 +119,6 @@
       "sourceType": "github",
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/xlsx",
-      "gitHash": "01a5f37b1579154c8c336d4f20a8d45e0897d3f5",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
-    },
-    "gstack-openclaw-ceo-review": {
-      "source": "openclaw/skills",
-      "sourceType": "github",
-      "sourceUrl": "https://github.com/garrytan/gstack.git",
-      "skillPath": "openclaw/skills/gstack-openclaw-ceo-review",
-      "gitHash": "01a5f37b1579154c8c336d4f20a8d45e0897d3f5",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
-    },
-    "gstack-openclaw-investigate": {
-      "source": "openclaw/skills",
-      "sourceType": "github",
-      "sourceUrl": "https://github.com/garrytan/gstack.git",
-      "skillPath": "openclaw/skills/gstack-openclaw-investigate",
-      "gitHash": "01a5f37b1579154c8c336d4f20a8d45e0897d3f5",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
-    },
-    "gstack-openclaw-office-hours": {
-      "source": "openclaw/skills",
-      "sourceType": "github",
-      "sourceUrl": "https://github.com/garrytan/gstack.git",
-      "skillPath": "openclaw/skills/gstack-openclaw-office-hours",
-      "gitHash": "01a5f37b1579154c8c336d4f20a8d45e0897d3f5",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
-    },
-    "gstack-openclaw-retro": {
-      "source": "openclaw/skills",
-      "sourceType": "github",
-      "sourceUrl": "https://github.com/garrytan/gstack.git",
-      "skillPath": "openclaw/skills/gstack-openclaw-retro",
       "gitHash": "01a5f37b1579154c8c336d4f20a8d45e0897d3f5",
       "updatedAt": "2026-09-21T10:40:02.000Z"
     },
