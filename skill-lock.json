@@ -6,145 +6,145 @@
       "sourceType": "github",
       "sourceUrl": "https://github.com/vercel-labs/agent-browser.git",
       "skillPath": "skills/agent-browser",
-      "gitHash": "aaac8b657c76d8ed72d90c191a3a29711ad0c464",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
+      "gitHash": "d2dfc782ccdd79d25a9b4f0acced9321789cecb8",
+      "updatedAt": "2026-11-22T13:46:26.000Z"
     },
     "algorithmic-art": {
       "source": "anthropics/skills",
       "sourceType": "github",
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/algorithmic-art",
-      "gitHash": "dff6af81942be4bcb63194833a675066b9b9fee5",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
+      "gitHash": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
+      "updatedAt": "2026-11-22T13:46:26.000Z"
     },
     "canvas-design": {
       "source": "anthropics/skills",
       "sourceType": "github",
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/canvas-design",
-      "gitHash": "76889a307afcb7b014788979a6ff34b46d2c7448",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
+      "gitHash": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
+      "updatedAt": "2026-11-22T13:46:26.000Z"
     },
     "docx": {
       "source": "anthropics/skills",
       "sourceType": "github",
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/docx",
-      "gitHash": "4615d6a8fc3dce74b0f987f7820b4d48416e2b25",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
+      "gitHash": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
+      "updatedAt": "2026-11-22T13:46:26.000Z"
     },
     "find-skills": {
       "source": "vercel-labs/skills",
       "sourceType": "github",
       "sourceUrl": "https://github.com/vercel-labs/skills.git",
       "skillPath": "skills/find-skills",
-      "gitHash": "5aafd1a88bb4dcd63a0e3bb361f80ff1e376379a",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
+      "gitHash": "57217cf86ba38148a57af9e90d14a4c049558330",
+      "updatedAt": "2026-11-22T13:46:26.000Z"
     },
     "flutter-lens": {
       "source": "lockfeel/flutter-lens",
       "sourceType": "github",
       "sourceUrl": "https://github.com/lockfeel/flutter-lens.git",
       "skillPath": ".",
-      "gitHash": "f91c42de698b04df67b416a072477232c06737f3",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
+      "gitHash": "b3d8b7c3a3d1f5fb4d39cf72a12add7f5f821cf0",
+      "updatedAt": "2026-11-22T13:46:26.000Z"
     },
     "frontend-design": {
       "source": "anthropics/skills",
       "sourceType": "github",
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/frontend-design",
-      "gitHash": "0a74194120860cb43f6b3b7df573b21de63de20d",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
+      "gitHash": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
+      "updatedAt": "2026-11-22T13:46:26.000Z"
     },
     "internal-comms": {
       "source": "anthropics/skills",
       "sourceType": "github",
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/internal-comms",
-      "gitHash": "d3db9b65b2feaba97c7e31fcbc7bc411f5b05c20",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
+      "gitHash": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
+      "updatedAt": "2026-11-22T13:46:26.000Z"
     },
     "pdf": {
       "source": "anthropics/skills",
       "sourceType": "github",
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/pdf",
-      "gitHash": "e7b357f2ce6a55c60a40e2fd251b2e4efe0c7296",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
+      "gitHash": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
+      "updatedAt": "2026-11-22T13:46:26.000Z"
     },
     "pptx": {
       "source": "anthropics/skills",
       "sourceType": "github",
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/pptx",
-      "gitHash": "bd06fbdd5892bd372df9147876221a076e4caac2",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
+      "gitHash": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
+      "updatedAt": "2026-11-22T13:46:26.000Z"
     },
     "skill-creator": {
       "source": "anthropics/skills",
       "sourceType": "github",
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/skill-creator",
-      "gitHash": "70eebf5afb16e944552e4b299345a0933bc0811e",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
+      "gitHash": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
+      "updatedAt": "2026-11-22T13:46:26.000Z"
     },
     "slack-gif-creator": {
       "source": "anthropics/skills",
       "sourceType": "github",
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/slack-gif-creator",
-      "gitHash": "5502c84056a2438394fc695d75abc4a1a6f14e11",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
+      "gitHash": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
+      "updatedAt": "2026-11-22T13:46:26.000Z"
     },
     "theme-factory": {
       "source": "anthropics/skills",
       "sourceType": "github",
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/theme-factory",
-      "gitHash": "d418bb3847a88b11712ae560c527930ee273896d",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
+      "gitHash": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
+      "updatedAt": "2026-11-22T13:46:26.000Z"
     },
     "ui-ux-pro-max": {
       "source": "nextlevelbuilder/ui-ux-pro-max-skill",
       "sourceType": "github",
       "sourceUrl": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill.git",
       "skillPath": ".claude/skills/ui-ux-pro-max",
-      "gitHash": "329fb6590622461868452beaff4be51f3450e0df",
+      "gitHash": "6ec2bb58334ca3014573c4cbd4834ee3a40afd9d",
       "pluginName": "ui-ux-pro-max",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
+      "updatedAt": "2026-11-22T13:46:26.000Z"
     },
     "xlsx": {
       "source": "anthropics/skills",
       "sourceType": "github",
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/xlsx",
-      "gitHash": "01a5f37b1579154c8c336d4f20a8d45e0897d3f5",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
+      "gitHash": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
+      "updatedAt": "2026-11-22T13:46:26.000Z"
     },
     "darwin-skill": {
       "source": "alchaincyf/darwin-skill",
       "sourceType": "github",
       "sourceUrl": "https://github.com/alchaincyf/darwin-skill.git",
       "skillPath": ".",
-      "gitHash": "01a5f37b1579154c8c336d4f20a8d45e0897d3f5",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
+      "gitHash": "5a8e633a20ea5bb2bf8b9c697c6da04ad85740ba",
+      "updatedAt": "2026-11-22T13:46:26.000Z"
     },
     "cangjie-skill": {
       "source": "kangarooking/cangjie-skill",
       "sourceType": "github",
       "sourceUrl": "https://github.com/kangarooking/cangjie-skill.git",
       "skillPath": ".",
-      "gitHash": "01a5f37b1579154c8c336d4f20a8d45e0897d3f5",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
+      "gitHash": "a28de55ba881b9928956a55048f743f7a9e3b23e",
+      "updatedAt": "2026-11-22T13:46:26.000Z"
     },
     "nuwa-skill": {
       "source": "alchaincyf/nuwa-skill",
       "sourceType": "github",
       "sourceUrl": "https://github.com/alchaincyf/nuwa-skill.git",
       "skillPath": ".",
-      "gitHash": "01a5f37b1579154c8c336d4f20a8d45e0897d3f5",
-      "updatedAt": "2026-09-21T10:40:02.000Z"
+      "gitHash": "8944932e35597bbcaf52b807e506c3900d0557c1",
+      "updatedAt": "2026-11-22T13:46:26.000Z"
     }
   },
   "dismissed": {}

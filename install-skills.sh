@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Step 1: Copy local skills/ to ~/.agents/skills/ and symlink
-# Step 2: Download skills from skill-lock.json and symlink
+# Step 2: Install latest upstream skills listed in skill-lock.json, write real gitHash back
 # Source of truth (local): ~/Judian/vega-punk/skills/
 # Source of truth (remote): ~/Judian/vega-punk/skill-lock.json
 # Copy target: ~/.agents/skills/
@@ -51,12 +51,13 @@ echo "Lock file: $LOCK_FILE"
 
 if [ -f "$LOCK_FILE" ]; then
   skill_list=$(mktemp /tmp/skill-list.XXXXXX)
+  hash_list=$(mktemp /tmp/skill-hash.XXXXXX)
   python3 -c "
 import json
 with open('$LOCK_FILE') as f:
     d = json.load(f)
 for name, info in d['skills'].items():
-    print(f\"{name}|{info['sourceUrl']}|{info['skillPath']}|{info['gitHash']}\")
+    print(f\"{name}|{info['sourceUrl']}|{info['skillPath']}\")
 " > "$skill_list"
 
   skill_count=$(wc -l < "$skill_list" | tr -d ' ')
@@ -64,7 +65,7 @@ for name, info in d['skills'].items():
   skipped=0
   idx=0
 
-  while IFS='|' read -r skill_name repo_url skill_path git_hash; do
+  while IFS='|' read -r skill_name repo_url skill_path; do
     [ -z "$skill_name" ] && continue
     idx=$((idx + 1))
     echo "[$idx/$skill_count] $skill_name"
@@ -72,8 +73,11 @@ for name, info in d['skills'].items():
     clone_dir="$CLONE_BASE/$skill_name"
     if [ -d "$clone_dir/.git" ]; then
       cd "$clone_dir"
-      git fetch --depth 1 origin "$git_hash" 2>/dev/null || true
-      git checkout "$git_hash" --quiet 2>/dev/null || true
+      git fetch --depth 1 origin --quiet 2>/dev/null || true
+      remote_head=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)
+      if [ -n "$remote_head" ]; then
+        git reset --hard "$remote_head" --quiet 2>/dev/null || true
+      fi
     else
       rm -rf "$clone_dir"
       git clone --depth 1 "$repo_url" "$clone_dir" --quiet 2>/dev/null || {
@@ -81,24 +85,25 @@ for name, info in d['skills'].items():
         continue
       }
       cd "$clone_dir"
-      git fetch --depth 1 origin "$git_hash" 2>/dev/null || true
-      git checkout "$git_hash" --quiet 2>/dev/null || true
     fi
+    real_hash=$(git rev-parse HEAD)
 
     src="$clone_dir/$skill_path"
+    if [ ! -e "$src" ]; then
+      echo "  !! WARN: not found at $skill_path"
+      skipped=$((skipped + 1))
+      continue
+    fi
     dest="$TARGET_DIR/$skill_name"
     rm -rf "$dest"
     mkdir -p "$dest"
 
     if [ -f "$src" ]; then
       cp "$src" "$dest/SKILL.md"
-    elif [ -d "$src" ]; then
-      cp -rL "$src"/. "$dest"/
     else
-      echo "  !! WARN: not found at $skill_path"
-      skipped=$((skipped + 1))
-      continue
+      cp -rL "$src"/. "$dest"/
     fi
+    echo "$skill_name|$real_hash" >> "$hash_list"
 
     for link_dir in "${LINK_DIRS[@]}"; do
       rm -rf "$link_dir/$skill_name" 2>/dev/null || true
@@ -111,20 +116,24 @@ for name, info in d['skills'].items():
 
   rm -f "$skill_list"
 
-  # Update lock file timestamps
+  # Write installed gitHash + timestamps back to lock file
   now=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
   python3 -c "
 import json
 with open('$LOCK_FILE') as f:
     d = json.load(f)
-for name in d['skills']:
-    d['skills'][name]['updatedAt'] = '$now'
+with open('$hash_list') as f:
+    for line in f:
+        name, sha = line.strip().split('|')
+        d['skills'][name]['gitHash'] = sha
+        d['skills'][name]['updatedAt'] = '$now'
 with open('$LOCK_FILE', 'w') as f:
     json.dump(d, f, indent=2, ensure_ascii=False)
 "
+  rm -f "$hash_list"
   echo ""
   echo "  Installed: $installed | Skipped: $skipped"
-  echo "  Lock file updated: updatedAt = $now"
+  echo "  Lock file updated: gitHash + updatedAt = $now"
 else
   echo "  No lock file found, skipping"
 fi
