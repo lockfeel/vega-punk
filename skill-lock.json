@@ -6,8 +6,8 @@
       "sourceType": "github",
       "sourceUrl": "https://github.com/vercel-labs/agent-browser.git",
       "skillPath": "skills/agent-browser",
-      "gitHash": "d2dfc782ccdd79d25a9b4f0acced9321789cecb8",
-      "updatedAt": "2026-11-22T13:46:26.000Z"
+      "gitHash": "f0a98351ec920bd826b22c98dacf8414f04b9832",
+      "updatedAt": "2026-11-25T08:02:20.000Z"
     },
     "algorithmic-art": {
       "source": "anthropics/skills",
@@ -15,7 +15,7 @@
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/algorithmic-art",
       "gitHash": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
-      "updatedAt": "2026-11-22T13:46:26.000Z"
+      "updatedAt": "2026-11-25T08:02:20.000Z"
     },
     "canvas-design": {
       "source": "anthropics/skills",
@@ -23,7 +23,7 @@
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/canvas-design",
       "gitHash": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
-      "updatedAt": "2026-11-22T13:46:26.000Z"
+      "updatedAt": "2026-11-25T08:02:20.000Z"
     },
     "docx": {
       "source": "anthropics/skills",
@@ -31,7 +31,7 @@
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/docx",
       "gitHash": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
-      "updatedAt": "2026-11-22T13:46:26.000Z"
+      "updatedAt": "2026-11-25T08:02:20.000Z"
     },
     "find-skills": {
       "source": "vercel-labs/skills",
@@ -39,7 +39,7 @@
       "sourceUrl": "https://github.com/vercel-labs/skills.git",
       "skillPath": "skills/find-skills",
       "gitHash": "57217cf86ba38148a57af9e90d14a4c049558330",
-      "updatedAt": "2026-11-22T13:46:26.000Z"
+      "updatedAt": "2026-11-25T08:02:20.000Z"
     },
     "flutter-lens": {
       "source": "lockfeel/flutter-lens",
@@ -47,7 +47,7 @@
       "sourceUrl": "https://github.com/lockfeel/flutter-lens.git",
       "skillPath": ".",
       "gitHash": "b3d8b7c3a3d1f5fb4d39cf72a12add7f5f821cf0",
-      "updatedAt": "2026-11-22T13:46:26.000Z"
+      "updatedAt": "2026-11-25T08:02:20.000Z"
     },
     "frontend-design": {
       "source": "anthropics/skills",
@@ -55,7 +55,7 @@
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/frontend-design",
       "gitHash": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
-      "updatedAt": "2026-11-22T13:46:26.000Z"
+      "updatedAt": "2026-11-25T08:02:20.000Z"
     },
     "internal-comms": {
       "source": "anthropics/skills",
@@ -63,7 +63,7 @@
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/internal-comms",
       "gitHash": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
-      "updatedAt": "2026-11-22T13:46:26.000Z"
+      "updatedAt": "2026-11-25T08:02:20.000Z"
     },
     "pdf": {
       "source": "anthropics/skills",
@@ -71,7 +71,7 @@
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/pdf",
       "gitHash": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
-      "updatedAt": "2026-11-22T13:46:26.000Z"
+      "updatedAt": "2026-11-25T08:02:20.000Z"
     },
     "pptx": {
       "source": "anthropics/skills",
@@ -79,7 +79,7 @@
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/pptx",
       "gitHash": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
-      "updatedAt": "2026-11-22T13:46:26.000Z"
+      "updatedAt": "2026-11-25T08:02:20.000Z"
     },
     "skill-creator": {
       "source": "anthropics/skills",
@@ -87,7 +87,7 @@
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/skill-creator",
       "gitHash": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
-      "updatedAt": "2026-11-22T13:46:26.000Z"
+      "updatedAt": "2026-11-25T08:02:20.000Z"
     },
     "slack-gif-creator": {
       "source": "anthropics/skills",
@@ -95,7 +95,7 @@
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/slack-gif-creator",
       "gitHash": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
-      "updatedAt": "2026-11-22T13:46:26.000Z"
+      "updatedAt": "2026-11-25T08:02:20.000Z"
     },
     "theme-factory": {
       "source": "anthropics/skills",
@@ -103,16 +103,16 @@
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/theme-factory",
       "gitHash": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
-      "updatedAt": "2026-11-22T13:46:26.000Z"
+      "updatedAt": "2026-11-25T08:02:20.000Z"
     },
     "ui-ux-pro-max": {
       "source": "nextlevelbuilder/ui-ux-pro-max-skill",
       "sourceType": "github",
       "sourceUrl": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill.git",
       "skillPath": ".claude/skills/ui-ux-pro-max",
-      "gitHash": "6ec2bb58334ca3014573c4cbd4834ee3a40afd9d",
+      "gitHash": "8db36338810d0942567b97ce439affd1619fcf31",
       "pluginName": "ui-ux-pro-max",
-      "updatedAt": "2026-11-22T13:46:26.000Z"
+      "updatedAt": "2026-11-25T08:02:20.000Z"
     },
     "xlsx": {
       "source": "anthropics/skills",
@@ -120,7 +120,7 @@
       "sourceUrl": "https://github.com/anthropics/skills.git",
       "skillPath": "skills/xlsx",
       "gitHash": "e4bb5d960d87126ff3b3a8af1a104b7db67560ba",
-      "updatedAt": "2026-11-22T13:46:26.000Z"
+      "updatedAt": "2026-11-25T08:02:20.000Z"
     },
     "darwin-skill": {
       "source": "alchaincyf/darwin-skill",
@@ -128,7 +128,7 @@
       "sourceUrl": "https://github.com/alchaincyf/darwin-skill.git",
       "skillPath": ".",
       "gitHash": "5a8e633a20ea5bb2bf8b9c697c6da04ad85740ba",
-      "updatedAt": "2026-11-22T13:46:26.000Z"
+      "updatedAt": "2026-11-25T08:02:20.000Z"
     },
     "cangjie-skill": {
       "source": "kangarooking/cangjie-skill",
@@ -136,7 +136,7 @@
       "sourceUrl": "https://github.com/kangarooking/cangjie-skill.git",
       "skillPath": ".",
       "gitHash": "a28de55ba881b9928956a55048f743f7a9e3b23e",
-      "updatedAt": "2026-11-22T13:46:26.000Z"
+      "updatedAt": "2026-11-25T08:02:20.000Z"
     },
     "nuwa-skill": {
       "source": "alchaincyf/nuwa-skill",
@@ -144,7 +144,15 @@
       "sourceUrl": "https://github.com/alchaincyf/nuwa-skill.git",
       "skillPath": ".",
       "gitHash": "8944932e35597bbcaf52b807e506c3900d0557c1",
-      "updatedAt": "2026-11-22T13:46:26.000Z"
+      "updatedAt": "2026-11-25T08:02:20.000Z"
+    },
+    "diagram-design": {
+      "source": "cathrynlavery/diagram-design",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/cathrynlavery/diagram-design.git",
+      "skillPath": "skills/diagram-design",
+      "gitHash": "b228c5d77794a84150fca41b22940bb316b1398d",
+      "updatedAt": "2026-11-25T08:02:20.000Z"
     }
   },
   "dismissed": {}
