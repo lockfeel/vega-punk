@@ -18,7 +18,7 @@ When the user names a brand or points at this catalog, this skill outranks gener
 - `brands/<folder>/DESIGN.md` — the full spec. All 84 carry YAML frontmatter (`version`, `name`, `description`); depth varies:
   - **Full token spec** (74 files): frontmatter also carries `colors`, `typography`, `rounded`, `spacing`, `components`.
   - **Prose spec** (10 files): frontmatter carries `colors` only; remaining tokens live inline in the prose body.
-- Target file: `<project-root>/DESIGN.md`
+- Target file: `<project-root>/DESIGN.md` — the project root is the git repository root, or the current directory when it is not a repository.
 
 Upstream, commit, and licenses: see `NOTICE`.
 
@@ -49,6 +49,7 @@ Read `brands/<folder>/DESIGN.md` in full. Its tokens, type, layout rules, and pr
 
 - **Token spec:** turn `colors` into CSS custom properties or the Tailwind theme, `typography` into font families and the type scale, `rounded` into radii, `spacing` into the spacing scale, `components` into component styles.
 - **Prose spec:** take `colors` from frontmatter, then pull font names and other tokens out of inline backticks.
+- **Resolve references first:** spec bodies use `{section.key}` references (e.g. `{colors.primary}`) that point into the YAML frontmatter. Resolve every reference before mapping; `{component.X}` (singular) means the `components` section. `{token.refs}` is a meta-instruction to use references, not a token. If a key is missing from frontmatter, look for its definition in the prose body; if still unresolved, say so and ask — never guess a value, and never emit a literal `{…}` into code.
 - Keep every token in one block (`:root` or config). Components reference tokens; no literal hex outside that block.
 - Apply the spec's explicit prohibitions. One brand only: never merge tokens from two brands.
 - If the project already defines competing tokens, ask whether to replace or reconcile before writing code.
