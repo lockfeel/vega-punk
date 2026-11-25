@@ -27,7 +27,7 @@ service/
 
 | Layer | Responsibility | Communication |
 |-------|---------------|---------------|
-| **SKILL System** (SKILL.md) | Requirements brain → Markdown plan (no state files, no execution) | `~/.vega-punk/requirements.md` + `~/.vega-punk/plan.md` |
+| **SKILL System** (SKILL.md) | Requirements brain → Markdown plan (no state files, no execution) | `<project>/.vega-punk/requirements.md` + `<project>/.vega-punk/plan.md` (non-git fallback: `~/.vega-punk/<dir>/`) |
 | **Service Layer** (service/) | Runtime infrastructure, gateway proxy, session management, security audit | HTTP/WebSocket API |
 
 **The SKILL system does not depend on the Service layer.** vega-punk can run fully without service/. The Service layer provides for multi-user scenarios:
