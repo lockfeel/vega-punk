@@ -1,6 +1,6 @@
 ---
 name: vega-punk
-description: "The strongest requirements brain. 做什么：需求访谈、头脑风暴、方案发散与压测、评估收敛，产出项目内 .vega-punk/requirements.md。构建请求先走需求分析再交接 plan-builder；本技能不写计划、不写代码、不执行。触发词: 分析需求 / 头脑风暴 / 想想怎么做 / 方案探索 / 最强大脑 / brainstorm / 需求梳理 / 拆需求 / 需求澄清 / let's think / 我想做一个"
+description: "The strongest requirements brain. 做什么：需求访谈、头脑风暴、方案发散与压测、评估收敛，产出工作区 requirements.md（repo 内 .vega-punk/，repo 外 ~/.vega-punk/）。构建请求先走需求分析再交接 plan-builder；本技能不写计划、不写代码、不执行。触发词: 分析需求 / 头脑风暴 / 想想怎么做 / 方案探索 / 最强大脑 / brainstorm / 需求梳理 / 拆需求 / 需求澄清 / let's think / 我想做一个"
 allowed-tools: "Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch"
 ---
 
@@ -31,8 +31,8 @@ Work through the phases in order. You may loop back when new information changes
 Before phase 1, decide which of three paths the request takes. State the choice only if it changes what you will do.
 
 - **Full analysis** — the default. Run all eight phases below.
-- **Simple request** — a small, single-component change with no new subsystem and at most one unresolved blocker; if two or more blockers are unresolved, use the full analysis instead. Compress the flow: confirm the problem in one sentence, ask at most one blocker question, recommend one direction, get a single confirmation from the user, then record that direction and the one alternative seriously considered, write `requirements.md`, and hand off. The full Direction A/B/C set and the stress-test round are not required, but the direction and its trade-off must still be explicit.
-- **Skip request** — the user says "urgent", "just do it", or asks to skip analysis. Do not silently skip: state the risk in one sentence, use the simple path, and record the skipped analysis as an explicit assumption in `requirements.md`.
+- **Simple request** — a small, single-component change with no new subsystem and at most one unresolved blocker; if two or more blockers are unresolved, use the full analysis instead. Compress the flow: confirm the problem in one sentence, ask at most one blocker question, recommend one direction, get a single confirmation from the user, then record that direction and the one alternative seriously considered, write `requirements.md`, and hand off. The full Direction A/B/C set and the stress-test round are not required, but the direction and its trade-off must still be explicit, and each recorded direction still names its main failure mode.
+- **Skip request** — the user says "urgent", "just do it", or asks to skip analysis. Do not silently skip: state the risk in one sentence, use the simple path — or the full analysis when the request exceeds the simple path's blocker limit — and record the skipped analysis as an explicit assumption in `requirements.md`.
 
 Every path includes problem framing, the overwrite rules, and the handoff check. Beyond the exemptions stated for the simple path, nothing may be skipped.
 
@@ -83,11 +83,11 @@ If the stress test left no surviving direction, skip the pick-and-compare loop: 
 
 ### 7. Write requirements.md
 
-Create the workspace directory if it does not exist. If `requirements.md` already exists, ask the user whether to overwrite it, update it, or start fresh — never overwrite silently. Then write the file using the structure below. When updating an existing file, keep the earlier directions, rejection reasons, and Dissent lines, add an `Updated:` line, and state in one sentence what changed. Before writing, rewrite any success criterion that cannot be checked by a command or a named observation. Ask the user to review it and incorporate any changes before handing off. Do not include final architecture decisions, file structure, interfaces, implementation steps, or a test plan — those belong in plan-builder's `plan.md`.
+Create the workspace directory if it does not exist. If `requirements.md` already exists, ask the user whether to overwrite it or update it — never overwrite silently. Then write the file using the structure below. When updating an existing file, keep the earlier directions, rejection reasons, and Dissent lines, add an `Updated:` line, and state in one sentence what changed. Before writing, rewrite any success criterion that cannot be checked by a command or a named observation. Ask the user to review it and incorporate any changes before handing off. Do not include final architecture decisions, file structure, interfaces, implementation steps, or a test plan — those belong in plan-builder's `plan.md`.
 
 ### 8. Hand Off
 
-Tell the user the requirements are ready at the workspace `requirements.md` and that plan-builder can write the implementation plan. Then stop. Do not plan and do not implement.
+If the chosen direction is `No-go`, tell the user the analysis concluded not to build and stop — do not mention plan-builder. Otherwise tell the user the requirements are ready at the workspace `requirements.md` and that plan-builder can write the implementation plan. Then stop. Do not plan and do not implement.
 
 ## requirements.md Structure
 
