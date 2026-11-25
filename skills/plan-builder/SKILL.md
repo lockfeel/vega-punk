@@ -15,19 +15,19 @@ allowed-tools: "Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch"
 
 **Workspace:** Resolve the project root first: the git repository root, or the current directory when it is not a repository. Inside a repository the workspace is `<project-root>/.vega-punk/`; outside one it is `~/.vega-punk/<directory-name>/`.
 
-**Files:** read `<workspace>/requirements.md`; write `<workspace>/plan.md`. If the scope check splits the work, sibling `plan-<subsystem>.md` files are allowed beside it. Nothing else is written, except a minimal `requirements.md` when vega-punk is unavailable and the user agrees to the fallback.
+**Files:** read `<workspace>/requirements.md`; write `<workspace>/plan.md`. If the scope check splits the work, sibling `plan-*.md` files are allowed beside it. Nothing else is written, except archived copies of old plan files when the user chooses archive and rebuild, and a minimal `requirements.md` when vega-punk is unavailable and the user agrees to the fallback.
 
 ## Before You Start
 
 Read `<workspace>/requirements.md`.
 
-If it does not exist, tell the user to run vega-punk first. If vega-punk is not available in this session, offer to run a short requirements interview now and write a minimal `requirements.md` yourself, then continue. Never plan without a requirements document.
+If it does not exist, tell the user to run vega-punk first. If vega-punk is not available in this session, offer to run a short requirements interview now and write a minimal `requirements.md` yourself containing every section listed below, then continue. Never plan without a requirements document.
 
 If `<workspace>/plan.md` already exists, ask once whether to update it in place or archive it and rebuild. Record the answer before writing anything. Never decide this silently. If `requirements.md` is newer than `plan.md`, say that the plan may be stale and include that warning in the question.
 
-Check that the file contains all of these sections: Problem Framing, Constraints, Success Criteria, Chosen direction, Dependency Map, and Skill Mapping. Chosen direction may appear as a subsection under Solution Exploration — that is valid. A section that is genuinely not applicable must say `None`; an explicit `None` counts as filled, a blank section does not. If a section is missing, blank, or still contains template placeholders such as `<one sentence>` or `(same fields)`, stop and ask the user to complete it. Do not fill gaps with your own guesses. If the chosen direction is `No-go`, stop and tell the user the analysis concluded not to build; there is nothing to plan.
+Check that the file contains all of these sections: Problem Framing, Constraints, Success Criteria, Stakeholders & Impact, Chosen direction, Dependency Map, Risks & Assumptions, and Skill Mapping. Chosen direction may appear as a subsection under Solution Exploration — that is valid. A section that is genuinely not applicable must say `None`; an explicit `None` counts as filled, a blank section does not. If a section is missing, blank, has a required field left empty, or still contains template placeholders such as `<one sentence>` or `(same fields)`, stop and ask the user to complete it. Do not fill gaps with your own guesses. If the chosen direction is `No-go`, stop and tell the user the analysis concluded not to build; there is nothing to plan.
 
-From the requirements, extract the goal, constraints, success criteria, chosen direction, dependency map, relevant skills, risks, and open questions. If the goal or the chosen direction is vague, ask the user before writing anything.
+From the requirements, extract the goal, constraints, the out-of-scope boundary, success criteria, chosen direction, dependency map, relevant skills, stakeholders, risks, assumptions, dissent, and open questions. Constraints and the out-of-scope boundary go in Constraints & Boundaries, stakeholders and dissent there too, and risks and assumptions in Risks & Assumptions. If the goal or the chosen direction is vague, ask the user before writing anything.
 
 Mode selection comes after the file map; see Choose a Mode.
 
@@ -37,7 +37,7 @@ Before deciding anything, look at the actual project.
 
 Search for a project manifest: `package.json`, `pyproject.toml`, `requirements.txt`, `Cargo.toml`, `go.mod`, `pom.xml`, `build.gradle`, `pubspec.yaml`, `composer.json`, `Gemfile`. If none exists, say so and plan as a greenfield project.
 
-From the manifest, learn the dependencies, the test and build commands, and the entry point. If the project has no build step, omit the build gate and use the test gate as the only final gate; record that in the plan. Look at the top-level directory structure to find the source layout, the test directory and framework, existing config files, and any existing auth, database, or API patterns. If the project has no test runner configured, the plan's first phase must add one before any RED step. Never write a test command the project cannot run.
+From the manifest, learn the dependencies, the test and build commands, and the entry point. If the project has no build step, omit the build gate and use the test gate as the only final gate; record that in the plan. Look at the top-level directory structure to find the source layout, the test directory and framework, existing config files, and any existing auth, database, or API patterns. Record the runtime and tool versions, required environment variable names, services that must be running, and the install or migration commands in the plan's Prerequisites section. If the project has no test runner configured, adding one is a dependency decision: ask the user before planning it, then put it in the first phase before any RED step. If the user declines, stop and explain that this skill's plans rely on a runnable test suite; never write a test gate the project cannot run.
 
 Follow existing conventions for naming, imports, and tests. Reference existing types and functions in step targets rather than recreating them. Do not restructure unrelated code.
 
@@ -45,7 +45,7 @@ Follow existing conventions for naming, imports, and tests. Reference existing t
 
 Make the final architecture decision here, based on the chosen direction in the requirements. Decide the tech stack and key libraries, component boundaries and responsibilities, data flow between components, the error-handling strategy, and how each success criterion is satisfied. Write this up as a two- or three-sentence Architecture section in the plan.
 
-If the chosen direction cannot satisfy a constraint or a success criterion, stop and tell the user. Do not silently redesign the requirements.
+You may choose among options inside the chosen direction. You may not add a new subsystem, service, datastore, or third-party dependency that the requirements did not call for; if the architecture needs one, stop and ask the user, and record the approval in the plan. If the chosen direction cannot satisfy a constraint or a success criterion, stop and tell the user. Do not silently redesign the requirements.
 
 ## Map the File Structure
 
@@ -57,21 +57,23 @@ Decide the mode from the file map you just made, not from a rough guess:
 
 | Signal | Mode | Behavior |
 |--------|------|----------|
-| At most 3 files, at most 2 features, no integrations | condensed | Single phase, at most 12 steps, no phase splitting |
+| At most 3 files, at most 2 success criteria, no integrations | condensed | Single phase, at most 12 steps, no phase splitting |
 | More than 3 files, or integrations, or auth/DB | full | Multiple phases with full TDD decomposition |
 | Ambiguous | full | Safer to over-plan than under-plan |
 
-If a condensed plan would exceed 12 steps, promote it to full. Do not compress steps to stay under the cap.
+If the step outline later shows a condensed plan would exceed 12 steps, promote it to full. Do not compress steps to stay under the cap.
 
 ## Scope Check
 
-Split a plan into multiple files only in two cases: the plan would exceed 30 steps or 5 phases, or `requirements.md` already defines a `Subsystems` section. Fifteen or more steps is a checkpoint, not a split — confirm scope and keep one plan.
+Before deciding scope, draft a step outline: the phase names and one line per planned step, with no code. Count the steps; that count drives this check and the checkpoints.
 
-When splitting, follow the subsystem boundaries from the requirements when they exist; otherwise split along the phase groups. Name the files `plan-<subsystem>.md`, give each its own Goal, Architecture, and phase list, and put cross-plan dependencies in the `Cross-plan dependencies` section using the `file#step` form. The user decides whether to work on them sequentially or in parallel.
+Split a plan into multiple files only in two cases: the outline exceeds 30 steps or 5 phases, or `requirements.md` lists one or more subsystems under `Subsystems` (a `None` entry does not count). Fifteen or more steps is a checkpoint, not a split — confirm scope and keep one plan.
+
+When splitting, follow the subsystem boundaries from the requirements when they exist and use the plan file names recorded there exactly. When there are no subsystems and a single phase would exceed 30 steps, split that phase into coherent step groups and name the files `plan-<topic>-<part>.md`. Otherwise split along the phase groups. Give each file its own Goal, Architecture, and phase list, and put cross-plan dependencies in the `Cross-plan dependencies` section using the `file#step` form. The user decides whether to work on them sequentially or in parallel.
 
 ## Checkpoints
 
-Pause and confirm before writing the plan in three situations: when a full plan would produce 15 or more steps or three or more phases, when the scope check requires splitting into multiple plans, and when a step deletes files, drops tables, or force-pushes.
+Pause and confirm before writing the plan in three situations: when the step outline reaches 15 or more steps or three or more phases, when the scope check requires splitting into multiple plans, and when an outlined step deletes files, drops tables, or force-pushes.
 
 State the issue and wait. Silence is never approval: if the user does not respond, stop and do not write the plan. Never treat an unanswered checkpoint as consent for a destructive step.
 
@@ -79,7 +81,9 @@ State the issue and wait. Silence is never approval: if the user does not respon
 
 Steps must be extremely small and specific. A step is small enough when someone can perform it without any additional thinking, decision-making, or inference.
 
-A step has one target — a file for `Write`/`Edit`, a command for `Bash` — and one verifiable outcome. Normally that means one tool call. The one exception is an atomic refactor of a single file, where a step may list an ordered series of `Edit` calls — they must all touch the same file and share one verify. If the edits span multiple files, split them into separate steps.
+A step has one target — a file for `Write`/`Edit`, a command for `Bash`, or a query for `WebSearch`/`WebFetch` — and one verifiable outcome. Normally that means one tool call. The one exception is an atomic refactor of a single file, where a step may list an ordered series of `Edit` calls — they must all touch the same file and share one verify. If the edits span multiple files, split them into separate steps.
+
+A `Write` step may create a new file, or fully replace an existing one only when the step says it replaces the file and includes the complete new content. Never let a `Write` silently clear a file that already exists. An `Edit` step must give an `old_string` that occurs exactly once in the current file; when the fragment could repeat, extend it with enough surrounding lines to make it unique.
 
 For code, use TDD order: start with a step that creates the file skeleton — class definition, constants, and property declarations, plus method signatures whose bodies compile: either return a placeholder value or `throw new Error('not implemented')`. An empty body fails type checking when the return type is declared, so the skeleton must be compilable. Verify the skeleton step with `syntax_valid` when the toolchain can check it, and with `file_exists` only when no cheap check exists. Then create a pair of steps for each function with real logic: one writes the exact test code and verifies it fails, the next writes the minimal implementation and verifies it passes. Scaffolding, configuration, and pure data steps do not need a RED step.
 
@@ -88,7 +92,7 @@ For non-code tasks, use the smallest executable unit:
 | Good — specific and executable | Bad — vague, requires thinking |
 |--------------------------------|-------------------------------|
 | "Run `grep -r 'import' src/`" | "Find all imports in the codebase" |
-| "Write `const API_URL = 'https://api.example.com'` to `config.ts` line 3" | "Add API configuration" |
+| "In `config.ts`, replace `API_URL = ''` with `API_URL = 'https://api.example.com'`" | "Add API configuration" |
 | "Search DuckDuckGo for 'Python async best practices 2026'" | "Research async programming" |
 
 If a step contains "and then" or "also" across two targets, split it. If the reader could ask "what exactly should I do?", the step is too big.
@@ -97,7 +101,7 @@ If a step contains "and then" or "also" across two targets, split it. If the rea
 
 These are plan failures. No unresolved angle-bracket slot — `<date>`, `<full test command>`, `<step id>` — may survive into the final plan. Never write `"TBD"`, `"TODO"`, `"implement later"`, `"fill in details"`, `"add appropriate error handling"`, `"add validation"`, `"handle edge cases"`, `"write tests for the above"` without the actual test code, `"similar to task N"`, steps that describe what to do without showing how, or references to types and functions that no step defines.
 
-For Write steps, include the complete code in the step. For Edit steps, give `old_string`/`new_string` pairs or precise line-range instructions. Never reference code that does not exist yet without defining it first.
+For Write steps, include the complete code in the step. For Edit steps, give `old_string`/`new_string` pairs whose `old_string` is unique in the file — extend it with surrounding lines when needed. Never reference code that does not exist yet without defining it first.
 
 The amount of code in a step scales with its size:
 
@@ -134,7 +138,7 @@ The step's Tool and Target tell you what to verify. Infer the actual command fro
 
 ## Write the Plan
 
-Before writing, run the Scope Check and any required Checkpoints. Then write `<workspace>/plan.md` using the structure below and the rules above. The plan must end with an acceptance section that maps every success criterion to the step that verifies it, plus final gate steps that run the whole suite, and the build when the project has one. Then run the self-review and fix any issues in one batch. Finally, tell the user the plan is written and stop — do not perform any step in the plan.
+Before writing, run the Scope Check and any required Checkpoints. Then expand the step outline into `<workspace>/plan.md` using the structure below and the rules above. The plan must carry the constraints, out-of-scope boundary, stakeholders, and dissent from the requirements; state the prerequisites; and end with an acceptance section that maps every success criterion to the step and verification type that check it, plus final gate steps that run the whole suite, and the build when the project has one. Then run the self-review and fix any issues in one batch. Finally, tell the user the plan is written and stop — do not perform any step in the plan.
 
 ### Plan Document Structure
 
@@ -146,7 +150,22 @@ Before writing, run the Scope Check and any required Checkpoints. Then write `<w
 > Architecture: <2-3 sentences — the final architecture decision>
 > Tech stack: <key technologies>
 > Created: <ISO timestamp>
-> Source requirements: <workspace>/requirements.md (created: <date>, updated: <date>)
+> Source requirements: <workspace>/requirements.md (created: <date>, updated: <date or none>)
+
+## Prerequisites
+
+- Runtime / tool: <name and minimum version>
+- Environment variables: <names only, never values>
+- Services: <what must be running before Step 1.1>
+- Setup: <install, migrate, or seed command>
+
+## Constraints & Boundaries
+
+- Constraint: <from requirements.md> → <how this plan honors it>
+- Out of scope: <from requirements.md>
+- Stakeholders: <who must approve, is affected, or might object>
+- Dissent: <from requirements.md, or None>
+- Approved additions: <new dependency, service, or datastore the user approved, or None>
 
 ## Ordering
 
@@ -207,13 +226,14 @@ Skills: <skills relevant to this phase from requirements.md>
 - new_string: `    return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)`
 - Verify (tests_pass): `npm test -- validateEmail` → expect PASS
 
-## Risks
+## Risks & Assumptions
 
 - <risk from requirements.md> → <mitigation in this plan>
+- Assumption: <from requirements.md, or None>
 
 ## Open Questions
 
-- <unresolved question carried from requirements.md>
+- <question carried from requirements.md that does not change any step, or None>
 
 ## Cross-plan dependencies
 
@@ -221,9 +241,9 @@ Skills: <skills relevant to this phase from requirements.md>
 
 ## Acceptance
 
-| Success criterion | Verified by |
-|-------------------|-------------|
-| <criterion from requirements.md> | Step 1.4 |
+| Success criterion | Verified by (step + verification type) |
+|-------------------|----------------------------------------|
+| <criterion from requirements.md> | Step 1.4 (`tests_pass`) |
 
 ### Step A.1 — Final test gate
 
@@ -244,13 +264,22 @@ Skills: <skills relevant to this phase from requirements.md>
 
 Steps that delete files, drop tables, or force-push get a `⚠️` in the heading. Every `⚠️` step also gets a `- Rollback:` line saying how to undo it — restore from backup, run the down migration, revert the commit. For any step that calls an external service, add `- External: true` to the step body. Do not include status, result, or attempt fields — the plan is a document, not an execution state machine.
 
-The acceptance table must list every success criterion, and every row must point at a step that checks that criterion directly. A final gate may back a row only when the suite contains a test that exercises the criterion; otherwise add a dedicated step. Omit Step A.2 when the project has no build step. The final gates are what catch integration failures that single steps cannot.
+The Ordering section lists every phase you define, each exactly once; the template's two lines show only the arrow and parallel notation.
+
+Prerequisites must cover everything Step 1.1 assumes: runtime versions, environment variable names, running services, and setup commands. If the project needs nothing beyond a clean checkout, write `None` instead of the list. Never put a secret value there. Open Questions may only carry questions that do not change any step; if a question would change step design, stop and resolve it with the user before writing the plan.
+
+The acceptance table must list every success criterion, and every row must name both the step and the verification type that check it — `Step 1.4 (tests_pass)` — not just a step ID. The named verification must check the criterion itself; `file_exists` does not verify behavior. A final gate may back a row only when the suite contains a test that exercises the criterion; otherwise add a dedicated step. Omit Step A.2 when the project has no build step. The final gates are what catch integration failures that single steps cannot.
 
 ## Self-Review
 
 After writing the plan, do exactly one pass of review, with a second pass only to check fixes from the first. Never loop further.
 
-- Check that every success criterion appears in the Acceptance table and points at a step that checks it directly; a final gate alone does not count unless the suite tests that criterion. If a criterion is missing, add a step. If it cannot be checked observably — "better performance" with no metric, for example — do not invent a verification: stop and send it back to vega-punk to be rewritten as a measurable criterion.
+- Check that every success criterion appears in the Acceptance table and names the step and verification type that check it directly; a final gate alone does not count unless the suite tests that criterion. If a criterion is missing, add a step. If it cannot be checked observably — "better performance" with no metric, for example — do not invent a verification: stop and send it back to vega-punk to be rewritten as a measurable criterion.
+- Check that every constraint and the out-of-scope boundary appears in Constraints & Boundaries, that no step violates them, and that stakeholders and dissent are carried over.
+- Check that the plan adds no subsystem, service, datastore, or dependency the requirements did not call for unless the user approved it, and that every approved addition is listed in Approved additions.
+- Check that Prerequisites lists every runtime, environment variable name, service, and setup command Step 1.1 depends on, with no secret values.
+- Check that every Open Question left in the plan is step-neutral; resolve any that would change a step.
+- Check that every `Write` target is new or the step states it replaces the file with complete content, and that every `old_string` occurs exactly once.
 - Check that the test gate exists and depends on every terminal step — all steps with no successor — and that the build gate follows it when the project has a build step.
 - Scan for the placeholders listed above and for leftover angle-bracket slots such as `<date>` or `<full test command>`; replace all of them with real content.
 - Check that every RED pair writes the test and verifies it fails before the matching implementation step turns it green.
@@ -268,8 +297,8 @@ Fix all issues in one batch write.
 If the user changes requirements while the plan is being written, determine first whether `plan.md` exists.
 
 - If it does not exist: restart from Decide the Architecture, then redo the file map and the mode.
-- If it exists and the user chose update in place: re-run Decide the Architecture before touching the steps, then re-run the Scope Check and Choose a Mode, update the file map, steps, Acceptance table, and final gates, and re-run the full Self-Review on the updated plan.
-- If it exists and the user chose archive and rebuild: archive the old file and restart from Decide the Architecture.
+- If it exists and the user chose update in place: re-run Decide the Architecture before touching the steps, then re-run Choose a Mode, the Scope Check (including a new step outline), and the Checkpoints. Update the Prerequisites, Constraints & Boundaries, Risks & Assumptions, Open Questions, file map, steps, Acceptance table, and final gates. When the plan is split across multiple `plan-*.md` files, name the files that change, update the sibling plans and every `Cross-plan dependencies` entry that points at a changed step, and re-run the full Self-Review on each affected file.
+- If it exists and the user chose archive and rebuild: archive every plan file that belongs to the old plan and restart from Decide the Architecture.
 
 If no choice was recorded because the plan did not exist when you started, treat this as update in place. If the change contradicts `requirements.md`, tell the user to update the requirements with vega-punk first and stop.
 
@@ -291,6 +320,9 @@ If no choice was recorded because the plan did not exist when you started, treat
 | Write vague or ambiguous steps | One target and one verifiable outcome per step |
 | Use placeholders | Include real executable code |
 | Skip the RED step | Write the test, watch it fail, then implement |
-| End the plan without a final gate | Add the Acceptance table and the full-suite step |
+| End the plan without a final gate | Add the Acceptance table and the final gates |
+| Write over an existing file silently | Use `Edit`, or state full replacement and include the complete content |
+| Leave a question that changes a step unresolved | Resolve it before writing the plan |
+| Add a dependency the requirements never approved | Stop and ask the user |
 | Use TodoWrite for persistence | `plan.md` is the single source of truth |
 | Execute steps from the plan | Output the plan and stop |
