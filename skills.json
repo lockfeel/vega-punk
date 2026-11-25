@@ -14,79 +14,9 @@
     "desc": "用户安装"
   },
   {
-    "name": "践行人",
-    "code": "plan-executor",
-    "icon": "https://res.amemo.cn/executing-plans.png",
-    "type": "vega-punk",
-    "desc": "核心框架"
-  },
-  {
     "name": "策画生",
     "code": "plan-builder",
     "icon": "https://res.amemo.cn/planning-with-json.png",
-    "type": "vega-punk",
-    "desc": "核心框架"
-  },
-  {
-    "name": "司枝官",
-    "code": "branch-landing",
-    "icon": "https://res.amemo.cn/finishing-a-development-branch.png",
-    "type": "vega-punk",
-    "desc": "核心框架"
-  },
-  {
-    "name": "鉴微使",
-    "code": "review-intake",
-    "icon": "https://res.amemo.cn/receiving-code-review.png",
-    "type": "vega-punk",
-    "desc": "核心框架"
-  },
-  {
-    "name": "呈阅使",
-    "code": "review-request",
-    "icon": "https://res.amemo.cn/requesting-code-review.png",
-    "type": "vega-punk",
-    "desc": "核心框架"
-  },
-  {
-    "name": "百炼使",
-    "code": "parallel-swarm",
-    "icon": "https://res.amemo.cn/dispatching-parallel-agents.png",
-    "type": "vega-punk",
-    "desc": "核心框架"
-  },
-  {
-    "name": "分遣使",
-    "code": "task-dispatcher",
-    "icon": "https://res.amemo.cn/subagent-driven-development.png",
-    "type": "vega-punk",
-    "desc": "核心框架"
-  },
-  {
-    "name": "溯因官",
-    "code": "root-cause",
-    "icon": "https://res.amemo.cn/systematic-debugging.png",
-    "type": "vega-punk",
-    "desc": "核心框架"
-  },
-  {
-    "name": "先试官",
-    "code": "test-first",
-    "icon": "https://res.amemo.cn/test-driven-development.png",
-    "type": "vega-punk",
-    "desc": "核心框架"
-  },
-  {
-    "name": "验契使",
-    "code": "verify-gate",
-    "icon": "https://res.amemo.cn/verification-before-completion.png",
-    "type": "vega-punk",
-    "desc": "核心框架"
-  },
-  {
-    "name": "筑枝使",
-    "code": "worktree-setup",
-    "icon": "https://res.amemo.cn/using-git-worktrees.png",
     "type": "vega-punk",
     "desc": "核心框架"
   },

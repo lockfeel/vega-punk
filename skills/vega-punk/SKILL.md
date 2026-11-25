@@ -10,28 +10,28 @@ hooks:
 
 # Vega-Punk: Session State Machine
 
-**Purpose:** Enforce design-before-execution for every implementation task. Map causal dependencies so the execution plan maximizes parallelism.
+**Purpose:** Enforce design-before-execution for every implementation task. Produce an approved design and spec, then hand off to plan-builder for a Markdown plan.
 
-**Boundary:** vega-punk owns design and routing. After HANDOFF, plan-builder takes execution — reads the state file, generates the roadmap, manages implementation. vega-punk stays in REVIEW to validate results against requirements.
+**Boundary:** vega-punk owns design and routing. After HANDOFF, plan-builder turns the approved spec into `~/.vega-punk/plan.md`. Execution is out of scope — vega-punk ends at DONE once the plan is written.
 
 **Constants:**
 
 - `STATE_FILE` = `~/.vega-punk/vega-punk-state.json`
 - `SPEC_DIR` = `~/.vega-punk/specs/`
-- `ROADMAP_FILE` = `~/.vega-punk/roadmap.json`
+- `PLAN_FILE` = `~/.vega-punk/plan.md`
 - `COUNTERS_FILE` = `~/.vega-punk/vega-punk-counters.json`
 - `FINDINGS_FILE` = `~/.vega-punk/findings.json`
 - `PROGRESS_FILE` = `~/.vega-punk/progress.json`
 
-For **OpenClaw** and **Claude Code**, the workspace is always `~/.vega-punk/` — state, specs, roadmap, and all runtime files live there.
+The workspace is always `~/.vega-punk/` — state, specs, plan, and all runtime files live there.
 
 ## Quick Start
 
 Describe what you want to build. vega-punk auto-selects the mode:
 
 - **Single feature or Small change** ("add dark mode", "添加XX") → Auto-detected → CONDENSED
-- **Complex project** ("build notification system") → FULL: design → QA → dependencies → spec → plan → execute
-- **Bug / Error** ("报错了", "not working") → Bug fast-path → CONDENSED with root-cause
+- **Complex project** ("build notification system") → FULL: design → QA → dependencies → spec → handoff (plan-builder writes the Markdown plan)
+- **Bug / Error** ("报错了", "not working") → Bug fast-path → CONDENSED
 
 Say "just do it" for explicit fast mode, or "let's think about this" to force FULL flow.
 
@@ -62,24 +62,14 @@ BEGIN STATE_RESOLUTION
     3. State file missing:
        → GOTO ROUTE
 
-    3b. State is "HANDOFF" (written by plan-builder during execution routing):
-       → TELL: "[vega-punk] Plan is being executed. Waiting for execution_result..."
-       → ENTER REVIEW, then EXIT
+    3b. State is "HANDOFF" (plan-builder was invoked but the plan was not written):
+       → ENTER HANDOFF, then EXIT
 
-    4. State is "REVIEW" — check sub-conditions in order, stop at first match:
-
-       | # | Condition | Action |
-       |---|-----------|--------|
-       | 4a | STATE_FILE.execution_result exists | ENTER REVIEW, then EXIT |
-       | 4b | ROADMAP_FILE exists with incomplete steps | RESUME from ROADMAP_FILE current_step, EXIT |
-       | 4c | User requests iterate or redesign | Archive ROADMAP_FILE if exists → GOTO DESIGN, EXIT |
-       | 4d | None of the above | TELL: "In REVIEW with nothing to review. Start a new task, iterate, or tell me what to do." → WAIT for user input, EXIT |
-
-    5. State file has invalid JSON or state NOT in valid states:
+    4. State file has invalid JSON or state NOT in valid states:
        → APPLY RECOVERY
        → GOTO current state (RECOVERY sets the target; if unclear → GOTO ROUTE)
 
-    6. None of the above (file exists, state is valid):
+    5. None of the above (file exists, state is valid):
        → ENTER current state directly
        → DO NOT go back to ROUTE
 
@@ -101,7 +91,7 @@ BEGIN StateTransition
     /* State file write rules — ALL skills must follow: */
     1. NEVER overwrite STATE_FILE without reading first — always read, merge in memory, then write back
     2. NEVER delete existing fields — only ADD new fields or UPDATE existing values
-    3. If a field was written by another skill (e.g. worktree_path by worktree-setup), preserve it
+    3. If a field was written by another skill, preserve it
     4. When in doubt, read the current JSON, add your fields, and write back — never assume you own the entire file
 END
 ```
@@ -128,9 +118,6 @@ BEGIN GlobalGuards
         COMPRESS expert_findings → keep only { skill_name: { verdict: pass/fail, top_3_risks: [] } }
         /* Remove detailed commentary, keep verdict + top risks */
 
-    ON transitioning FROM REVIEW:
-        COMPRESS expert_validation → keep only { skill_name: { verdict: pass/fail, top_3_issues: [] } }
-
     /* Compaction — prevents unbounded state file growth */
     /* Apply when context is under pressure: long conversations, many retries, or large state */
     IF qa.retries > 2 OR transition_count > 8:
@@ -153,7 +140,7 @@ BEGIN Post-Completion Cleanup
     RENAME SPEC_DIR*.md → *.DONE.md (completed) or *.CANCELLED.md (cancelled)
     DELETE STATE_FILE
 
-    /* On REVIEW → new task: archive specs + preserve counters, then restart ROUTE */
+    /* On new task: archive specs + preserve counters, then restart ROUTE */
     /* On "start over" / "new task" / "forget previous": also clear counter */
     IF user says "forget previous":
         DELETE COUNTERS_FILE
@@ -167,26 +154,25 @@ If user asks "where are we?" or "how much left?", print current state and remain
 
 | State        | FULL Path     | CONDENSED Path |
 |--------------|---------------|----------------|
-| ROUTE        | 10 states left| 3 states left  |
-| SCAN         | 9             | —              |
-| CLARIFY      | 8             | —              |
-| DESIGN       | 7             | —              |
-| DESIGN_QA    | 6             | —              |
-| DEPENDENCIES | 5             | —              |
-| SPEC         | 4             | —              |
-| SPEC_QA      | 3             | —              |
-| CONDENSED    | 3             | 3              |
-| HANDOFF      | 2             | 2              |
-| REVIEW       | 1             | 1              |
+| ROUTE        | 9 states left | 2 states left  |
+| SCAN         | 8             | —              |
+| CLARIFY      | 7             | —              |
+| DESIGN       | 6             | —              |
+| DESIGN_QA    | 5             | —              |
+| DEPENDENCIES | 4             | —              |
+| SPEC         | 3             | —              |
+| SPEC_QA      | 2             | —              |
+| CONDENSED    | 2             | 2              |
+| HANDOFF      | 1             | 1              |
 
 **Two execution modes:**
 
 | Mode          | Steps                             | When                                      | State File | Skill Check | Context Strategy |
 |---------------|-----------------------------------|-------------------------------------------|------------|-------------|-----------------|
 | **CONDENSED** | Minimal spec → Approval → Handoff | Small changes, single features, fast-path | Required   | Full SCAN   | Blockers only   |
-| **FULL**      | All 10 states                     | Large/multi-step tasks, ambiguous scope   | Required   | Full SCAN   | Cache + reuse   |
+| **FULL**      | All 9 states                      | Large/multi-step tasks, ambiguous scope   | Required   | Full SCAN   | Cache + reuse   |
 
-CONDENSED skips DESIGN, DESIGN_QA, DEPENDENCIES, SPEC, SPEC_QA. 4 states remain: CONDENSED → HANDOFF → REVIEW → DONE.
+CONDENSED skips DESIGN, DESIGN_QA, DEPENDENCIES, SPEC, SPEC_QA. 3 states remain: CONDENSED → HANDOFF → DONE.
 
 ---
 
@@ -206,7 +192,6 @@ Skills are matched by **semantic relevance**, not fuzzy "1% chance". A skill is 
 |------|-------------|
 | **Discover** | `discover-skills.sh` returns `{ name, description, source, path }` for all installed skills |
 | **Match** | AI reads each skill's `name` + `description` and judges: "Does this skill apply to the user's task?" |
-| **Auto-add** | Hard-coded rules add `test-first` (code tasks), `verify-gate` (fast mode), `root-cause` (bug tasks) |
 
 If the skill's description does NOT mention the task domain, **do NOT invoke the skill**.
 
@@ -216,7 +201,7 @@ If the skill's description does NOT mention the task domain, **do NOT invoke the
 2. **Skills** — override default system behavior where they conflict
 3. **Default system prompt** — lowest priority
 
-If a user says "don't use TDD" and a skill says "always use TDD," follow the user. The user is in control.
+If a user says "no diagrams" and a skill says "always include a diagram," follow the user. The user is in control.
 
 ---
 
@@ -234,8 +219,7 @@ Skills tell you HOW to explore. Check skills BEFORE gathering context, BEFORE as
 
 **Invoke the skill tool** — don't just read the skill file.
 
-- **Claude Code:** Use the `Skill` tool.
-- **OpenClaw:** Use `openclaw skills` command or the platform's skill invocation mechanism.
+- Use the platform's skill invocation mechanism (e.g. the `Skill` tool).
 
 ### Output Is Production
 
@@ -292,13 +276,8 @@ BEGIN FULL
     IF retries exhausted → HALT, ask user
 
     ENTER HANDOFF
-    state = REVIEW, handoff_to = plan-builder
-    WAIT for execution_result
-
-    ENTER REVIEW
-    IF success + passed → state=DONE
-    IF failed → state=CLARIFY (requirements changed) or DESIGN (design wrong)
-    IF partial → state=DESIGN (implement remaining)
+    /* plan-builder writes plan.md and sets state = DONE */
+    EXIT
 END
 ```
 
@@ -310,13 +289,8 @@ BEGIN CONDENSED
     IF user rejects → state=SCAN (go FULL from beginning)
     IF approved → ENTER HANDOFF (state set by CONDENSED block)
 
-    /* HANDOFF invokes plan-builder, which writes execution_result */
-    WAIT for execution_result
-
-    ENTER REVIEW
-    IF success + passed → state=DONE
-    IF failed → state=CLARIFY or DESIGN
-    IF partial → state=DESIGN
+    /* HANDOFF invokes plan-builder, which writes plan.md and sets state = DONE */
+    EXIT
 END
 ```
 
@@ -344,21 +318,16 @@ BEGIN ROUTE
 
     /* Bug detection — always check first (English + Chinese keywords) */
     IF message contains bug keywords (`bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception`, `broken`, `报错`, `出错`, `崩溃`, `异常`, `不工作`, `坏了`):
-        INVOKE root-cause skill
         /* Auto-fast-path for bugs: skip full design flow */
         GOTO rule 1a below
 
     /* Classify task — check these rules in order, stop at first match */
 
     1. **Fast mode** — user says "urgent" / "emergency" / "hotfix" / "prod down" / "critical" / "just do it" / "skip design" / "just write code" / "don't overthink":
-       - ADD "verify-gate" TO skills_to_apply (executor will invoke before any success claim)
-       - ADD "test-first" TO skills_to_apply (executor will invoke for code implementation)
        - MERGE INTO STATE_FILE: { "state": "CONDENSED", "task": "<user request>", "mode": "fast", "transition_count": 1 }
        - GOTO CONDENSED
 
     1a. **Bug fast-path** — triggered by bug detection above:
-        - ADD "root-cause" TO skills_to_apply (already invoked above)
-        - ADD "verify-gate" TO skills_to_apply
         - MERGE INTO STATE_FILE: { "state": "CONDENSED", "task": "<user request>", "mode": "fast", "transition_count": 1 }
         - GOTO CONDENSED
 
@@ -366,8 +335,6 @@ BEGIN ROUTE
         /* Heuristic: task involves ONE component change, no new subsystems */
         /* Signals: "add dark mode", "add button", "change color", "update text", "fix typo", "添加XX", "修改XX", "改成XX" */
         IF task scope is clearly single-component AND no architectural dependency:
-            ADD "verify-gate" TO skills_to_apply
-            ADD "test-first" TO skills_to_apply (if code involved)
             MERGE INTO STATE_FILE: { "state": "CONDENSED", "task": "<user request>", "mode": "condensed", "transition_count": 1 }
             GOTO CONDENSED
 
@@ -432,15 +399,7 @@ BEGIN SCAN
             IF skill APPLIES TO task_intent:
                 ADD skill.name TO matched_skills
 
-        /* Step C: Auto-add rules (hard-coded, always fire) */
-        IF mode == "fast" AND "verify-gate" NOT IN matched_skills:
-            ADD "verify-gate" TO matched_skills
-        IF task involves code AND "test-first" NOT IN matched_skills:
-            ADD "test-first" TO matched_skills
-        IF message contains bug keywords AND "root-cause" NOT IN matched_skills:
-            ADD "root-cause" TO matched_skills
-
-        /* Step D: Deduplicate */
+        /* Step C: Deduplicate */
         DEDUP matched_skills by name
 
     /* 4. invoke skills for guidance (NOT implementation) — ONE-TIME cache */
@@ -466,13 +425,8 @@ BEGIN SCAN
         state = "CLARIFY"
         ADD: context, scope
         ADD: domain_considerations (if populated by step 4)
-        ADD: expert_contexts (if populated — used by QA/REVIEW instead of re-invoking skills)
-        ADD: selected_skills = {
-            "planner": "plan-builder",
-            "executor": <inferred from skill types — execution-oriented skills → "task-dispatcher" or "plan-executor">,
-            "reviewer": <if review-oriented skills found → "review-request", else null>,
-            "alternatives": [<other plausible executors identified during skill matching>]
-        }
+        ADD: expert_contexts (if populated — used by QA instead of re-invoking skills)
+        ADD: selected_skills = { "planner": "plan-builder" }
         INCREMENT: scan_depth (or set to 1)
         INCREMENT: transition_count
 END
@@ -827,16 +781,15 @@ BEGIN SPEC
     IF spec_sections NOT empty:
         MERGE spec_sections into spec — add skill-specific sections
         e.g. UI skills → add "Responsive Breakpoints", "Interaction States", "Animation Specs"
-        e.g. test-first → add "Test Coverage Targets", "Boundary Cases"
+        e.g. testing skills → add "Test Coverage Targets", "Boundary Cases"
         e.g. security skills → add "Auth Flow", "Data Protection"
 
     /* Skill Mapping — required section in spec document */
     /* For EACH implementation phase/component, specify: */
-    /*   - Phase name → SKILL name(s) to invoke during execution */
-    /*   - Example: "User auth module" → test-first, verify-gate */
-    /*              "Dashboard UI" → frontend-design, ui-ux-pro-max, verify-gate */
-    /*   - Bug fix phases → root-cause, test-first, verify-gate */
-    /* This section is READ by plan-builder and injected into executor prompts */
+    /*   - Phase name → SKILL name(s) relevant to that phase */
+    /*   - Example: "User auth module" → api-design */
+    /*              "Dashboard UI" → frontend-design, ui-ux-pro-max */
+    /* This section is READ by plan-builder and written into the Markdown plan */
 
     /* 2. spec self-review */
     CHECK:
@@ -942,16 +895,16 @@ BEGIN CONDENSED
     /* 3. lightweight dependency check */
     NOTE in one sentence: "all parallel" or serial chain (e.g. "backend first, then frontend")
 
-    /* 4. skill mapping — which skills executor should invoke per step */
+    /* 4. skill mapping — which skills apply to each step */
     /* Add skills relevant to this task to phase_skill_mapping */
-    /* e.g. code → test-first, verify-gate; bug fix → root-cause; UI → ui-ux-pro-max */
+    /* e.g. code → testing skills; UI → ui-ux-pro-max */
 
     /* 5. self-review */
     CHECK: any TBD, TODO, ambiguous statements? FIX inline
 
     /* 6. approval checkpoint — must get explicit user agreement before handoff */
-    PRESENT: summary of what will be built, how, and which skills will be invoked
-    ASK: "I'll implement [X] using [Y]. Proceed?"
+    PRESENT: summary of what will be built, how, and which skills inform the plan
+    ASK: "I'll plan [X] using [Y]. Proceed?"
     WAIT for user response
 
     IF user rejects:
@@ -979,7 +932,7 @@ END
 
 **Announce:** "Design complete, handing off to planning."
 
-**Purpose:** Transfer approved design to plan-builder for execution planning.
+**Purpose:** Transfer the approved design and spec to plan-builder, which writes the Markdown plan.
 
 ```
 BEGIN HANDOFF
@@ -995,21 +948,6 @@ BEGIN HANDOFF
             STAY in current state (DESIGN or SPEC_QA)
             EXIT
 
-    /* 0.5. check if worktree isolation is needed */
-    IF task benefits from isolation (multi-file changes, feature branch work):
-        INVOKE worktree-setup via Skill tool
-        IF worktree-setup succeeds:
-            MERGE worktree_path into STATE_FILE
-
-    /* 0.6. attach skills to apply during execution */
-    /* Preserve existing skills_to_apply (e.g. from Fast mode in ROUTE) */
-    IF skills_to_apply NOT IN STATE_FILE:
-        MERGE INTO STATE_FILE: skills_to_apply = []
-    IF mode == "fast" AND "verify-gate" NOT IN skills_to_apply:
-        ADD "verify-gate" TO skills_to_apply
-    IF implementation involves code AND "test-first" NOT IN skills_to_apply:
-        ADD "test-first" TO skills_to_apply
-
     /* Use Skill tool directly — do NOT rely on trigger phrase matching */
     INVOKE plan-builder via Skill tool
     IF invocation fails:
@@ -1019,8 +957,8 @@ BEGIN HANDOFF
     FOLLOW its workflow
 
     /* STATE_FILE is the data contract — plan-builder reads it directly */
-    /* NOTE to plan-builder: phase_skill_mapping maps each implementation phase/component to the SKILL(s) that executor MUST invoke.
-       Write this into roadmap.json step instructions so the executor knows exactly which skills to use per step. */
+    /* NOTE to plan-builder: phase_skill_mapping maps each implementation phase/component to the SKILL(s) relevant to that step.
+       Write this into the Markdown plan. */
     /* Data contract schema (plan-builder MUST read these fields):
        {
          "task": string,                    // user's original request
@@ -1034,124 +972,21 @@ BEGIN HANDOFF
          "dependencies": object|null,       // FULL mode: { components, serial, parallel, critical_path }
          "spec_path": string|null,          // FULL mode: path to spec file
          "spec": object|null,               // CONDENSED mode: inline spec (what/why/how)
-         "phase_skill_mapping": object,     // { "phase_name": ["skill-1", "skill-2"] } — executor MUST invoke these per phase/step
-         "skills_to_apply": string[],        // global skills applied to ALL steps (e.g. ["verify-gate", "test-first"]) — executor invokes throughout
-         "selected_skills": {              // skills identified during SCAN
-           "planner": "plan-builder",       // always plan-builder when coming from vega-punk
-           "executor": string|null,         // "plan-executor" | "task-dispatcher" | null
-           "reviewer": string|null,         // "review-request" | null
-           "alternatives": string[]         // alternative executors identified during SCAN
-         },
-         "worktree_path": string|null,      // set by worktree-setup if isolation needed
+         "phase_skill_mapping": object,     // { "phase_name": ["skill-1", "skill-2"] } — skills relevant to each phase/step
+         "selected_skills": { "planner": "plan-builder" },
          "context": object|null,             // project context from SCAN
          "domain_considerations": object,    // { skill_name: { inputs, ambiguities, considerations } } — extracted by skills during CLARIFY
-         "expert_contexts": object           // { skill_name: { expertise_domains, quality_standards, common_pitfalls } } — cached in SCAN, used by QA/REVIEW
+         "expert_contexts": object           // { skill_name: { expertise_domains, quality_standards, common_pitfalls } } — cached in SCAN, used by QA
        }
     */
 
+    /* plan-builder reads STATE_FILE, writes ~/.vega-punk/plan.md, and sets state = DONE */
+
     /* state write */
     MERGE INTO STATE_FILE:
-        state = "REVIEW"
-        ADD: handoff_to = "plan-builder", user_satisfaction = null
+        state = "DONE"
+        ADD: handoff_to = "plan-builder"
         INCREMENT: transition_count
-END
-```
-
----
-
-## REVIEW
-
-**Trigger:** State is REVIEW with `execution_result` present.
-
-**Announce:** "Entering REVIEW... invoking expert validation"
-
-**Purpose:** Validate execution against requirements through skill-driven expert review. Decide: done, iterate, or redesign.
-
-```
-BEGIN REVIEW
-    /* Guard: execution_result missing — plan was interrupted or didn't complete */
-    IF execution_result NOT IN STATE_FILE:
-        TELL: "[vega-punk] REVIEW state but no execution_result. Plan may have been interrupted."
-        ASK: "(1) wait for result, (2) redesign, (3) start new task"
-        WAIT for user choice
-        CASE (1) wait for result → STAY in REVIEW, EXIT
-        CASE (2) redesign → Archive ROADMAP_FILE → GOTO DESIGN, EXIT
-        CASE (3) new task → APPLY Post-Completion Cleanup → GOTO ROUTE, EXIT
-
-    /* Layer 1: Expert Validation — prefer cached contexts, re-invoke only if needed */
-    expert_validation = {}
-    IF expert_contexts NOT empty:
-        /* Use SCAN-cached expertise — no need to reload full SKILL.md */
-        FOR EACH skill_name IN expert_contexts:
-            REVIEW execution_result against expert_contexts[skill_name]:
-                - quality_standards: does result meet the skill's quality bar?
-                - common_pitfalls: does result fall into known mistakes?
-                - expertise_domains: does result cover all essentials in this domain?
-            COLLECT: expert_validation[skill_name] = { passed, issues, recommendations }
-    ELSE IF selected_skills NOT empty:
-        /* Fallback: no cached context, re-invoke skills */
-        FOR EACH skill_name IN selected_skills:
-            INVOKE skill_name via Skill tool (if not already in context)
-            ASK skill: "Review the execution result against the original requirements and your domain expertise. Did the implementation meet quality standards? What's missing, broken, or suboptimal?"
-            COLLECT: expert_validation[skill_name] = { passed, issues, recommendations }
-
-    /* Layer 2: Compare against requirements */
-    READ execution_result from STATE_FILE
-    COMPARE against requirements.success
-    MERGE expert_validation into review analysis
-
-    /* Layer 3: Present summary to user */
-    PRESENT summary:
-        - Requirements check: [which success criteria met / not met]
-        - Expert validation: [which skills reviewed, pass/fail per skill, key issues]
-        - Overall verdict: success / partial / failed
-
-    /* capture satisfaction BEFORE routing — always ask, never skip */
-    RECORD user_satisfaction: "satisfied" / "neutral" / "dissatisfied"
-
-    /* update consecutive dissatisfaction counter */
-    IF user_satisfaction == "dissatisfied": INCREMENT consecutive_dissatisfied_count
-    ELSE: RESET consecutive_dissatisfied_count = 0
-
-    /* persist counter */
-    WRITE COUNTERS_FILE: { "consecutive_dissatisfied_count": value }
-
-    /* Find the matching row — check in order, stop at first match */
-    /* expert_validation informs the classification */
-
-    | # | Condition | Message to user | Recommend |
-    |---|-----------|-----------------|-----------|
-    | 1 | success + verification passed + expert validation passed + satisfied | "All criteria met. Expert review: no issues flagged." | DONE (auto-complete) |
-    | 2 | success + verification passed + expert flagged concerns + satisfied | "Criteria met. Expert flagged: [summary]. Acceptable?" | DONE (if user confirms) or DESIGN |
-    | 3 | success + verification passed + dissatisfied | "Criteria met but you're not happy — what's missing?" | CLARIFY |
-    | 4 | success + verification failed | "Implementer reported success but verification failed." | DESIGN |
-    | 5a | partial + missing indicates unclear requirements ("ambiguous spec", "unclear requirement") | "Partially done — requirements were unclear." | CLARIFY |
-    | 5b | partial + missing indicates design gap ("architecture issue", "wrong pattern", "component missing") | "Partially done — design gap detected." | DESIGN |
-    | 5c | partial + unclear cause | "Partially done." | DESIGN |
-    | 6a | failed + notes indicate requirement ambiguity ("ambiguous", "unclear requirement", "spec contradiction", "missing spec") | "Execution failed due to unclear requirements." | CLARIFY |
-    | 6b | failed + notes indicate architectural issue ("architecture", "wrong pattern", "fundamental", "wrong approach", "redesign") | "Execution failed due to design problem." | DESIGN |
-    | 6c | failed + generic (no clear type) | "Execution failed." | DESIGN |
-
-    /* Rule 1 is the only auto-complete path — skip user confirmation */
-    IF matched rule 1: MERGE INTO STATE_FILE: { "state": "DONE" }, EXIT
-
-    /* For rules 2-12: tell the message, then ask user to confirm or override */
-    TELL: [Message from matched row]
-
-    IF consecutive_dissatisfied_count >= 3:
-        TELL: "[vega-punk] Last 3 tasks dissatisfied. Let's pause and align on process."
-        ASK: "Should I change approach? (1) more clarification upfront, (2) tighter QA, (3) different workflow"
-        WAIT for user response
-
-    /* archive old roadmap before any re-entry */
-    IF ROADMAP_FILE exists: RENAME ROADMAP_FILE → roadmap.ARCHIVED.json
-
-    ASK: "Recommended next step: [Recommend from matched row]. (1) proceed, (2) iterate on design, (3) redesign from scratch, (4) new task?"
-    MATCH user choice:
-    CASE (1) proceed → GOTO [Recommend from matched row]
-    CASE (2) iterate → GOTO DESIGN
-    CASE (3) redesign → GOTO CLARIFY
-    CASE (4) new task → APPLY Post-Completion Cleanup → GOTO ROUTE
 END
 ```
 
@@ -1196,7 +1031,7 @@ When vega-punk's state becomes corrupted or inconsistent:
 BEGIN RECOVERY
     READ STATE_FILE
     VALID_STATES = [ROUTE, SCAN, CLARIFY, DESIGN, DESIGN_QA,
-                    DEPENDENCIES, SPEC, SPEC_QA, CONDENSED, HANDOFF, REVIEW, DONE]
+                    DEPENDENCIES, SPEC, SPEC_QA, CONDENSED, HANDOFF, DONE]
 
     MATCH symptom:
 
@@ -1222,7 +1057,7 @@ BEGIN RECOVERY
         /* cached expertise lost — will fall back to re-invoking skills */
         PROCEED from current state (QA layers have fallback to re-invoke skills)
 
-    CASE state == HANDOFF OR state == REVIEW AND spec_path file missing:
+    CASE state == HANDOFF AND spec_path file missing:
         /* spec was never written or deleted */
         IF design AND dependencies fields present:
             REGENERATE spec from design + dependencies
@@ -1231,14 +1066,6 @@ BEGIN RECOVERY
         ELSE:
             state = CLARIFY
             TELL: "Spec file was lost. Let me re-run the design flow."
-
-    CASE state == REVIEW AND (ROADMAP_FILE missing OR invalid JSON):
-        /* execution interrupted during planning */
-        IF spec_path exists AND spec file readable:
-            RE-RUN HANDOFF
-            TELL: "Execution plan was lost. Regenerating from spec."
-        ELSE:
-            RECOVER using missing spec case above
 
     CASE qa.retries == 3:
         /* fundamental design/spec issue, not fixable */
@@ -1263,7 +1090,7 @@ BEGIN RECOVERY
         /* nuclear option */
         RENAME SPEC_DIR*.md → *.CANCELLED.md
         DELETE STATE_FILE
-        DELETE ROADMAP_FILE (if exists)
+        DELETE PLAN_FILE (if exists)
         DELETE FINDINGS_FILE (if exists)
         DELETE PROGRESS_FILE (if exists)
         TELL: "[vega-punk] Full reset complete. Starting fresh. What shall we build?"
@@ -1299,7 +1126,7 @@ END
 ## Key Principles
 
 - **One state at a time** — Never skip states. CONDENSED for speed.
-- **Dependencies drive execution** — Serial blocks, parallel unblocks.
+- **Dependencies drive plan ordering** — Serial blocks, parallel unblocks.
 - **One question at a time** — Don't overwhelm.
 - **YAGNI ruthlessly** — Remove unrequested features.
 - **Follow existing patterns** — Targeted improvements only. No unrelated refactoring.
@@ -1315,25 +1142,19 @@ This is the **only** source of available skills. No external registry.
 ### Matching
 
 The AI judges each skill's relevance by reading `name` + `description` against the user's task intent.
-Auto-add rules always fire: fast mode → `verify-gate`, code → `test-first`, bug → `root-cause`.
 
 ### Direct Invokes (vega-punk calls these explicitly)
 
 | Skill            | When    | How                                                                                   |
 |------------------|---------|---------------------------------------------------------------------------------------|
-| **root-cause**   | ROUTE   | message contains `bug`, `fix`, `error`, `not working`, `crash`, `failed`, `exception`, `报错`, `出错`, `崩溃`, `异常`, `不工作`, `坏了` |
-| **worktree-setup** | HANDOFF | task needs isolation (multi-file changes, feature branch)                           |
 | **plan-builder** | HANDOFF | via Skill tool — NOT trigger phrase                                                   |
 
-See ROUTE (bug detection) and SCAN (auto-add rules) for invocation logic.
-
-All other skills are matched by semantic reading of name + description during SCAN, or added via auto-add rules. Skills whose descriptions do not match the task are NOT invoked.
+All other skills are matched by semantic reading of name + description during SCAN. Skills whose descriptions do not match the task are NOT invoked.
 
 > ### How to choose skills — SEMANTIC MATCHING
 > 1. `discover-skills.sh` returns all skills with `{ name, description, source, path }`
 > 2. For each skill: read name + description, judge if it applies to the user's task
-> 3. Add auto-add skills: test-first (code), verify-gate (fast mode), root-cause (bug)
-> 4. No match = no invoke. No "1% chance" rule.
+> 3. No match = no invoke. No "1% chance" rule.
 
 > ### How to invoke skills — NON-NEGOTIABLE
 > 1. **Use the `Skill` tool directly** — do NOT rely on trigger phrase matching
