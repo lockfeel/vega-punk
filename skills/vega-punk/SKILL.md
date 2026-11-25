@@ -10,7 +10,7 @@ allowed-tools: "Read, Write, Edit, Bash, Glob, Grep, WebFetch, WebSearch"
 
 **Boundary:** vega-punk owns requirements gathering, analysis, brainstorming, and solution exploration. It writes `requirements.md` inside the project workspace and stops. It does not write the implementation plan, make final architecture decisions, write code, or execute anything. plan-builder owns the plan.
 
-**Workspace:** Resolve the project root first: the git repository root, or the current directory when it is not a repository. Inside a repository the workspace is `<project-root>/.vega-punk/`; outside one it is `~/.vega-punk/<directory-name>/`. The requirements file is `<workspace>/requirements.md` and is the only artifact. There are no state files, no JSON runtime, and no stage tracking — the document and the conversation are the only memory.
+**Workspace:** Resolve the project root first: the git repository root, or the current directory when it is not a repository. Inside a repository the workspace is `<project-root>/.vega-punk/`; outside one it is `~/.vega-punk/<path-slug>/`, where `<path-slug>` is the project's absolute path with every `/` replaced by `-`, so same-named directories in different locations never share a workspace. The requirements file is `<workspace>/requirements.md` and is the only artifact. There are no state files, no JSON runtime, and no stage tracking — the document and the conversation are the only memory.
 
 ## Operating Principles
 
@@ -31,10 +31,10 @@ Work through the phases in order. You may loop back when new information changes
 Before phase 1, decide which of three paths the request takes. State the choice only if it changes what you will do.
 
 - **Full analysis** — the default. Run all eight phases below.
-- **Simple request** — a small, single-component change with no new subsystem. Compress the flow: confirm the problem in one sentence, ask at most one blocker question, recommend one direction, get a single confirmation from the user, then record that direction and the one alternative seriously considered, write `requirements.md`, and hand off. The full Direction A/B/C set and the stress-test round are not required, but the direction and its trade-off must still be explicit.
+- **Simple request** — a small, single-component change with no new subsystem and at most one unresolved blocker; if two or more blockers are unresolved, use the full analysis instead. Compress the flow: confirm the problem in one sentence, ask at most one blocker question, recommend one direction, get a single confirmation from the user, then record that direction and the one alternative seriously considered, write `requirements.md`, and hand off. The full Direction A/B/C set and the stress-test round are not required, but the direction and its trade-off must still be explicit.
 - **Skip request** — the user says "urgent", "just do it", or asks to skip analysis. Do not silently skip: state the risk in one sentence, use the simple path, and record the skipped analysis as an explicit assumption in `requirements.md`.
 
-Every path includes problem framing, the overwrite rules, and the handoff check. Nothing else may be skipped.
+Every path includes problem framing, the overwrite rules, and the handoff check. Beyond the exemptions stated for the simple path, nothing may be skipped.
 
 ### 1. Frame the Problem
 
@@ -79,7 +79,7 @@ Before converging, check whether the request is really one piece of work. If it 
 
 ### 6. Converge
 
-Present a comparison table with columns for direction, strengths, costs, risks, and reversibility. Lead with your recommendation and explain why. Ask the user to pick, combine, or reject all directions. If they reject all, return to brainstorming once with the new constraint. If they reject every direction twice, or the analysis shows the work should not be done, record `No-go` as the chosen direction, explain why, and stop without handing off to plan-builder. Otherwise record the chosen direction and the specific reason each other direction was rejected. If the user overrides your recommendation and insists on a direction you dropped for a fatal flaw, do not re-argue and do not silently comply: record a `Dissent:` line that names the flaw, the evidence against it, and the user's reason for overriding it.
+If the stress test left no surviving direction, skip the pick-and-compare loop: present the fatal flaw that ended each direction, recommend `No-go`, and ask the user to accept it or insist on a direction; if they insist, proceed only with the `Dissent:` line below. Otherwise present a comparison table with columns for direction, strengths, costs, risks, and reversibility. Lead with your recommendation and explain why. Ask the user to pick, combine, or reject all directions. If they reject all, return to brainstorming once with the new constraint. If they reject every direction twice, or the analysis shows the work should not be done, record `No-go` as the chosen direction, explain why, and stop without handing off to plan-builder. Otherwise record the chosen direction and the specific reason each other direction was rejected. If the user overrides your recommendation and insists on a direction you dropped for a fatal flaw, do not re-argue and do not silently comply: record a `Dissent:` line that names the flaw, the evidence against it, and the user's reason for overriding it.
 
 ### 7. Write requirements.md
 
@@ -138,7 +138,7 @@ Tell the user the requirements are ready at the workspace `requirements.md` and 
 
 ### Chosen direction
 - Choice: <direction name, or No-go>
-- Baseline (do nothing): <what stays the same, and why the choice beats it>
+- Baseline (do nothing): <what stays the same, and why the choice beats it — when the choice is No-go, the baseline is the choice; record only what stays the same>
 - Why:
 - Rejected directions and why:
 
